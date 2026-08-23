@@ -207,7 +207,7 @@ export default function App() {
     });
   };
 
-  // 2. 指定した組数でテストデータ生成処理
+  // 2. 指定した組数でテストデータ生成処理（パスワードを数字6桁で生成）
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
@@ -223,7 +223,8 @@ export default function App() {
       for (let i = 1; i <= numPerClass; i++) {
         currentIdCount++;
         const newId = currentIdCount.toString().padStart(4, '0');
-        const generatedPassword = Math.random().toString(36).slice(-6);
+        // 数字6桁でランダム生成
+        const generatedPassword = Math.floor(100000 + Math.random() * 900000).toString();
         const clubName = clubs[Math.floor(Math.random() * clubs.length)];
         
         const p1 = `${familyNames[Math.floor(Math.random() * familyNames.length)]}${givenNames[Math.floor(Math.random() * givenNames.length)]}`;
@@ -476,10 +477,12 @@ export default function App() {
     setDialog({ title: "完了", message: "トーナメント枠にランダムに割り当てました。", onClose: () => setDialog(null) });
   };
 
+  // 参加者エントリー（パスワードを数字6桁で生成）
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
     const newId = (entries.length + 1).toString().padStart(4, '0');
-    const generatedPassword = Math.random().toString(36).slice(-6);
+    // 数字6桁でランダム生成
+    const generatedPassword = Math.floor(100000 + Math.random() * 900000).toString();
     
     const dbPayload = {
       id: newId,
@@ -524,7 +527,7 @@ export default function App() {
           <p className="mb-2 text-green-600 font-bold">受付が完了しました！</p>
           <div className="bg-gray-100 p-4 mt-4 rounded-lg">
              <div className="flex justify-between border-b pb-2 mb-2"><span className="text-gray-500">ID:</span><strong>{newId}</strong></div>
-             <div className="flex justify-between"><span className="text-gray-500">パスワード:</span><strong className="text-orange-600">{generatedPassword}</strong></div>
+             <div className="flex justify-between"><span className="text-gray-500">パスワード (数字6桁):</span><strong className="text-orange-600 font-mono text-lg">{generatedPassword}</strong></div>
           </div>
           <p className="text-xs text-gray-500 mt-2">※後から修正する際に必要です。必ず控えてください。</p>
         </div>
@@ -1037,7 +1040,7 @@ export default function App() {
       <h2 className="text-2xl font-bold mb-6 text-center">登録内容の変更</h2>
       <form onSubmit={handleEditLogin} className="space-y-4">
         <input type="text" placeholder="受付ID (0001)" className="w-full p-3 border rounded bg-gray-50" required value={editLogin.id} onChange={e => setEditLogin({...editLogin, id: e.target.value})} />
-        <input type="password" placeholder="パスワード" className="w-full p-3 border rounded bg-gray-50" required value={editLogin.password} onChange={e => setEditLogin({...editLogin, password: e.target.value})} />
+        <input type="password" placeholder="パスワード (数字6桁)" className="w-full p-3 border rounded bg-gray-50 font-mono" required value={editLogin.password} onChange={e => setEditLogin({...editLogin, password: e.target.value})} />
         <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow mt-4">ログイン</button>
       </form>
     </div>
@@ -1047,7 +1050,7 @@ export default function App() {
     <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-gray-800">
       <h2 className="text-xl font-bold mb-6 text-center">管理者ログイン</h2>
       <form onSubmit={handleAdminLogin} className="space-y-4">
-        <input type="password" placeholder="admin2026" className="w-full p-3 border rounded" required value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
+        <input type="password" placeholder="パスワードを入力" className="w-full p-3 border rounded" required value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
         <button type="submit" className="w-full bg-gray-800 text-white font-bold py-3 rounded-lg">ログイン</button>
       </form>
     </div>

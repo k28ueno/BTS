@@ -24,13 +24,14 @@ git init >nul 2>&1
 git add -A
 git commit -m "Deploy site" >nul 2>&1
 git push -f https://github.com/k28ueno/BTS.git master:gh-pages
-cd ..
 if %errorlevel% neq 0 (
+  cd ..
   color 0C
   echo Deploy failed!
   pause
   exit /b %errorlevel%
 )
+cd ..
 echo.
 echo ========================================
 echo  Successfully updated!

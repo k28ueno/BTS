@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key) => {
@@ -207,7 +207,7 @@ export default function App() {
     });
   };
 
-  // 2. 指定した組数でテストデータ生成処理
+  // 2. 指定した組数でテストデータ生成処理（数字4桁パスワード）
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
@@ -223,7 +223,7 @@ export default function App() {
       for (let i = 1; i <= numPerClass; i++) {
         currentIdCount++;
         const newId = currentIdCount.toString().padStart(4, '0');
-        const generatedPassword = Math.random().toString(36).slice(-6);
+        const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
         const clubName = clubs[Math.floor(Math.random() * clubs.length)];
         
         const p1 = `${familyNames[Math.floor(Math.random() * familyNames.length)]}${givenNames[Math.floor(Math.random() * givenNames.length)]}`;
@@ -476,10 +476,11 @@ export default function App() {
     setDialog({ title: "完了", message: "トーナメント枠にランダムに割り当てました。", onClose: () => setDialog(null) });
   };
 
+  // エントリー送信（数字4桁パスワード自動生成）
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
     const newId = (entries.length + 1).toString().padStart(4, '0');
-    const generatedPassword = Math.random().toString(36).slice(-6);
+    const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
     
     const dbPayload = {
       id: newId,
@@ -524,9 +525,9 @@ export default function App() {
           <p className="mb-2 text-green-600 font-bold">受付が完了しました！</p>
           <div className="bg-gray-100 p-4 mt-4 rounded-lg">
              <div className="flex justify-between border-b pb-2 mb-2"><span className="text-gray-500">ID:</span><strong>{newId}</strong></div>
-             <div className="flex justify-between"><span className="text-gray-500">パスワード:</span><strong className="text-orange-600">{generatedPassword}</strong></div>
+             <div className="flex justify-between"><span className="text-gray-500">パスワード (数字4桁):</span><strong className="text-orange-600 font-mono text-lg">{generatedPassword}</strong></div>
           </div>
-          <p className="text-xs text-gray-500 mt-2">※後から修正する際に必要です。必ず控えてください。</p>
+          <p className="text-xs text-gray-500 mt-2">※後から修正する際に必要です。数字4桁のパスワードを控えてください。</p>
         </div>
       ),
       onClose: () => { setDialog(null); setCurrentTab('home'); }
@@ -536,6 +537,10 @@ export default function App() {
 
   const handleEditLogin = (e) => {
     e.preventDefault();
+    if (!/^\d{4}$/.test(editLogin.password)) {
+      setDialog({ title: "エラー", message: "パスワードは半角数字4桁で入力してください。", onClose: () => setDialog(null) });
+      return;
+    }
     const target = entries.find(ent => ent.id === editLogin.id && ent.password === editLogin.password);
     if (target) {
       setEntryForm({ ...target });
@@ -746,16 +751,6 @@ export default function App() {
     if (!ent) return '未定';
     const clubStr = ent.club ? ` (${ent.club})` : '';
     return `${ent.p1Name}・${ent.p2Name}${clubStr}`;
-  };
-
-  const getTeamName = (teamId) => {
-    const ent = entries.find(e => e.id === teamId);
-    return ent ? `${ent.p1Name}・${ent.p2Name}` : '未定';
-  };
-
-  const getTeamClub = (teamId) => {
-    const ent = entries.find(e => e.id === teamId);
-    return ent ? (ent.club || '所属なし') : '';
   };
 
   function createBracketSlot(cls, pos, isEditable) {
@@ -1032,18 +1027,28 @@ export default function App() {
     </div>
   );
 
+  // 登録変更ログイン画面（数字4桁入力制限）
   const viewEditLogin = (
     <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-blue-500">
       <h2 className="text-2xl font-bold mb-6 text-center">登録内容の変更</h2>
       <form onSubmit={handleEditLogin} className="space-y-4">
         <input type="text" placeholder="受付ID (0001)" className="w-full p-3 border rounded bg-gray-50" required value={editLogin.id} onChange={e => setEditLogin({...editLogin, id: e.target.value})} />
-        <input type="password" placeholder="パスワード" className="w-full p-3 border rounded bg-gray-50" required value={editLogin.password} onChange={e => setEditLogin({...editLogin, password: e.target.value})} />
+        <input 
+          type="password" 
+          inputMode="numeric"
+          maxLength={4}
+          placeholder="パスワード（数字4桁）" 
+          className="w-full p-3 border rounded bg-gray-50" 
+          required 
+          value={editLogin.password} 
+          onChange={e => setEditLogin({...editLogin, password: e.target.value.replace(/\D/g, '')})} 
+        />
         <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow mt-4">ログイン</button>
       </form>
     </div>
   );
 
-const viewAdminLogin = (
+  const viewAdminLogin = (
     <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-gray-800">
       <h2 className="text-xl font-bold mb-6 text-center">管理者ログイン</h2>
       <form onSubmit={handleAdminLogin} className="space-y-4">

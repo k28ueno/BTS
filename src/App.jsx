@@ -28,7 +28,7 @@ export default function App() {
 
   const handleAdminLogin = (e) => {
     e.preventDefault();
-    if (adminPasswordInput === "admin2026") {
+    if (adminPasswordInput === "") {
       setIsAdmin(true);
       setAdminPasswordInput("");
     } else {
@@ -236,3 +236,4 @@ export default function App() {
     </div>
   );
 }
+

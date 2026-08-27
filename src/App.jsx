@@ -23,6 +23,14 @@ function IconPlus() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" 
 function IconClock() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
 function IconDatabase() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>; }
 
+// HH:mm 形式に整えるヘルパー関数
+const formatHHMM = (str) => {
+  if (!str) return '08:50';
+  const parts = str.split(':');
+  if (parts.length < 2) return '08:50';
+  return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+};
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
   const [dashTab, setDashTab] = useState('matches');
@@ -64,7 +72,7 @@ export default function App() {
 
   const [testGenCount, setTestGenCount] = useState(12);
 
-  // シミュレーション用：基準現在時刻ステート (デフォルトは試合開始時間)
+  // シミュレーション用：基準現在時刻ステート
   const [simCurrentTime, setSimCurrentTime] = useState('08:50');
 
   // 現時刻をセットする関数
@@ -113,9 +121,9 @@ export default function App() {
             avgMatchDuration: data.avgmatchduration || 15
           };
           setConfig(loadedConfig);
-          if (loadedConfig.timeStart) {
-            setSimCurrentTime(loadedConfig.timeStart);
-          }
+          const defaultTime = formatHHMM(loadedConfig.timeStart);
+          setSimCurrentTime(defaultTime);
+
           if(loadedConfig.classes && loadedConfig.classes.length > 0) {
              setSelectedClass(loadedConfig.classes[0]);
              setDrawClass(loadedConfig.classes[0]);
@@ -1369,7 +1377,7 @@ export default function App() {
                 let statusLabel = '空き';
                 let badgeClass = 'bg-gray-100 text-gray-500';
                 if (activeMatch) {
-                  if (activeMatch.status === 'calling') { statusLabel = 'コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
+                  if (activeMatch.status === 'calling') { statusLabel = '要コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
                   else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
                   else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
                 }
@@ -2008,13 +2016,13 @@ export default function App() {
                         const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
                         
                         let cardBgClass = 'bg-white border-dashed border-gray-300 hover:border-emerald-400';
-                        let badgeLabel = 'コール';
+                        let badgeLabel = '要コール';
                         let badgeBgClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
 
                         if (activeMatch) {
                            if (activeMatch.status === 'calling') {
                               cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                              badgeLabel = 'コール';
+                              badgeLabel = '要コール';
                               badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
                            } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
                               cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';
@@ -2094,7 +2102,7 @@ export default function App() {
                                             onClick={() => handleMatchStatusChange(activeMatch.id, 'recepted')}
                                             className="text-[10px] bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
-                                             コール
+                                             要コール
                                           </button>
                                        )}
 

@@ -531,7 +531,7 @@ export default function App() {
           {/* 目立つ注意書きボックス */}
           <div className="bg-red-50 border-l-4 border-red-500 p-3 mt-4 rounded">
              <p className="text-xs font-bold text-red-700">
-               ⚠️ 注意：登録内容の変更・確認時に必要です
+               ⚠️ 注意：登録内容の修正・取消時に必要です
              </p>
              <p className="text-xs text-red-600 mt-1 font-bold">
                上記【ID】と【パスワード】の両方を、必ずメモやスクリーンショットで控えて保管してください。
@@ -587,6 +587,28 @@ export default function App() {
     setDialog({ title: "更新完了", message: "登録内容を更新しました。", onClose: () => { setDialog(null); setCurrentTab(isAdminLoggedIn ? 'admin' : 'home'); } });
     setEditMode(false);
     setCurrentEditId(null);
+  };
+
+  // 参加者自身によるエントリー削除（取消）処理
+  const handleDeleteSelfEntry = (id, p1Name) => {
+    setDialog({
+      title: "エントリー取消の確認",
+      message: `${p1Name} ペアのエントリーを取り消します（登録が完全に削除されます）。本当によろしいですか？`,
+      onConfirm: async () => {
+        if (isSupabaseConfigured) {
+          await supabase.from('entries').delete().eq('id', id);
+        }
+        setEntries(entries.filter(e => e.id !== id));
+        setEditMode(false);
+        setCurrentEditId(null);
+        setDialog({
+          title: "取消完了",
+          message: "エントリーを取り消しました。",
+          onClose: () => { setDialog(null); setCurrentTab('home'); }
+        });
+      },
+      onClose: () => setDialog(null)
+    });
   };
 
   const handleDeleteEntry = async (id, p1Name) => {
@@ -839,7 +861,7 @@ export default function App() {
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
           <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2"><IconUser /> 大会にエントリー</button>
-          <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2"><IconSettings /> 登録内容の変更</button>
+          <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2"><IconSettings /> 登録内容の修正・取消</button>
         </div>
       </div>
       <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
@@ -989,7 +1011,7 @@ export default function App() {
   const viewEntryForm = (
     <div className="max-w-2xl mx-auto bg-white p-6 md:p-8 rounded-xl shadow-md animate-fade-in border-t-4 border-[#2c5f4e]">
       <div className="flex justify-between items-center mb-6 border-b pb-4">
-         <h2 className="text-2xl font-bold flex items-center gap-2">{editMode ? '登録内容の変更' : '大会エントリー'}</h2>
+         <h2 className="text-2xl font-bold flex items-center gap-2">{editMode ? '登録内容の修正・取消' : '大会エントリー'}</h2>
          <button onClick={() => {setCurrentTab('home'); setEditMode(false);}} className="text-sm text-gray-500 hover:text-gray-800">キャンセル</button>
       </div>
       <form onSubmit={editMode ? handleEditSubmit : handleEntrySubmit} className="space-y-6">
@@ -1029,17 +1051,29 @@ export default function App() {
              ))}
            </div>
         </div>
-        <button type="submit" className="w-full bg-orange-500 text-white font-bold py-4 rounded-lg shadow-lg text-lg">
-          {editMode ? '変更を保存する' : 'エントリーを確定する'}
-        </button>
+        
+        <div className="flex flex-col gap-3">
+          <button type="submit" className="w-full bg-orange-500 text-white font-bold py-4 rounded-lg shadow-lg text-lg hover:bg-orange-600 transition-colors">
+            {editMode ? '変更を保存する' : 'エントリーを確定する'}
+          </button>
+          {editMode && (
+            <button 
+              type="button" 
+              onClick={() => handleDeleteSelfEntry(currentEditId, entryForm.p1Name)}
+              className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-3 rounded-lg border border-red-300 transition-colors"
+            >
+              このエントリーを取り消す（削除）
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );
 
-  // 登録変更ログイン画面（数字4桁入力制限）
+  // 登録変更・取消ログイン画面
   const viewEditLogin = (
     <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-blue-500">
-      <h2 className="text-2xl font-bold mb-6 text-center">登録内容の変更</h2>
+      <h2 className="text-2xl font-bold mb-6 text-center">登録内容の修正・取消</h2>
       <form onSubmit={handleEditLogin} className="space-y-4">
         <input type="text" placeholder="受付ID (0001)" className="w-full p-3 border rounded bg-gray-50" required value={editLogin.id} onChange={e => setEditLogin({...editLogin, id: e.target.value})} />
         <input 
@@ -1616,7 +1650,7 @@ export default function App() {
           </div>
           <div className="flex gap-2 md:gap-4">
              <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="text-xs md:text-sm font-bold text-white bg-orange-500 hover:bg-orange-600 px-3 md:px-4 py-2 rounded-lg flex items-center gap-1"><IconUser /> エントリー</button>
-             <button onClick={() => setCurrentTab('editLogin')} className="text-xs md:text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 md:px-4 py-2 rounded-lg flex items-center gap-1 hidden md:flex">登録修正</button>
+             <button onClick={() => setCurrentTab('editLogin')} className="text-xs md:text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 md:px-4 py-2 rounded-lg flex items-center gap-1 hidden md:flex">修正・取消</button>
              <button onClick={() => { if(isAdminLoggedIn) { setCurrentTab('admin'); } else { setCurrentTab('adminLogin'); } }} className="text-xs md:text-sm font-bold text-gray-600 hover:text-gray-900 px-2 py-2 flex items-center gap-1 border-l ml-2 pl-4">管理・マスタ</button>
           </div>
         </div>

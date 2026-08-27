@@ -409,11 +409,11 @@ export default function App() {
     if (isSupabaseConfigured) {
       await Promise.all(updates.map(u => supabase.from('entries').update({ group: u.group }).eq('id', u.id)));
     }
-    await generateLeagueMatches(drawClass, newEntries);
-    setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード生成が完了しました！`, onClose: () => setDialog(null) });
+    const matchCount = await generateLeagueMatches(drawClass, newEntries);
+    setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  // 予選リーグ対戦カード生成（受付済の組のみ対象）
+  // 予選リーグ対戦カード生成（現在のグループ配置を反映。生成件数を返却）
   const generateLeagueMatches = async (targetCls, currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
     const clsEntries = activeEntries.filter(e => e.cls === targetCls && e.checkedIn);
@@ -422,12 +422,14 @@ export default function App() {
     
     let orderCounter = newMatches.length + 1;
     const dbInserts = [];
+    let generatedCount = 0;
 
     groups.forEach(groupName => {
       const groupTeams = clsEntries.filter(e => e.group === groupName);
       if (groupTeams.length >= 2) {
         for (let i = 0; i < groupTeams.length; i++) {
           for (let j = i + 1; j < groupTeams.length; j++) {
+            generatedCount++;
             const matchObj = {
               id: `M-${targetCls}-${groupName}-${groupTeams[i].id}-${groupTeams[j].id}`,
               cls: targetCls,
@@ -461,10 +463,13 @@ export default function App() {
     });
 
     setMatches(newMatches);
-    if (isSupabaseConfigured && dbInserts.length > 0) {
+    if (isSupabaseConfigured) {
       await supabase.from('matches').delete().eq('cls', targetCls).eq('match_type', 'league');
-      await supabase.from('matches').insert(dbInserts);
+      if (dbInserts.length > 0) {
+        await supabase.from('matches').insert(dbInserts);
+      }
     }
+    return generatedCount;
   };
 
   // 決勝トーナメント自動振り分け（受付済の組のみが対象）
@@ -1420,7 +1425,7 @@ export default function App() {
             <div className="w-full overflow-hidden">
               {/* 受付済限定に関する注記バー */}
               <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold flex items-center justify-between">
-                 <span>⚠️ ドロー編成は「受付処理」で受付済（済）になった組のみが表示・振り分け対象となります。</span>
+                 <span>⚠️ ドロー編成は「受付処理」で受付済（済）になった組のみが表示・割り当て対象となります。</span>
                  <span className="bg-amber-200 text-amber-800 px-2 py-0.5 rounded font-mono">
                     {drawClass} 受付済: {entries.filter(e => e.cls === drawClass && e.checkedIn).length} / {entries.filter(e => e.cls === drawClass).length} 組
                  </span>
@@ -1438,7 +1443,17 @@ export default function App() {
                     受付済の組を自動ランダム振り分け
                  </button>
                  {drawType === 'league' && (
-                   <button onClick={() => generateLeagueMatches(drawClass)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1">
+                   <button 
+                     onClick={async () => {
+                       const count = await generateLeagueMatches(drawClass);
+                       if (count > 0) {
+                         setDialog({ title: "対戦カード生成完了", message: `${drawClass} のグループ配置に基づき、対戦カード（${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
+                       } else {
+                         setDialog({ title: "対戦カードクリア", message: `${drawClass} のグループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。各グループに2組以上配置してください。`, onClose: () => setDialog(null) });
+                       }
+                     }} 
+                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1"
+                   >
                       <IconRefresh /> 手動編成から対戦カード生成
                    </button>
                  )}
@@ -1498,7 +1513,13 @@ export default function App() {
                <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
                   <h3 className="text-xl font-bold flex items-center gap-2"><IconMatch /> コート進行・ドラッグ＆ドロップ割当</h3>
                   <button 
-                    onClick={() => config.classes.forEach(c => generateLeagueMatches(c))}
+                    onClick={async () => {
+                      let totalGenerated = 0;
+                      for (const c of config.classes) {
+                        totalGenerated += await generateLeagueMatches(c);
+                      }
+                      setDialog({ title: "対戦カード再生成完了", message: `全クラスのグループ編成に基づき、合計 ${totalGenerated} 試合の対戦カードを更新・再生成しました。`, onClose: () => setDialog(null) });
+                    }}
                     className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded font-bold shadow flex items-center gap-1"
                   >
                      <IconRefresh /> 全対戦カードを再生成

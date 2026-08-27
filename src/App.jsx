@@ -51,7 +51,7 @@ export default function App() {
   const [adminPassword, setAdminPassword] = useState('');
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league'); 
-  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1Club: '', p1Fee: '一般', p2Name: '', p2Club: '', p2Fee: '一般', cls: '4部', contact: '' });
+  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '' });
   const [editLogin, setEditLogin] = useState({ id: '', password: '' });
   const [editMode, setEditMode] = useState(false);
   const [currentEditId, setCurrentEditId] = useState(null);
@@ -63,13 +63,11 @@ export default function App() {
   // テストデータ生成用パラメータ
   const [testGenCount, setTestGenCount] = useState(12);
 
-  // 1組（ペア）あたりの参加費を計算（一般が1人でもいれば一般料金、2人とも高校生なら高校生料金）
+  // 1組（ペア）の参加費を計算
   const getPairFee = (ent) => {
     if (!ent) return 0;
-    if (ent.p1Fee === '一般' || ent.p2Fee === '一般') {
-      return config.fees['一般'] || 0;
-    }
-    return config.fees['高校生まで'] || 0;
+    const cat = ent.feeCategory || ent.p1Fee || '一般';
+    return config.fees[cat] ?? (cat === '高校生まで' ? 2000 : 4000);
   };
 
   useEffect(() => {
@@ -132,6 +130,7 @@ export default function App() {
             p2Name: d.p2name,
             p2Club: d.p2club,
             p2Fee: d.p2fee,
+            feeCategory: d.p1fee || '一般',
             password: d.password,
             checkedIn: d.checkedin,
             group: d.group,
@@ -216,7 +215,7 @@ export default function App() {
     });
   };
 
-  // 2. 指定した組数でテストデータ生成処理（数字4桁パスワード）
+  // 2. 指定した組数でテストデータ生成処理
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
@@ -238,6 +237,8 @@ export default function App() {
         const p1 = `${familyNames[Math.floor(Math.random() * familyNames.length)]}${givenNames[Math.floor(Math.random() * givenNames.length)]}`;
         const p2 = `${familyNames[Math.floor(Math.random() * familyNames.length)]}${givenNames[Math.floor(Math.random() * givenNames.length)]}`;
 
+        const pairFeeCategory = Math.random() > 0.4 ? '一般' : '高校生まで';
+
         const entryObj = {
           id: newId,
           cls: cls,
@@ -245,10 +246,11 @@ export default function App() {
           club: clubName,
           p1Name: p1,
           p1Club: clubName,
-          p1Fee: '一般',
+          p1Fee: pairFeeCategory,
           p2Name: p2,
           p2Club: clubName,
-          p2Fee: '一般',
+          p2Fee: pairFeeCategory,
+          feeCategory: pairFeeCategory,
           password: generatedPassword,
           checkedIn: false,
           group: '未割り当て',
@@ -264,10 +266,10 @@ export default function App() {
           club: clubName,
           p1name: p1,
           p1club: clubName,
-          p1fee: '一般',
+          p1fee: pairFeeCategory,
           p2name: p2,
           p2club: clubName,
-          p2fee: '一般',
+          p2fee: pairFeeCategory,
           password: generatedPassword,
           checkedin: false,
           group: '未割り当て',
@@ -485,11 +487,12 @@ export default function App() {
     setDialog({ title: "完了", message: "トーナメント枠にランダムに割り当てました。", onClose: () => setDialog(null) });
   };
 
-  // エントリー送信（数字4桁パスワード自動生成 & 注意書きの強調表示）
+  // エントリー送信（組の区分一括設定）
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
     const newId = (entries.length + 1).toString().padStart(4, '0');
     const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
+    const feeCat = entryForm.feeCategory || '一般';
     
     const dbPayload = {
       id: newId,
@@ -498,10 +501,10 @@ export default function App() {
       club: entryForm.club,
       p1name: entryForm.p1Name,
       p1club: entryForm.p1Club,
-      p1fee: entryForm.p1Fee,
+      p1fee: feeCat,
       p2name: entryForm.p2Name,
       p2club: entryForm.p2Club,
-      p2fee: entryForm.p2Fee,
+      p2fee: feeCat,
       password: generatedPassword,
       checkedin: false,
       group: '未割り当て',
@@ -519,6 +522,9 @@ export default function App() {
 
     const newEntryState = {
       ...entryForm,
+      p1Fee: feeCat,
+      p2Fee: feeCat,
+      feeCategory: feeCat,
       id: newId,
       password: generatedPassword,
       checkedIn: false,
@@ -550,7 +556,7 @@ export default function App() {
       ),
       onClose: () => { setDialog(null); setCurrentTab('home'); }
     });
-    setEntryForm({ club: '', p1Name: '', p1Club: '', p1Fee: '一般', p2Name: '', p2Club: '', p2Fee: '一般', cls: config.classes[0] || '', contact: '' });
+    setEntryForm({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '' });
   };
 
   const handleEditLogin = (e) => {
@@ -561,7 +567,7 @@ export default function App() {
     }
     const target = entries.find(ent => ent.id === editLogin.id && ent.password === editLogin.password);
     if (target) {
-      setEntryForm({ ...target });
+      setEntryForm({ ...target, feeCategory: target.feeCategory || target.p1Fee || '一般' });
       setCurrentEditId(target.id);
       setEditMode(true);
       setCurrentTab('entry');
@@ -572,16 +578,17 @@ export default function App() {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    const feeCat = entryForm.feeCategory || '一般';
     const dbPayload = {
       cls: entryForm.cls,
       contact: entryForm.contact,
       club: entryForm.club,
       p1name: entryForm.p1Name,
       p1club: entryForm.p1Club,
-      p1fee: entryForm.p1Fee,
+      p1fee: feeCat,
       p2name: entryForm.p2Name,
       p2club: entryForm.p2Club,
-      p2fee: entryForm.p2Fee
+      p2fee: feeCat
     };
 
     if (isSupabaseConfigured) {
@@ -592,7 +599,7 @@ export default function App() {
       }
     }
 
-    setEntries(entries.map(ent => ent.id === currentEditId ? { ...entryForm, id: currentEditId, password: ent.password, checkedIn: ent.checkedIn, group: ent.group, tournamentPosition: ent.tournamentPosition } : ent));
+    setEntries(entries.map(ent => ent.id === currentEditId ? { ...entryForm, p1Fee: feeCat, p2Fee: feeCat, feeCategory: feeCat, id: currentEditId, password: ent.password, checkedIn: ent.checkedIn, group: ent.group, tournamentPosition: ent.tournamentPosition } : ent));
     setDialog({ title: "更新完了", message: "登録内容を更新しました。", onClose: () => { setDialog(null); setCurrentTab(isAdminLoggedIn ? 'admin' : 'home'); } });
     setEditMode(false);
     setCurrentEditId(null);
@@ -778,7 +785,7 @@ export default function App() {
     }
     if (receptionSearchQuery.trim() !== '') {
       const query = receptionSearchQuery.toLowerCase();
-      const targetText = `${ent.cls} ${ent.club} ${ent.p1Name} ${ent.p2Name} ${ent.p1Club} ${ent.p2Club}`.toLowerCase();
+      const targetText = `${ent.id} ${ent.cls} ${ent.club} ${ent.p1Name} ${ent.p2Name} ${ent.p1Club} ${ent.p2Club}`.toLowerCase();
       if (!targetText.includes(query)) {
         return false;
       }
@@ -1035,7 +1042,28 @@ export default function App() {
             <label className="block text-sm font-bold text-gray-700 mb-2">所属クラブ名 (学校名) <span className="text-red-500">*</span></label>
             <input type="text" placeholder="例: 紀北バドミントンクラブ / ○○高校" className="w-full p-3 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={entryForm.club} onChange={(e) => setEntryForm({...entryForm, club: e.target.value})} required />
           </div>
+
+          {/* 組の参加費区分を一括設定 */}
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">参加区分 (1組あたりの料金) <span className="text-red-500">*</span></label>
+            <div className="flex flex-wrap gap-6 p-3 border rounded bg-white">
+              {Object.keys(config.fees).map(feeType => (
+                <label key={`fee-${feeType}`} className="flex items-center gap-2 cursor-pointer font-bold text-gray-800">
+                  <input 
+                    type="radio" 
+                    name="feeCategory" 
+                    value={feeType} 
+                    checked={(entryForm.feeCategory || entryForm.p1Fee || '一般') === feeType} 
+                    onChange={e => setEntryForm({...entryForm, feeCategory: e.target.value})} 
+                  />
+                  <span>{feeType} ({config.fees[feeType].toLocaleString()}円/組)</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">※ペアのどちらか1人でも一般が含まれる場合は「一般」を選択してください。</p>
+          </div>
         </div>
+
         <div>
            <label className="block text-sm font-bold text-gray-700 mb-1">代表者連絡先（携帯番号） <span className="text-red-500">*</span></label>
            <input type="tel" placeholder="090-XXXX-XXXX" className="w-full p-2 border rounded" required value={entryForm.contact} onChange={e => setEntryForm({...entryForm, contact: e.target.value})} />
@@ -1044,21 +1072,11 @@ export default function App() {
            <div className="col-span-2 font-bold text-blue-800">選手 1</div>
            <input type="text" placeholder="氏名" className="p-2 border rounded" required value={entryForm.p1Name} onChange={e => setEntryForm({...entryForm, p1Name: e.target.value})} />
            <input type="text" placeholder="所属" className="p-2 border rounded" required value={entryForm.p1Club} onChange={e => setEntryForm({...entryForm, p1Club: e.target.value})} />
-           <div className="col-span-2 flex flex-wrap gap-4">
-             {Object.keys(config.fees).map(feeType => (
-               <label key={`p1-${feeType}`} className="flex items-center gap-2"><input type="radio" name="p1Fee" value={feeType} checked={entryForm.p1Fee === feeType} onChange={e => setEntryForm({...entryForm, p1Fee: e.target.value})} /><span>{feeType}</span></label>
-             ))}
-           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-green-50">
            <div className="col-span-2 font-bold text-green-800">選手 2</div>
            <input type="text" placeholder="氏名" className="p-2 border rounded" required value={entryForm.p2Name} onChange={e => setEntryForm({...entryForm, p2Name: e.target.value})} />
            <input type="text" placeholder="所属" className="p-2 border rounded" required value={entryForm.p2Club} onChange={e => setEntryForm({...entryForm, p2Club: e.target.value})} />
-           <div className="col-span-2 flex flex-wrap gap-4">
-             {Object.keys(config.fees).map(feeType => (
-               <label key={`p2-${feeType}`} className="flex items-center gap-2"><input type="radio" name="p2Fee" value={feeType} checked={entryForm.p2Fee === feeType} onChange={e => setEntryForm({...entryForm, p2Fee: e.target.value})} /><span>{feeType}</span></label>
-             ))}
-           </div>
         </div>
         
         <div className="flex flex-col gap-3">
@@ -1281,6 +1299,7 @@ export default function App() {
                       <th className="p-3">パスワード</th>
                       <th className="p-3">所属クラブ</th>
                       <th className="p-3">ペア</th>
+                      <th className="p-3">区分</th>
                       <th className="p-3">連絡先</th>
                       <th className="p-3">操作</th>
                     </tr>
@@ -1292,9 +1311,10 @@ export default function App() {
                         <td className="p-3 font-mono font-bold text-orange-600">{ent.password}</td>
                         <td className="p-3">{ent.club || '-'}</td>
                         <td className="p-3 font-bold">({ent.cls}) {getTeamNameWithClub(ent.id)}</td>
+                        <td className="p-3 font-bold text-xs">{ent.feeCategory || ent.p1Fee || '一般'}</td>
                         <td className="p-3">{ent.contact}</td>
                         <td className="p-3 flex gap-2">
-                           <button onClick={() => { setEntryForm({...ent}); setCurrentEditId(ent.id); setEditMode(true); setCurrentTab('entry'); }} className="bg-blue-500 text-white px-3 py-1 rounded">編集</button>
+                           <button onClick={() => { setEntryForm({...ent, feeCategory: ent.feeCategory || ent.p1Fee || '一般'}); setCurrentEditId(ent.id); setEditMode(true); setCurrentTab('entry'); }} className="bg-blue-500 text-white px-3 py-1 rounded">編集</button>
                            <button onClick={() => handleDeleteEntry(ent.id, ent.p1Name)} className="bg-red-500 text-white px-3 py-1 rounded">削除</button>
                         </td>
                       </tr>
@@ -1584,7 +1604,7 @@ export default function App() {
                  <div className="relative w-full md:w-72">
                     <input 
                       type="text" 
-                      placeholder="クラス・クラブ・ペア名で検索..." 
+                      placeholder="ID・クラス・クラブ・ペア名で検索..." 
                       className="w-full p-2 pl-9 border rounded bg-white text-sm focus:ring-2 focus:ring-[#2c5f4e] outline-none"
                       value={receptionSearchQuery}
                       onChange={e => setReceptionSearchQuery(e.target.value)}
@@ -1608,7 +1628,8 @@ export default function App() {
                     <thead className="bg-gray-100 border-b">
                        <tr>
                           <th className="p-3 w-28 text-center">受付状態</th>
-                          <th className="p-3 w-24">クラス</th>
+                          <th className="p-3 w-20 font-bold">ID</th>
+                          <th className="p-3 w-24 font-bold">クラス</th>
                           <th className="p-3 font-bold">所属クラブ (学校)</th>
                           <th className="p-3 font-bold">ペア</th>
                           <th className="p-3 font-bold text-right w-32">参加費</th>
@@ -1635,6 +1656,7 @@ export default function App() {
                                         </span>
                                      )}
                                   </td>
+                                  <td className="p-3 font-mono font-bold text-[#2c5f4e]">{ent.id}</td>
                                   <td className="p-3 font-bold text-gray-700">{ent.cls}</td>
                                   <td className="p-3 text-gray-800 font-medium">{ent.club || '-'}</td>
                                   <td className="p-3 font-bold text-[#2c5f4e]">
@@ -1648,7 +1670,7 @@ export default function App() {
                           })
                        ) : (
                           <tr>
-                             <td colSpan="5" className="p-8 text-center text-gray-400">
+                             <td colSpan="6" className="p-8 text-center text-gray-400">
                                 該当するエントリーが見つかりません。
                              </td>
                           </tr>

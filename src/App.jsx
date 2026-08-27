@@ -684,7 +684,9 @@ export default function App() {
     }
   };
 
+  // スコア保存＆勝者・敗者への審判指示ポップアップ生成
   const handleSaveScore = async (matchId, s1, s2) => {
+    const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
       ...m,
       team1Score: s1,
@@ -701,6 +703,45 @@ export default function App() {
       }).eq('id', matchId);
     }
     setScoreModal(null);
+
+    // 審判指示用データの特定
+    if (targetMatch) {
+      const winnerId = s1 >= s2 ? targetMatch.team1Id : targetMatch.team2Id;
+      const loserId = s1 >= s2 ? targetMatch.team2Id : targetMatch.team1Id;
+      const winnerName = getTeamNameWithClub(winnerId);
+      const loserName = getTeamNameWithClub(loserId);
+
+      setDialog({
+        title: "スコア保存 ＆ 次試合指示",
+        message: (
+          <div className="text-left space-y-3">
+             <div className="bg-emerald-50 text-emerald-800 p-2.5 rounded font-bold text-sm flex items-center gap-1.5">
+                <IconCheckCircle /> 試合結果を決定・保存しました ({s1} - {s2})
+             </div>
+
+             <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-xl space-y-2.5 text-xs text-amber-900 shadow-xs">
+                <div className="font-extrabold text-sm border-b border-amber-200 pb-1 flex items-center justify-between">
+                   <span>📋 次試合の審判指示（原則：同一クラス）</span>
+                   <span className="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded">{targetMatch.cls}</span>
+                </div>
+                
+                <div className="bg-white p-2.5 rounded border border-amber-200">
+                   <span className="font-bold text-orange-600">① 勝者組（主審・副審）:</span>
+                   <div className="font-extrabold text-sm text-gray-800 my-0.5">{winnerName}</div>
+                   <p className="text-gray-600 text-[11px]">➔ 次の試合のスコア用紙を渡してください。</p>
+                </div>
+
+                <div className="bg-white p-2.5 rounded border border-amber-200">
+                   <span className="font-bold text-slate-600">② 敗者組（線審）:</span>
+                   <div className="font-extrabold text-sm text-gray-800 my-0.5">{loserName}</div>
+                   <p className="text-gray-600 text-[11px]">➔ 次の試合の線審に入るよう案内してください。</p>
+                </div>
+             </div>
+          </div>
+        ),
+        onClose: () => setDialog(null)
+      });
+    }
   };
 
   const calculateSimulation = () => {
@@ -880,17 +921,48 @@ export default function App() {
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2"><IconSettings /> 登録内容の修正・取消</button>
         </div>
       </div>
-      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-        <h2 className="text-2xl font-bold border-b-2 border-[#2c5f4e] pb-2 mb-6 text-[#2c5f4e] flex items-center gap-2"><IconCheckCircle /> 大会要項</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-gray-700">
-          <div><strong className="block text-sm text-gray-500">日程</strong>{config.date}</div>
-          <div><strong className="block text-sm text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
-          <div className="md:col-span-2"><strong className="block text-sm text-gray-500">会場</strong>{config.venue}</div>
-          <div className="md:col-span-2"><strong className="block text-sm text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
-          <div className="md:col-span-2"><strong className="block text-sm text-gray-500">申込締切</strong><span className="text-red-500 font-bold">{config.deadline}</span></div>
-          <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-sm mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
+      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 space-y-6">
+        <div>
+           <h2 className="text-2xl font-bold border-b-2 border-[#2c5f4e] pb-2 mb-6 text-[#2c5f4e] flex items-center gap-2"><IconCheckCircle /> 大会要項</h2>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-gray-700">
+             <div><strong className="block text-sm text-gray-500">日程</strong>{config.date}</div>
+             <div><strong className="block text-sm text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
+             <div className="md:col-span-2"><strong className="block text-sm text-gray-500">会場</strong>{config.venue}</div>
+             <div className="md:col-span-2"><strong className="block text-sm text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
+             <div className="md:col-span-2"><strong className="block text-sm text-gray-500">申込締切</strong><span className="text-red-500 font-bold">{config.deadline}</span></div>
+             <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-sm mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
+           </div>
+        </div>
+
+        {/* 審判およびスコア提出ルール説明カード */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
+           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2">
+              🏸 審判割り当て ＆ スコア提出の流れ
+           </h3>
+           <p className="text-xs text-slate-600 font-bold">
+              ※原則として、審判は同一クラス内の直前試合のペアが担当します。
+           </p>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-700 pt-1">
+              <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
+                 <div className="font-bold text-emerald-800 text-sm">1. 審判の分担</div>
+                 <p className="leading-relaxed">直前試合の<strong>【勝者組】が主審・副審</strong>を務め、<strong>【敗者組】が線審</strong>を務めます。</p>
+              </div>
+              <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
+                 <div className="font-bold text-emerald-800 text-sm">2. 試合後の受渡</div>
+                 <p className="leading-relaxed">試合終了後、主審は結果を記入したスコア用紙を<strong>【勝者ペアの代表者】</strong>に渡します。</p>
+              </div>
+              <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
+                 <div className="font-bold text-emerald-800 text-sm">3. 事務局への提出</div>
+                 <p className="leading-relaxed">勝者・敗者両ペアの代表者が一緒にスコア用紙を持って事務局本部へ提出します。</p>
+              </div>
+              <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
+                 <div className="font-bold text-emerald-800 text-sm">4. 次試合の指示</div>
+                 <p className="leading-relaxed">事務局は勝者ペアに次試合のスコア用紙を渡し、敗者ペアには線審に入るよう案内します。</p>
+              </div>
+           </div>
         </div>
       </div>
+
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm p-6 text-center border border-blue-100">
          <h3 className="text-xl font-bold mb-2 text-blue-900">当日の進行状況・対戦表はこちら</h3>
          <button onClick={() => setCurrentTab('dashboard')} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow flex items-center justify-center gap-2 mx-auto"><IconSmartphone /> 進行状況ダッシュボードを開く</button>
@@ -899,17 +971,27 @@ export default function App() {
   );
 
   const viewDashboard = (
-    <div className="max-w-6xl mx-auto animate-fade-in">
-      <div className="flex justify-between items-center mb-6">
+    <div className="max-w-6xl mx-auto animate-fade-in space-y-6">
+      <div className="flex justify-between items-center">
          <h2 className="text-2xl font-bold flex items-center gap-2"><IconSmartphone /> 進行状況ダッシュボード</h2>
          <button onClick={() => setCurrentTab('home')} className="text-sm text-gray-500 hover:text-gray-800 underline">ホームへ戻る</button>
       </div>
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+
+      {/* 審判ルールのワンポイント表示 */}
+      <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-lg text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+         <div>
+            <span className="font-bold bg-emerald-700 text-white px-2 py-0.5 rounded text-[10px] mr-2">審判ルール</span>
+            <strong>同一クラス直前試合：勝者組 ➔ 主審・副審 ／ 敗者組 ➔ 線審</strong>
+         </div>
+         <span className="text-[11px] text-emerald-700">※両ペアでスコア用紙を持って事務局へ提出</span>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-2">
         {config.classes.map(cls => (
           <button key={cls} onClick={() => setSelectedClass(cls)} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap shadow-sm ${selectedClass === cls ? 'bg-[#2c5f4e] text-white' : 'bg-white text-gray-600'}`}>{cls}</button>
         ))}
       </div>
-      <div className="flex border-b border-gray-300 mb-6">
+      <div className="flex border-b border-gray-300">
          <button onClick={() => setDashTab('matches')} className={`px-4 py-3 font-bold ${dashTab === 'matches' ? 'text-[#2c5f4e] border-b-4 border-[#2c5f4e]' : 'text-gray-400'}`}>コート進行</button>
          <button onClick={() => setDashTab('league')} className={`px-4 py-3 font-bold ${dashTab === 'league' ? 'text-[#2c5f4e] border-b-4 border-[#2c5f4e]' : 'text-gray-400'}`}>予選リーグ表</button>
          <button onClick={() => setDashTab('tournament')} className={`px-4 py-3 font-bold ${dashTab === 'tournament' ? 'text-[#2c5f4e] border-b-4 border-[#2c5f4e]' : 'text-gray-400'}`}>決勝トーナメント</button>
@@ -1758,7 +1840,7 @@ export default function App() {
               <div className="text-gray-600 mb-6">{dialog.message}</div>
               <div className="flex justify-end">
                 {dialog.onConfirm && <button onClick={dialog.onConfirm} className="bg-red-500 text-white px-6 py-2 rounded-lg font-bold mr-2">削除する</button>}
-                <button onClick={dialog.onClose} className="bg-[#2c5f4e] text-white px-6 py-2 rounded-lg font-bold">閉じる</button>
+                <button onClick={dialog.close || dialog.onClose} className="bg-[#2c5f4e] text-white px-6 py-2 rounded-lg font-bold">閉じる</button>
               </div>
            </div>
         </div>

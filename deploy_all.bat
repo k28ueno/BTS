@@ -1,6 +1,12 @@
 @echo off
 color 0A
-echo [1/2] Building site...
+echo [1/3] Updating main branch (Source Code)...
+git add .
+git commit -m "Update source code" >nul 2>&1
+git push origin main
+
+echo.
+echo [2/3] Building site...
 call npm run build
 if %errorlevel% neq 0 (
   color 0C
@@ -10,7 +16,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [2/2] Pushing dist directly to gh-pages branch...
+echo [3/3] Pushing dist to gh-pages branch (Web Site)...
 cd dist
 if exist .git rd /s /q .git
 git init
@@ -29,6 +35,6 @@ if %errorlevel% neq 0 (
 cd ..
 echo.
 echo ========================================
-echo  Successfully Deployed!
+echo  Successfully Deployed to BOTH Branches!
 echo ========================================
 pause

@@ -15,11 +15,16 @@ if %errorlevel% neq 0 (
 echo.
 echo [2/3] Saving source code to main branch...
 git add .
-git commit -m "Update site source"
+git commit -m "Update site source" >nul 2>&1
 git push origin main
 echo.
 echo [3/3] Deploying dist to gh-pages branch...
-call npx gh-pages -d dist --repo=https://github.com/k28ueno/BTS.git
+cd dist
+git init >nul 2>&1
+git add -A
+git commit -m "Deploy site" >nul 2>&1
+git push -f https://github.com/k28ueno/BTS.git master:gh-pages
+cd ..
 if %errorlevel% neq 0 (
   color 0C
   echo Deploy failed!

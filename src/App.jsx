@@ -316,10 +316,37 @@ export default function App() {
     }
   };
 
+  // コート配置時の同一ペア重複チェック機能付きドロップ
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
     if (!matchId) return;
+
+    const targetMatch = matches.find(m => m.id === matchId);
+    if (!targetMatch) return;
+
+    // すでに他のコートで進行中/コール中の試合に、同じペアが含まれているか重複チェック
+    const busyMatch = matches.find(m => 
+      m.id !== matchId && 
+      m.courtNumber !== null && 
+      (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress') &&
+      (m.team1Id === targetMatch.team1Id || m.team1Id === targetMatch.team2Id ||
+       m.team2Id === targetMatch.team1Id || m.team2Id === targetMatch.team2Id)
+    );
+
+    if (busyMatch) {
+      const busyTeamId = (busyMatch.team1Id === targetMatch.team1Id || busyMatch.team1Id === targetMatch.team2Id)
+        ? busyMatch.team1Id
+        : busyMatch.team2Id;
+      const busyTeamName = getTeamNameWithClub(busyTeamId);
+
+      setDialog({
+        title: "コート配置不可",
+        message: `「${busyTeamName}」は現在第${busyMatch.courtNumber}コートで進行中（または呼び出し中）です。同一ペアを同時に複数コートへ配置することはできません。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
 
     const existingMatch = matches.find(m => m.courtNumber === courtNum && courtNum !== null);
     if (existingMatch && existingMatch.status === 'in_progress') {
@@ -351,11 +378,9 @@ export default function App() {
       if (courtNum !== null && existingMatch) {
         await supabase.from('matches').update({ court_number: null, status: (existingMatch.team1Score !== null && existingMatch.team2Score !== null) ? 'completed' : 'waiting' }).eq('id', existingMatch.id);
       }
-      const targetMatch = matches.find(m => m.id === matchId);
-      const isScored = targetMatch && targetMatch.team1Score !== null && targetMatch.team2Score !== null;
       await supabase.from('matches').update({ 
         court_number: courtNum, 
-        status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
+        status: courtNum ? ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'calling') : ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'waiting')
       }).eq('id', matchId);
     }
   };
@@ -423,7 +448,7 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  // 予選リーグ対戦カード生成（現在のグループ配置を反映。生成件数を返却）
+  // 予選リーグ対戦カード生成（全グループの対戦をRound別に交互（インターリーブ）配置して順序を最適化）
   const generateLeagueMatches = async (targetCls, currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
     const clsEntries = activeEntries.filter(e => e.cls === targetCls && e.checkedIn);
@@ -434,42 +459,68 @@ export default function App() {
     const dbInserts = [];
     let generatedCount = 0;
 
+    // グループごとの総当たり対戦カードを作成
+    const groupMatchesMap = {};
+    let maxGroupMatches = 0;
+
     groups.forEach(groupName => {
       const groupTeams = clsEntries.filter(e => e.group === groupName);
+      groupMatchesMap[groupName] = [];
       if (groupTeams.length >= 2) {
         for (let i = 0; i < groupTeams.length; i++) {
           for (let j = i + 1; j < groupTeams.length; j++) {
-            generatedCount++;
-            const matchObj = {
-              id: `M-${targetCls}-${groupName}-${groupTeams[i].id}-${groupTeams[j].id}`,
-              cls: targetCls,
-              group_name: groupName,
-              match_type: 'league',
-              court_number: null,
+            groupMatchesMap[groupName].push({
               team1_id: groupTeams[i].id,
               team2_id: groupTeams[j].id,
-              team1_score: null,
-              team2_score: null,
-              status: 'waiting',
-              match_order: orderCounter++
-            };
-            dbInserts.push(matchObj);
-            newMatches.push({
-              id: matchObj.id,
-              cls: matchObj.cls,
-              group: matchObj.group_name,
-              matchType: matchObj.match_type,
-              courtNumber: matchObj.court_number,
-              team1Id: matchObj.team1_id,
-              team2Id: matchObj.team2_id,
-              team1Score: matchObj.team1_score,
-              team2Score: matchObj.team2_score,
-              status: matchObj.status,
-              matchOrder: matchObj.match_order
+              group_name: groupName
             });
           }
         }
+        if (groupMatchesMap[groupName].length > maxGroupMatches) {
+          maxGroupMatches = groupMatchesMap[groupName].length;
+        }
       }
+    });
+
+    // 各グループの「第1戦」「第2戦」...を交互に抽出して順序（matchOrder）を割り当てる（連続・同時配置防止）
+    const orderedLeagueMatches = [];
+    for (let round = 0; round < maxGroupMatches; round++) {
+      groups.forEach(groupName => {
+        if (groupMatchesMap[groupName] && groupMatchesMap[groupName][round]) {
+          orderedLeagueMatches.push(groupMatchesMap[groupName][round]);
+        }
+      });
+    }
+
+    orderedLeagueMatches.forEach(m => {
+      generatedCount++;
+      const matchObj = {
+        id: `M-${targetCls}-${m.group_name}-${m.team1_id}-${m.team2_id}`,
+        cls: targetCls,
+        group_name: m.group_name,
+        match_type: 'league',
+        court_number: null,
+        team1_id: m.team1_id,
+        team2_id: m.team2_id,
+        team1_score: null,
+        team2_score: null,
+        status: 'waiting',
+        match_order: orderCounter++
+      };
+      dbInserts.push(matchObj);
+      newMatches.push({
+        id: matchObj.id,
+        cls: matchObj.cls,
+        group: matchObj.group_name,
+        matchType: matchObj.match_type,
+        courtNumber: matchObj.court_number,
+        team1Id: matchObj.team1_id,
+        team2Id: matchObj.team2_id,
+        team1Score: matchObj.team1_score,
+        team2Score: matchObj.team2_score,
+        status: matchObj.status,
+        matchOrder: matchObj.match_order
+      });
     });
 
     setMatches(newMatches);
@@ -1248,12 +1299,13 @@ export default function App() {
          <button onClick={() => setIsAdminLoggedIn(false)} className="text-sm bg-gray-700 px-3 py-1 rounded">ログアウト</button>
       </div>
       <div className="flex flex-col md:flex-row">
+        {/* 左サイドメニュー：受付処理をエントリー管理の直下に配置 */}
         <div className="w-full md:w-48 bg-gray-50 border-r p-4 flex flex-col gap-2">
            <button onClick={() => setAdminTab('settings')} className={`p-2 text-left rounded font-bold ${adminTab === 'settings' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マスタ設定</button>
            <button onClick={() => setAdminTab('entries')} className={`p-2 text-left rounded font-bold ${adminTab === 'entries' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>エントリー管理</button>
+           <button onClick={() => setAdminTab('reception')} className={`p-2 text-left rounded font-bold ${adminTab === 'reception' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>受付処理</button>
            <button onClick={() => setAdminTab('draw')} className={`p-2 text-left rounded font-bold ${adminTab === 'draw' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>ドロー編成</button>
            <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
-           <button onClick={() => setAdminTab('reception')} className={`p-2 text-left rounded font-bold ${adminTab === 'reception' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>受付処理</button>
         </div>
         <div className="flex-1 p-6 bg-gray-50/50 min-w-0">
           
@@ -1427,6 +1479,116 @@ export default function App() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {adminTab === 'reception' && (
+            <div>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                 <h3 className="text-xl font-bold">当日受付処理</h3>
+                 
+                 {/* 上段右：受付済参加費計 */}
+                 <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-3">
+                    <span className="text-xs text-gray-600">受付済: <strong>{entries.filter(e => e.checkedIn).length} / {entries.length} 組</strong></span>
+                    <span className="border-l border-emerald-300 h-4"></span>
+                    <span>受付済参加費計: <strong className="text-lg text-emerald-700 font-mono ml-1">¥{entries.filter(e => e.checkedIn).reduce((sum, e) => sum + getPairFee(e), 0).toLocaleString()}</strong></span>
+                 </div>
+              </div>
+              
+              <div className="bg-gray-100 p-4 rounded-lg mb-4 flex flex-col md:flex-row gap-3 items-center justify-between border">
+                 <div className="flex items-center gap-2 w-full md:w-auto">
+                    <span className="text-xs font-bold text-gray-600 whitespace-nowrap">クラス絞り込み:</span>
+                    <select 
+                      className="p-2 border rounded bg-white font-bold text-sm w-full md:w-auto focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                      value={receptionClassFilter}
+                      onChange={e => setReceptionClassFilter(e.target.value)}
+                    >
+                       <option value="all">すべてのクラス ({entries.length}件)</option>
+                       {config.classes.map(cls => (
+                          <option key={`rec-cls-${cls}`} value={cls}>
+                             {cls} ({entries.filter(e => e.cls === cls).length}件)
+                          </option>
+                       ))}
+                    </select>
+                 </div>
+
+                 <div className="relative w-full md:w-72">
+                    <input 
+                      type="text" 
+                      placeholder="ID・クラス・クラブ・ペア名で検索..." 
+                      className="w-full p-2 pl-9 border rounded bg-white text-sm focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                      value={receptionSearchQuery}
+                      onChange={e => setReceptionSearchQuery(e.target.value)}
+                    />
+                    <div className="absolute left-2.5 top-2.5 text-gray-400">
+                       <IconSearch />
+                    </div>
+                    {receptionSearchQuery && (
+                       <button 
+                         onClick={() => setReceptionSearchQuery('')}
+                         className="absolute right-2.5 top-2 text-xs bg-gray-200 text-gray-600 rounded-full w-4 h-4 flex items-center justify-center font-bold"
+                       >
+                         ×
+                       </button>
+                    )}
+                 </div>
+              </div>
+
+              <div className="bg-white rounded border overflow-hidden shadow-sm">
+                 <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-100 border-b">
+                       <tr>
+                          <th className="p-3 w-28 text-center">受付状態</th>
+                          <th className="p-3 w-20 font-bold">ID</th>
+                          <th className="p-3 w-24 font-bold">クラス</th>
+                          <th className="p-3 font-bold">所属クラブ (学校)</th>
+                          <th className="p-3 font-bold">ペア</th>
+                          <th className="p-3 font-bold text-right w-32">参加費</th>
+                       </tr>
+                    </thead>
+                    <tbody>
+                       {filteredReceptionEntries.length > 0 ? (
+                          filteredReceptionEntries.map(ent => {
+                             const pairFee = getPairFee(ent);
+                             return (
+                               <tr 
+                                 key={ent.id} 
+                                 className="border-t hover:bg-emerald-50/50 cursor-pointer transition-colors" 
+                                 onClick={() => toggleCheckIn(ent.id, ent.checkedIn)}
+                               >
+                                  <td className="p-3 text-center">
+                                     {ent.checkedIn ? (
+                                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold text-xs inline-flex items-center gap-1 shadow-sm">
+                                           <IconCheckCircle /> 済
+                                        </span>
+                                     ) : (
+                                        <span className="bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-bold text-xs inline-block">
+                                           未
+                                        </span>
+                                     )}
+                                  </td>
+                                  <td className="p-3 font-mono font-bold text-[#2c5f4e]">{ent.id}</td>
+                                  <td className="p-3 font-bold text-gray-700">{ent.cls}</td>
+                                  <td className="p-3 text-gray-800 font-medium">{ent.club || '-'}</td>
+                                  <td className="p-3 font-bold text-[#2c5f4e]">
+                                     {ent.p1Name} / {ent.p2Name}
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-gray-700">
+                                     ¥{pairFee.toLocaleString()}
+                                  </td>
+                               </tr>
+                             );
+                          })
+                       ) : (
+                          <tr>
+                             <td colSpan="6" className="p-8 text-center text-gray-400">
+                                該当するエントリーが見つかりません。
+                             </td>
+                          </tr>
+                       )}
+                    </tbody>
+                 </table>
               </div>
             </div>
           )}
@@ -1699,116 +1861,6 @@ export default function App() {
                      )}
                   </div>
                </div>
-            </div>
-          )}
-
-          {adminTab === 'reception' && (
-            <div>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                 <h3 className="text-xl font-bold">当日受付処理</h3>
-                 
-                 {/* 上段右：受付済参加費計 */}
-                 <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-3">
-                    <span className="text-xs text-gray-600">受付済: <strong>{entries.filter(e => e.checkedIn).length} / {entries.length} 組</strong></span>
-                    <span className="border-l border-emerald-300 h-4"></span>
-                    <span>受付済参加費計: <strong className="text-lg text-emerald-700 font-mono ml-1">¥{entries.filter(e => e.checkedIn).reduce((sum, e) => sum + getPairFee(e), 0).toLocaleString()}</strong></span>
-                 </div>
-              </div>
-              
-              <div className="bg-gray-100 p-4 rounded-lg mb-4 flex flex-col md:flex-row gap-3 items-center justify-between border">
-                 <div className="flex items-center gap-2 w-full md:w-auto">
-                    <span className="text-xs font-bold text-gray-600 whitespace-nowrap">クラス絞り込み:</span>
-                    <select 
-                      className="p-2 border rounded bg-white font-bold text-sm w-full md:w-auto focus:ring-2 focus:ring-[#2c5f4e] outline-none"
-                      value={receptionClassFilter}
-                      onChange={e => setReceptionClassFilter(e.target.value)}
-                    >
-                       <option value="all">すべてのクラス ({entries.length}件)</option>
-                       {config.classes.map(cls => (
-                          <option key={`rec-cls-${cls}`} value={cls}>
-                             {cls} ({entries.filter(e => e.cls === cls).length}件)
-                          </option>
-                       ))}
-                    </select>
-                 </div>
-
-                 <div className="relative w-full md:w-72">
-                    <input 
-                      type="text" 
-                      placeholder="ID・クラス・クラブ・ペア名で検索..." 
-                      className="w-full p-2 pl-9 border rounded bg-white text-sm focus:ring-2 focus:ring-[#2c5f4e] outline-none"
-                      value={receptionSearchQuery}
-                      onChange={e => setReceptionSearchQuery(e.target.value)}
-                    />
-                    <div className="absolute left-2.5 top-2.5 text-gray-400">
-                       <IconSearch />
-                    </div>
-                    {receptionSearchQuery && (
-                       <button 
-                         onClick={() => setReceptionSearchQuery('')}
-                         className="absolute right-2.5 top-2 text-xs bg-gray-200 text-gray-600 rounded-full w-4 h-4 flex items-center justify-center font-bold"
-                       >
-                         ×
-                       </button>
-                    )}
-                 </div>
-              </div>
-
-              <div className="bg-white rounded border overflow-hidden shadow-sm">
-                 <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-100 border-b">
-                       <tr>
-                          <th className="p-3 w-28 text-center">受付状態</th>
-                          <th className="p-3 w-20 font-bold">ID</th>
-                          <th className="p-3 w-24 font-bold">クラス</th>
-                          <th className="p-3 font-bold">所属クラブ (学校)</th>
-                          <th className="p-3 font-bold">ペア</th>
-                          <th className="p-3 font-bold text-right w-32">参加費</th>
-                       </tr>
-                    </thead>
-                    <tbody>
-                       {filteredReceptionEntries.length > 0 ? (
-                          filteredReceptionEntries.map(ent => {
-                             const pairFee = getPairFee(ent);
-                             return (
-                               <tr 
-                                 key={ent.id} 
-                                 className="border-t hover:bg-emerald-50/50 cursor-pointer transition-colors" 
-                                 onClick={() => toggleCheckIn(ent.id, ent.checkedIn)}
-                               >
-                                  <td className="p-3 text-center">
-                                     {ent.checkedIn ? (
-                                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold text-xs inline-flex items-center gap-1 shadow-sm">
-                                           <IconCheckCircle /> 済
-                                        </span>
-                                     ) : (
-                                        <span className="bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-bold text-xs inline-block">
-                                           未
-                                        </span>
-                                     )}
-                                  </td>
-                                  <td className="p-3 font-mono font-bold text-[#2c5f4e]">{ent.id}</td>
-                                  <td className="p-3 font-bold text-gray-700">{ent.cls}</td>
-                                  <td className="p-3 text-gray-800 font-medium">{ent.club || '-'}</td>
-                                  <td className="p-3 font-bold text-[#2c5f4e]">
-                                     {ent.p1Name} / {ent.p2Name}
-                                  </td>
-                                  <td className="p-3 text-right font-mono font-bold text-gray-700">
-                                     ¥{pairFee.toLocaleString()}
-                                  </td>
-                               </tr>
-                             );
-                          })
-                       ) : (
-                          <tr>
-                             <td colSpan="6" className="p-8 text-center text-gray-400">
-                                該当するエントリーが見つかりません。
-                             </td>
-                          </tr>
-                       )}
-                    </tbody>
-                 </table>
-              </div>
             </div>
           )}
 

@@ -448,7 +448,7 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  // 予選リーグ対戦カード生成（全グループの対戦をRound別に交互（インターリーブ）配置して順序を最適化）
+  // 予選リーグ対戦カード生成（全グループの対戦をRound別に交互配置）
   const generateLeagueMatches = async (targetCls, currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
     const clsEntries = activeEntries.filter(e => e.cls === targetCls && e.checkedIn);
@@ -459,7 +459,6 @@ export default function App() {
     const dbInserts = [];
     let generatedCount = 0;
 
-    // グループごとの総当たり対戦カードを作成
     const groupMatchesMap = {};
     let maxGroupMatches = 0;
 
@@ -482,7 +481,6 @@ export default function App() {
       }
     });
 
-    // 各グループの「第1戦」「第2戦」...を交互に抽出して順序（matchOrder）を割り当てる（連続・同時配置防止）
     const orderedLeagueMatches = [];
     for (let round = 0; round < maxGroupMatches; round++) {
       groups.forEach(groupName => {
@@ -533,33 +531,63 @@ export default function App() {
     return generatedCount;
   };
 
-  // 決勝トーナメント自動振り分け（受付済の組のみが対象）
+  // 決勝トーナメント自動振り分け（予選順位に基づく一括割り当て）
   const handleAutoDrawTournament = async () => {
     const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
     if (checkedInEntries.length === 0) {
       setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。先に「受付処理」タブで受付を完了させてください。`, onClose: () => setDialog(null) });
       return;
     }
-    const shuffled = [...checkedInEntries].sort(() => Math.random() - 0.5);
+
+    // 予選結果から各グループの1位・2位ペアを取得
+    const groups = ['A', 'B', 'C', 'D'];
+    const advCondition = config.advancementCondition || 'top2';
+    const numPerGroup = advCondition === 'top1' ? 1 : 2;
+    
+    // スロット1〜8への標準割当パターン
+    // 枠1:A1, 枠2:B2, 枠3:B1, 枠4:A2, 枠5:C1, 枠6:D2, 枠7:D1, 枠8:C2
+    const slotMapping = [
+      { group: 'A', rank: 0, slot: 1 },
+      { group: 'B', rank: 1, slot: 2 },
+      { group: 'B', rank: 0, slot: 3 },
+      { group: 'A', rank: 1, slot: 4 },
+      { group: 'C', rank: 0, slot: 5 },
+      { group: 'D', rank: 1, slot: 6 },
+      { group: 'D', rank: 0, slot: 7 },
+      { group: 'C', rank: 1, slot: 8 },
+    ];
+
     const newEntries = [...entries];
+    // 一旦このクラスのトーナメント位置をクリア
     newEntries.forEach(ent => { if (ent.cls === drawClass) ent.tournamentPosition = null; });
+
+    let assignedCount = 0;
     const updates = [];
-    if (isSupabaseConfigured) {
-      await supabase.from('entries').update({ tournamentposition: null }).eq('cls', drawClass);
-    }
-    shuffled.slice(0, 8).forEach((ent, idx) => {
-      const globalIdx = newEntries.findIndex(e => e.id === ent.id);
-      const pos = idx + 1;
-      if (globalIdx !== -1) {
-        newEntries[globalIdx].tournamentPosition = pos;
-        updates.push({ id: ent.id, tournamentposition: pos });
+
+    slotMapping.forEach(map => {
+      const standings = getGroupStandings(drawClass, map.group);
+      if (standings[map.rank] && map.rank < numPerGroup) {
+        const teamId = standings[map.rank].id;
+        const globalIdx = newEntries.findIndex(e => e.id === teamId);
+        if (globalIdx !== -1) {
+          newEntries[globalIdx].tournamentPosition = map.slot;
+          updates.push({ id: teamId, tournamentposition: map.slot });
+          assignedCount++;
+        }
       }
     });
+
     setEntries(newEntries);
     if (isSupabaseConfigured) {
+      await supabase.from('entries').update({ tournamentposition: null }).eq('cls', drawClass);
       await Promise.all(updates.map(u => supabase.from('entries').update({ tournamentposition: u.tournamentposition }).eq('id', u.id)));
     }
-    setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組からトーナメント枠にランダム割り当てしました。`, onClose: () => setDialog(null) });
+
+    if (assignedCount > 0) {
+      setDialog({ title: "順位反映完了", message: `予選結果に基づき、${assignedCount} 組を結勝トーナメント枠に割り当てました。手動で枠を変更することも可能です。`, onClose: () => setDialog(null) });
+    } else {
+      setDialog({ title: "完了", message: "予選順位データからトーナメント位置を設定しました。手動でドラッグ＆ドロップして位置を調整できます。", onClose: () => setDialog(null) });
+    }
   };
 
   // エントリー送信（組の区分一括設定）
@@ -819,6 +847,72 @@ export default function App() {
     }
   };
 
+  // 予選グループ順位計算関数
+  const getGroupStandings = (cls, groupName) => {
+    const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName);
+    const groupMatches = matches.filter(m => m.cls === cls && m.group === groupName && m.status === 'completed');
+
+    const stats = groupEntries.map(ent => {
+      let wins = 0;
+      let losses = 0;
+      groupMatches.forEach(m => {
+        if (m.team1Id === ent.id) {
+          if (m.team1Score > m.team2Score) wins++;
+          else if (m.team1Score < m.team2Score) losses++;
+        } else if (m.team2Id === ent.id) {
+          if (m.team2Score > m.team1Score) wins++;
+          else if (m.team2Score < m.team1Score) losses++;
+        }
+      });
+      return { ...ent, wins, losses };
+    });
+
+    return stats.sort((a, b) => b.wins - a.wins);
+  };
+
+  // 決勝トーナメントの特定スロットに表示すべきペア・仮テキストを取得
+  const getTournamentSlotInfo = (cls, pos) => {
+    // 1. 手動で配置されているか（最優先）
+    const manualTeam = entries.find(e => e.cls === cls && e.tournamentPosition === pos);
+    if (manualTeam) {
+      return { team: manualTeam, label: null };
+    }
+
+    // 2. 予選結果からの自動計算ルール
+    // 枠1:A1, 枠2:B2, 枠3:B1, 枠4:A2, 枠5:C1, 枠6:D2, 枠7:D1, 枠8:C2
+    const slotRules = {
+      1: { group: 'A', rank: 0, label: 'グループA 1位' },
+      2: { group: 'B', rank: 1, label: 'グループB 2位' },
+      3: { group: 'B', rank: 0, label: 'グループB 1位' },
+      4: { group: 'A', rank: 1, label: 'グループA 2位' },
+      5: { group: 'C', rank: 0, label: 'グループC 1位' },
+      6: { group: 'D', rank: 1, label: 'グループD 2位' },
+      7: { group: 'D', rank: 0, label: 'グループD 1位' },
+      8: { group: 'C', rank: 1, label: 'グループC 2位' },
+    };
+
+    const rule = slotRules[pos];
+    if (rule) {
+      const standings = getGroupStandings(cls, rule.group);
+      const advCondition = config.advancementCondition || 'top2';
+      const numPerGroup = advCondition === 'top1' ? 1 : 2;
+
+      // 該当ランクのチームが存在し、進出条件を満たしている場合
+      if (standings[rule.rank] && rule.rank < numPerGroup) {
+        // 予選リーグ全試合完了フラグの確認（予選試合がある程度進んでいるか）
+        const groupMatches = matches.filter(m => m.cls === cls && m.group === rule.group);
+        const completedMatches = groupMatches.filter(m => m.status === 'completed');
+        
+        if (groupMatches.length > 0 && groupMatches.length === completedMatches.length) {
+          return { team: standings[rule.rank], label: null };
+        }
+      }
+      return { team: null, label: rule.label };
+    }
+
+    return { team: null, label: `枠 ${pos}` };
+  };
+
   const calculateSimulation = () => {
     let totalEntries = entries.length;
     let totalLeagueMatches = 0;
@@ -917,19 +1011,25 @@ export default function App() {
   };
 
   function createBracketSlot(cls, pos, isEditable) {
-    const team = entries.find(e => e.cls === cls && e.tournamentPosition === pos);
+    const slotInfo = getTournamentSlotInfo(cls, pos);
+    const team = slotInfo.team;
+
     if (isEditable) {
       return (
         <div key={`slot-${pos}`} className={`border-2 ${team ? 'border-orange-500 bg-orange-50' : 'border-dashed border-gray-400 bg-white'} p-2 rounded w-44 h-16 flex flex-col items-center justify-center cursor-pointer relative shadow-sm z-10`} onDragOver={handleDragOver} onDrop={(e) => handleTournamentDrop(e, pos)} draggable={!!team} onDragStart={(e) => team && handleDragStart(e, team.id)}>
            <div className="text-[10px] text-gray-500 absolute top-1 left-2 font-mono">枠{pos}</div>
-           <div className="font-bold text-xs truncate w-full text-center mt-2 px-1">{team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">ドロップ</span>}</div>
+           <div className="font-bold text-xs truncate w-full text-center mt-2 px-1">
+              {team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label || 'ドロップ'}</span>}
+           </div>
         </div>
       );
     }
     return (
       <div key={`slot-${pos}`} className={`border-2 ${team ? 'border-[#2c5f4e] bg-white' : 'border-dashed border-gray-300 bg-gray-50'} p-2 rounded w-44 h-14 flex flex-col items-center justify-center relative shadow-sm z-10`}>
          <div className="text-[10px] text-gray-500 absolute top-1 left-2 font-mono">枠{pos}</div>
-         <div className="font-bold text-xs truncate w-full text-center mt-1 px-1">{team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal">-</span>}</div>
+         <div className="font-bold text-xs truncate w-full text-center mt-1 px-1">
+            {team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label}</span>}
+         </div>
       </div>
     );
   }
@@ -1611,22 +1711,29 @@ export default function App() {
                  <select className="border p-2 rounded font-bold" value={drawClass} onChange={e => setDrawClass(e.target.value)}>
                     {config.classes.map(c => <option key={c} value={c}>{c}</option>)}
                  </select>
-                 <button onClick={drawType === 'league' ? handleAutoDraw : handleAutoDrawTournament} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
-                    受付済の組を自動ランダム振り分け
-                 </button>
-                 {drawType === 'league' && (
-                   <button 
-                     onClick={async () => {
-                       const count = await generateLeagueMatches(drawClass);
-                       if (count > 0) {
-                         setDialog({ title: "対戦カード生成完了", message: `${drawClass} のグループ配置に基づき、対戦カード（${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
-                       } else {
-                         setDialog({ title: "対戦カードクリア", message: `${drawClass} のグループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。各グループに2組以上配置してください。`, onClose: () => setDialog(null) });
-                       }
-                     }} 
-                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1"
-                   >
-                      <IconRefresh /> 手動編成から対戦カード生成
+                 
+                 {drawType === 'league' ? (
+                   <>
+                     <button onClick={handleAutoDraw} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
+                        受付済の組を自動ランダム振り分け
+                     </button>
+                     <button 
+                       onClick={async () => {
+                         const count = await generateLeagueMatches(drawClass);
+                         if (count > 0) {
+                           setDialog({ title: "対戦カード生成完了", message: `${drawClass} のグループ配置に基づき、対戦カード（${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
+                         } else {
+                           setDialog({ title: "対戦カードクリア", message: `${drawClass} のグループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。各グループに2組以上配置してください。`, onClose: () => setDialog(null) });
+                         }
+                       }} 
+                       className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1"
+                     >
+                        <IconRefresh /> 手動編成から対戦カード生成
+                     </button>
+                   </>
+                 ) : (
+                   <button onClick={handleAutoDrawTournament} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
+                      予選順位からトーナメント位置を自動初期反映
                    </button>
                  )}
               </div>
@@ -1663,10 +1770,11 @@ export default function App() {
               ) : (
                 <div className="flex gap-6">
                    <div className="w-1/3 bg-gray-100 rounded-lg p-3 border-2 border-dashed border-gray-300" onDragOver={handleDragOver} onDrop={handleRemoveTournamentPosition}>
-                      <h4 className="font-bold mb-3 border-b-2 pb-2">未配置 (受付済)</h4>
-                      <div className="space-y-2">
+                      <h4 className="font-bold mb-3 border-b-2 pb-2">未配置 / 予選参加組 (受付済)</h4>
+                      <div className="space-y-2 max-h-[500px] overflow-y-auto">
                          {entries.filter(e => e.cls === drawClass && e.checkedIn && !e.tournamentPosition).map(ent => (
-                            <div key={ent.id} draggable onDragStart={(e) => handleDragStart(e, ent.id)} className="bg-white p-3 rounded shadow-sm border cursor-move text-sm font-bold">
+                            <div key={ent.id} draggable onDragStart={(e) => handleDragStart(e, ent.id)} className="bg-white p-3 rounded shadow-sm border cursor-move text-sm font-bold hover:border-orange-500">
+                               <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
                                <div>{getTeamNameWithClub(ent.id)}</div>
                             </div>
                          ))}

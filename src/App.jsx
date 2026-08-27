@@ -459,7 +459,6 @@ export default function App() {
     const dbInserts = [];
     let totalGenerated = 0;
 
-    // クラス×グループごとのラウンド別対戦マップ
     const roundMatchesList = [];
 
     classes.forEach(cls => {
@@ -500,7 +499,6 @@ export default function App() {
       }
     });
 
-    // ラウンド（第1戦、第2戦…）順に、クラス間（1部, 2部, 3部, 4部）を交差させて順番（matchOrder）を決める
     const maxRounds = 10;
     for (let r = 0; r < maxRounds; r++) {
       classes.forEach(cls => {
@@ -831,7 +829,7 @@ export default function App() {
     }
   };
 
-  // スコア保存＆勝者・敗者への審判指示ポップアップ生成
+  // スコア保存＆勝者・敗者への審判指示ポップアップ生成（他クラス応援注記追加）
   const handleSaveScore = async (matchId, s1, s2) => {
     const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
@@ -868,7 +866,7 @@ export default function App() {
 
              <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-xl space-y-2.5 text-xs text-amber-900 shadow-xs">
                 <div className="font-extrabold text-sm border-b border-amber-200 pb-1 flex items-center justify-between">
-                   <span>📋 次試合の審判指示（原則：同一クラス）</span>
+                   <span>📋 次試合の審判指示</span>
                    <span className="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded">{targetMatch.cls}</span>
                 </div>
                 
@@ -883,6 +881,10 @@ export default function App() {
                    <div className="font-extrabold text-sm text-gray-800 my-0.5">{loserName}</div>
                    <p className="text-gray-600 text-[11px]">➔ 次の試合の線審に入るよう案内してください。</p>
                 </div>
+
+                <p className="text-[11px] text-amber-800 font-bold bg-amber-100/80 p-2 rounded border border-amber-200">
+                   ※組数が少ない等で同一クラス内から審判が出せない場合は、他クラスの空きペアに応援を依頼してください。
+                </p>
              </div>
           </div>
         ),
@@ -1221,6 +1223,12 @@ export default function App() {
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+      {/* 当日の進行状況・対戦表案内（最上部に配置） */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-md p-6 text-center border border-blue-200">
+         <h3 className="text-xl font-bold mb-2 text-blue-900">当日の進行状況・対戦表はこちら</h3>
+         <button onClick={() => setCurrentTab('dashboard')} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow flex items-center justify-center gap-2 mx-auto"><IconSmartphone /> 進行状況ダッシュボードを開く</button>
+      </div>
+
       <div className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
         <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-wider relative z-10">{config.title}</h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
@@ -1229,6 +1237,7 @@ export default function App() {
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2"><IconSettings /> 登録内容の修正・取消</button>
         </div>
       </div>
+
       <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 space-y-6">
         <div>
            <h2 className="text-2xl font-bold border-b-2 border-[#2c5f4e] pb-2 mb-6 text-[#2c5f4e] flex items-center gap-2"><IconCheckCircle /> 大会要項</h2>
@@ -1254,6 +1263,7 @@ export default function App() {
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
                  <div className="font-bold text-emerald-800 text-sm">1. 審判の分担</div>
                  <p className="leading-relaxed">直前試合の<strong>【勝者組】が主審・副審</strong>を務め、<strong>【敗者組】が線審</strong>を務めます。</p>
+                 <p className="text-[11px] text-gray-500 pt-0.5">※予選初戦は、同グループの待機ペア（第3試合を行う組）が審判を担当します。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
                  <div className="font-bold text-emerald-800 text-sm">2. 試合後の受渡</div>
@@ -1264,16 +1274,12 @@ export default function App() {
                  <p className="leading-relaxed">勝者・敗者両ペアの代表者が一緒にスコア用紙を持って事務局本部へ提出します。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
-                 <div className="font-bold text-emerald-800 text-sm">4. 次試合の指示</div>
+                 <div className="font-bold text-emerald-800 text-sm">4. 次試合の指示・他クラス応援</div>
                  <p className="leading-relaxed">事務局は勝者ペアに次試合のスコア用紙を渡し、敗者ペアには線審に入るよう案内します。</p>
+                 <p className="text-[11px] text-gray-500 pt-0.5">※組数が少なく同一クラス内から審判が出せない場合は、他クラスの空きペアに応援を依頼します。</p>
               </div>
            </div>
         </div>
-      </div>
-
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm p-6 text-center border border-blue-100">
-         <h3 className="text-xl font-bold mb-2 text-blue-900">当日の進行状況・対戦表はこちら</h3>
-         <button onClick={() => setCurrentTab('dashboard')} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow flex items-center justify-center gap-2 mx-auto"><IconSmartphone /> 進行状況ダッシュボードを開く</button>
       </div>
     </div>
   );
@@ -1289,7 +1295,8 @@ export default function App() {
       <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-lg text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
          <div>
             <span className="font-bold bg-emerald-700 text-white px-2 py-0.5 rounded text-[10px] mr-2">審判ルール</span>
-            <strong>同一クラス直前試合：勝者組 ➔ 主審・副審 ／ 敗者組 ➔ 線審</strong>
+            <strong>直前試合：勝者組 ➔ 主審・副審 ／ 敗者組 ➔ 線審</strong>
+            <span className="text-[11px] text-emerald-800 ml-2">（※予選初戦はグループ待機組、必要に応じて他クラス応援依頼）</span>
          </div>
          <span className="text-[11px] text-emerald-700">※両ペアでスコア用紙を持って事務局へ提出</span>
       </div>

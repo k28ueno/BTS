@@ -539,26 +539,48 @@ export default function App() {
       return;
     }
 
-    // 予選結果から各グループの1位・2位ペアを取得
-    const groups = ['A', 'B', 'C', 'D'];
+    const clsEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
+    const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => 
+      clsEntries.some(e => e.group === g)
+    );
+    const groupCount = activeGroups.length;
     const advCondition = config.advancementCondition || 'top2';
     const numPerGroup = advCondition === 'top1' ? 1 : 2;
-    
-    // スロット1〜8への標準割当パターン
-    // 枠1:A1, 枠2:B2, 枠3:B1, 枠4:A2, 枠5:C1, 枠6:D2, 枠7:D1, 枠8:C2
-    const slotMapping = [
-      { group: 'A', rank: 0, slot: 1 },
-      { group: 'B', rank: 1, slot: 2 },
-      { group: 'B', rank: 0, slot: 3 },
-      { group: 'A', rank: 1, slot: 4 },
-      { group: 'C', rank: 0, slot: 5 },
-      { group: 'D', rank: 1, slot: 6 },
-      { group: 'D', rank: 0, slot: 7 },
-      { group: 'C', rank: 1, slot: 8 },
-    ];
+
+    let slotMapping = [];
+    if (groupCount === 3 && numPerGroup === 2) {
+      // 6組進出（枠2, 枠6はシード）
+      slotMapping = [
+        { group: 'A', rank: 0, slot: 1 },
+        { group: 'C', rank: 1, slot: 3 },
+        { group: 'B', rank: 1, slot: 4 },
+        { group: 'B', rank: 0, slot: 5 },
+        { group: 'A', rank: 1, slot: 7 },
+        { group: 'C', rank: 0, slot: 8 },
+      ];
+    } else if (groupCount === 2 && numPerGroup === 2) {
+      // 4組進出
+      slotMapping = [
+        { group: 'A', rank: 0, slot: 1 },
+        { group: 'B', rank: 1, slot: 2 },
+        { group: 'B', rank: 0, slot: 3 },
+        { group: 'A', rank: 1, slot: 4 },
+      ];
+    } else {
+      // 8組進出
+      slotMapping = [
+        { group: 'A', rank: 0, slot: 1 },
+        { group: 'B', rank: 1, slot: 2 },
+        { group: 'B', rank: 0, slot: 3 },
+        { group: 'A', rank: 1, slot: 4 },
+        { group: 'C', rank: 0, slot: 5 },
+        { group: 'D', rank: 1, slot: 6 },
+        { group: 'D', rank: 0, slot: 7 },
+        { group: 'C', rank: 1, slot: 8 },
+      ];
+    }
 
     const newEntries = [...entries];
-    // 一旦このクラスのトーナメント位置をクリア
     newEntries.forEach(ent => { if (ent.cls === drawClass) ent.tournamentPosition = null; });
 
     let assignedCount = 0;
@@ -586,7 +608,7 @@ export default function App() {
     if (assignedCount > 0) {
       setDialog({ title: "順位反映完了", message: `予選結果に基づき、${assignedCount} 組を結勝トーナメント枠に割り当てました。手動で枠を変更することも可能です。`, onClose: () => setDialog(null) });
     } else {
-      setDialog({ title: "完了", message: "予選順位データからトーナメント位置を設定しました。手動でドラッグ＆ドロップして位置を調整できます。", onClose: () => setDialog(null) });
+      setDialog({ title: "完了", message: "予選グループ数に応じたトーナメント枠を設定しました。手動でドラッグ＆ドロップして位置を調整できます。", onClose: () => setDialog(null) });
     }
   };
 
@@ -870,17 +892,79 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 決勝トーナメントの特定スロットに表示すべきペア・仮テキストを取得
+  // 決勝トーナメントの特定スロットに表示すべきペア・仮テキストを取得（進出組数・シード考慮）
   const getTournamentSlotInfo = (cls, pos) => {
-    // 1. 手動で配置されているか（最優先）
+    // 1. 手動設定位置があるか確認（最優先）
     const manualTeam = entries.find(e => e.cls === cls && e.tournamentPosition === pos);
     if (manualTeam) {
-      return { team: manualTeam, label: null };
+      return { team: manualTeam, label: null, isBye: false };
     }
 
-    // 2. 予選結果からの自動計算ルール
-    // 枠1:A1, 枠2:B2, 枠3:B1, 枠4:A2, 枠5:C1, 枠6:D2, 枠7:D1, 枠8:C2
-    const slotRules = {
+    const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
+    const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => 
+      clsEntries.some(e => e.group === g)
+    );
+    const groupCount = activeGroups.length;
+    const advCondition = config.advancementCondition || 'top2';
+    const numPerGroup = advCondition === 'top1' ? 1 : 2;
+
+    // 3グループ（進出6組）で8枠ツリーの場合：枠2と枠6をシード(BYE)にする
+    if (groupCount === 3 && numPerGroup === 2) {
+      const slotRules6 = {
+        1: { group: 'A', rank: 0, label: 'グループA 1位' },
+        2: { isBye: true, label: 'シード (不戦勝)' },
+        3: { group: 'C', rank: 1, label: 'グループC 2位' },
+        4: { group: 'B', rank: 1, label: 'グループB 2位' },
+        5: { group: 'B', rank: 0, label: 'グループB 1位' },
+        6: { isBye: true, label: 'シード (不戦勝)' },
+        7: { group: 'A', rank: 1, label: 'グループA 2位' },
+        8: { group: 'C', rank: 0, label: 'グループC 1位' },
+      };
+
+      const rule = slotRules6[pos];
+      if (rule) {
+        if (rule.isBye) {
+          return { team: null, label: 'シード (不戦勝)', isBye: true };
+        }
+        const standings = getGroupStandings(cls, rule.group);
+        if (standings[rule.rank]) {
+          const groupMatches = matches.filter(m => m.cls === cls && m.group === rule.group);
+          const completedMatches = groupMatches.filter(m => m.status === 'completed');
+          if (groupMatches.length > 0 && groupMatches.length === completedMatches.length) {
+            return { team: standings[rule.rank], label: null, isBye: false };
+          }
+        }
+        return { team: null, label: rule.label, isBye: false };
+      }
+    }
+
+    // 2グループ（進出4組）の場合
+    if (groupCount === 2 && numPerGroup === 2) {
+      const slotRules4 = {
+        1: { group: 'A', rank: 0, label: 'グループA 1位' },
+        2: { group: 'B', rank: 1, label: 'グループB 2位' },
+        3: { group: 'B', rank: 0, label: 'グループB 1位' },
+        4: { group: 'A', rank: 1, label: 'グループA 2位' },
+      };
+      const rule = slotRules4[pos];
+      if (rule) {
+        const standings = getGroupStandings(cls, rule.group);
+        if (standings[rule.rank]) {
+          const groupMatches = matches.filter(m => m.cls === cls && m.group === rule.group);
+          const completedMatches = groupMatches.filter(m => m.status === 'completed');
+          if (groupMatches.length > 0 && groupMatches.length === completedMatches.length) {
+            return { team: standings[rule.rank], label: null, isBye: false };
+          }
+        }
+        return { team: null, label: rule.label, isBye: false };
+      }
+      if (pos > 4) {
+        return { team: null, label: '-', isBye: true };
+      }
+    }
+
+    // 4グループ（進出8組）などデフォルト8枠パターン
+    const slotRules8 = {
       1: { group: 'A', rank: 0, label: 'グループA 1位' },
       2: { group: 'B', rank: 1, label: 'グループB 2位' },
       3: { group: 'B', rank: 0, label: 'グループB 1位' },
@@ -890,27 +974,20 @@ export default function App() {
       7: { group: 'D', rank: 0, label: 'グループD 1位' },
       8: { group: 'C', rank: 1, label: 'グループC 2位' },
     };
-
-    const rule = slotRules[pos];
+    const rule = slotRules8[pos];
     if (rule) {
       const standings = getGroupStandings(cls, rule.group);
-      const advCondition = config.advancementCondition || 'top2';
-      const numPerGroup = advCondition === 'top1' ? 1 : 2;
-
-      // 該当ランクのチームが存在し、進出条件を満たしている場合
       if (standings[rule.rank] && rule.rank < numPerGroup) {
-        // 予選リーグ全試合完了フラグの確認（予選試合がある程度進んでいるか）
         const groupMatches = matches.filter(m => m.cls === cls && m.group === rule.group);
         const completedMatches = groupMatches.filter(m => m.status === 'completed');
-        
         if (groupMatches.length > 0 && groupMatches.length === completedMatches.length) {
-          return { team: standings[rule.rank], label: null };
+          return { team: standings[rule.rank], label: null, isBye: false };
         }
       }
-      return { team: null, label: rule.label };
+      return { team: null, label: rule.label, isBye: false };
     }
 
-    return { team: null, label: `枠 ${pos}` };
+    return { team: null, label: `枠 ${pos}`, isBye: false };
   };
 
   const calculateSimulation = () => {
@@ -1014,13 +1091,20 @@ export default function App() {
     const slotInfo = getTournamentSlotInfo(cls, pos);
     const team = slotInfo.team;
 
+    if (slotInfo.isBye) {
+      return (
+        <div key={`slot-${pos}`} className="border-2 border-gray-200 bg-gray-100 p-2 rounded w-44 h-14 flex flex-col items-center justify-center relative opacity-70">
+           <div className="text-[10px] text-gray-400 absolute top-1 left-2 font-mono">枠{pos}</div>
+           <div className="font-bold text-xs text-gray-400 text-center mt-1 px-1">シード (不戦勝)</div>
+        </div>
+      );
+    }
+
     if (isEditable) {
       return (
         <div key={`slot-${pos}`} className={`border-2 ${team ? 'border-orange-500 bg-orange-50' : 'border-dashed border-gray-400 bg-white'} p-2 rounded w-44 h-16 flex flex-col items-center justify-center cursor-pointer relative shadow-sm z-10`} onDragOver={handleDragOver} onDrop={(e) => handleTournamentDrop(e, pos)} draggable={!!team} onDragStart={(e) => team && handleDragStart(e, team.id)}>
            <div className="text-[10px] text-gray-500 absolute top-1 left-2 font-mono">枠{pos}</div>
-           <div className="font-bold text-xs truncate w-full text-center mt-2 px-1">
-              {team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label || 'ドロップ'}</span>}
-           </div>
+           <div className="font-bold text-xs truncate w-full text-center mt-2 px-1">{team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label || 'ドロップ'}</span>}</div>
         </div>
       );
     }

@@ -896,20 +896,19 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 全コートの審判割当を一括計算する関数（完全重複排除）
+  // 全コートの審判割当を一括計算（主審・線審の厳格な重複排他 ＆ 未受付データ対応）
   const getAllCourtReferees = () => {
-    const busyIds = getBusyTeamIds(); // コート進行中・コール中の全選手ID
-    const assignedRefIds = new Set(); // 既に審判に割り当てた選手ID
+    const busyIds = new Set(Array.from(getBusyTeamIds()).map(String));
+    const assignedRefIds = new Set();
     const refereeMap = {};
 
-    // コート番号1〜courts順に並べたアクティブ試合
     const activeCourtMatches = matches
       .filter(m => m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress'))
       .sort((a, b) => Number(a.courtNumber) - Number(b.courtNumber));
 
     activeCourtMatches.forEach(m => {
-      let mainRefName = null;
-      let lineRefName = null;
+      let mainRefId = null;
+      let lineRefId = null;
 
       // 1. 直前完了試合のチェック
       const prevCompletedMatches = matches.filter(pm => 
@@ -923,49 +922,64 @@ export default function App() {
         const lastMatch = prevCompletedMatches[prevCompletedMatches.length - 1];
         const s1 = Number(lastMatch.team1Score || 0);
         const s2 = Number(lastMatch.team2Score || 0);
-        const winnerId = s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id;
-        const loserId = s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id;
+        const winnerId = String(s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id);
+        const loserId = String(s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id);
 
-        if (winnerId && !busyIds.has(winnerId) && !assignedRefIds.has(winnerId)) {
-          mainRefName = getTeamNameWithClub(winnerId);
-          assignedRefIds.add(winnerId);
+        if (winnerId && !busyIds.has(winnerId) && !assignedRefIds.has(winnerId) && winnerId !== String(m.team1Id) && winnerId !== String(m.team2Id)) {
+          mainRefId = winnerId;
         }
-        if (loserId && !busyIds.has(loserId) && !assignedRefIds.has(loserId)) {
-          lineRefName = getTeamNameWithClub(loserId);
-          assignedRefIds.add(loserId);
+        if (loserId && !busyIds.has(loserId) && !assignedRefIds.has(loserId) && loserId !== String(m.team1Id) && loserId !== String(m.team2Id) && loserId !== mainRefId) {
+          lineRefId = loserId;
         }
       }
 
-      // 2. 初戦または直前ペアが埋まっている場合のフォールバック（空きペアから選出）
-      const isAvailable = (e) => e.checkedIn && !busyIds.has(e.id) && !assignedRefIds.has(e.id) && e.id !== m.team1Id && e.id !== m.team2Id;
+      // 2. フォールバック（空きペア検索関数）
+      const isCandidate = (e, excludeSet) => {
+        const idStr = String(e.id);
+        return e.checkedIn && 
+               !busyIds.has(idStr) && 
+               !assignedRefIds.has(idStr) && 
+               idStr !== String(m.team1Id) && 
+               idStr !== String(m.team2Id) &&
+               !excludeSet.has(idStr);
+      };
 
-      if (!mainRefName) {
-        const groupAvail = entries.filter(e => e.cls === m.cls && e.group === m.group && isAvailable(e));
-        const classAvail = entries.filter(e => e.cls === m.cls && e.group !== m.group && isAvailable(e));
-        const otherAvail = entries.filter(e => e.cls !== m.cls && isAvailable(e));
-        const candidates = [...groupAvail, ...classAvail, ...otherAvail];
+      const excludeSet = new Set();
+      if (mainRefId) excludeSet.add(mainRefId);
+      if (lineRefId) excludeSet.add(lineRefId);
 
-        if (candidates.length > 0) {
-          mainRefName = getTeamNameWithClub(candidates[0].id);
-          assignedRefIds.add(candidates[0].id);
-        }
+      const getCandidates = (filterFn) => {
+        const grp = entries.filter(e => e.cls === m.cls && e.group === m.group && filterFn(e));
+        const clsOther = entries.filter(e => e.cls === m.cls && e.group !== m.group && filterFn(e));
+        const othCls = entries.filter(e => e.cls !== m.cls && filterFn(e));
+        return [...grp, ...clsOther, ...othCls];
+      };
+
+      let pool = getCandidates(e => isCandidate(e, excludeSet));
+
+      if (pool.length < (mainRefId ? 0 : 1) + (lineRefId ? 0 : 1)) {
+        const additionalPool = getCandidates(e => !e.checkedIn && isCandidate(e, excludeSet));
+        pool = [...pool, ...additionalPool];
       }
 
-      if (!lineRefName) {
-        const groupAvail = entries.filter(e => e.cls === m.cls && e.group === m.group && isAvailable(e));
-        const classAvail = entries.filter(e => e.cls === m.cls && e.group !== m.group && isAvailable(e));
-        const otherAvail = entries.filter(e => e.cls !== m.cls && isAvailable(e));
-        const candidates = [...groupAvail, ...classAvail, ...otherAvail];
-
-        if (candidates.length > 0) {
-          lineRefName = getTeamNameWithClub(candidates[0].id);
-          assignedRefIds.add(candidates[0].id);
-        }
+      let poolIdx = 0;
+      if (!mainRefId && pool[poolIdx]) {
+        mainRefId = String(pool[poolIdx].id);
+        excludeSet.add(mainRefId);
+        poolIdx++;
       }
+      if (!lineRefId && pool[poolIdx]) {
+        lineRefId = String(pool[poolIdx].id);
+        excludeSet.add(lineRefId);
+        poolIdx++;
+      }
+
+      if (mainRefId) assignedRefIds.add(mainRefId);
+      if (lineRefId) assignedRefIds.add(lineRefId);
 
       refereeMap[m.courtNumber] = {
-        main: mainRefName || `${m.cls} 待機組 / 他クラス応援`,
-        line: lineRefName || `${m.cls} 待機組 / 他クラス応援`
+        main: mainRefId ? getTeamNameWithClub(mainRefId) : `${m.cls} 待機ペア`,
+        line: lineRefId ? getTeamNameWithClub(lineRefId) : (mainRefId ? `${getTeamNameWithClub(mainRefId)} (兼任)` : `${m.cls} 待機ペア`)
       };
     });
 
@@ -1156,7 +1170,7 @@ export default function App() {
   });
 
   const getTeamNameWithClub = (teamId) => {
-    const ent = entries.find(e => e.id === teamId);
+    const ent = entries.find(e => String(e.id) === String(teamId));
     if (!ent) return '未定';
     const clubStr = ent.club ? ` (${ent.club})` : '';
     return `${ent.p1Name}・${ent.p2Name}${clubStr}`;
@@ -1249,8 +1263,8 @@ export default function App() {
     const busyIds = new Set();
     matches.forEach(m => {
       if (m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
-        if (m.team1Id) busyIds.add(m.team1Id);
-        if (m.team2Id) busyIds.add(m.team2Id);
+        if (m.team1Id) busyIds.add(String(m.team1Id));
+        if (m.team2Id) busyIds.add(String(m.team2Id));
       }
     });
     return busyIds;
@@ -1261,8 +1275,8 @@ export default function App() {
     const waitingMatches = matches.filter(m => m.status === 'waiting');
 
     return [...waitingMatches].sort((a, b) => {
-      const aBusy = busyIds.has(a.team1Id) || busyIds.has(a.team2Id);
-      const bBusy = busyIds.has(b.team1Id) || busyIds.has(b.team2Id);
+      const aBusy = busyIds.has(String(a.team1Id)) || busyIds.has(String(a.team2Id));
+      const bBusy = busyIds.has(String(b.team1Id)) || busyIds.has(String(b.team2Id));
 
       if (!aBusy && bBusy) return -1;
       if (aBusy && !bBusy) return 1;
@@ -2149,8 +2163,8 @@ export default function App() {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                            {getSortedWaitingMatches().map(m => {
                               const busyIds = getBusyTeamIds();
-                              const isTeam1Busy = busyIds.has(m.team1Id);
-                              const isTeam2Busy = busyIds.has(m.team2Id);
+                              const isTeam1Busy = busyIds.has(String(m.team1Id));
+                              const isTeam2Busy = busyIds.has(String(m.team2Id));
                               const isAnyBusy = isTeam1Busy || isTeam2Busy;
 
                               return (

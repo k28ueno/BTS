@@ -189,7 +189,7 @@ export default function App() {
     }
   };
 
-  // 1. 全エントリー削除処理
+  // 1. 全エントリー削除処理（Supabase対応）
   const handleDeleteAllEntries = () => {
     setDialog({
       title: "全エントリーの削除確認",
@@ -476,7 +476,7 @@ export default function App() {
     setDialog({ title: "完了", message: "トーナメント枠にランダムに割り当てました。", onClose: () => setDialog(null) });
   };
 
-  // エントリー送信（数字4桁パスワード自動生成）
+  // エントリー送信（数字4桁パスワード自動生成 & 注意書きの強調表示）
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
     const newId = (entries.length + 1).toString().padStart(4, '0');
@@ -518,7 +518,7 @@ export default function App() {
     };
 
     setEntries([...entries, newEntryState]);
-setDialog({
+    setDialog({
       title: "エントリー完了",
       message: (
         <div className="text-left">
@@ -541,6 +541,9 @@ setDialog({
       ),
       onClose: () => { setDialog(null); setCurrentTab('home'); }
     });
+    setEntryForm({ club: '', p1Name: '', p1Club: '', p1Fee: '一般', p2Name: '', p2Club: '', p2Fee: '一般', cls: config.classes[0] || '', contact: '' });
+  };
+
   const handleEditLogin = (e) => {
     e.preventDefault();
     if (!/^\d{4}$/.test(editLogin.password)) {

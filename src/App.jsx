@@ -448,87 +448,109 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  // 予選リーグ対戦カード生成（全グループの対戦をRound別に交互配置）
-  const generateLeagueMatches = async (targetCls, currentEntriesList) => {
+  // 予選リーグ対戦カード生成（全クラスの対戦カードを一括・全クラス交差順序で生成）
+  const generateAllLeagueMatches = async (currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
-    const clsEntries = activeEntries.filter(e => e.cls === targetCls && e.checkedIn);
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    const newMatches = matches.filter(m => m.cls !== targetCls || m.matchType !== 'league');
-    
-    let orderCounter = newMatches.length + 1;
+    const classes = config.classes || ['1部', '2部', '3部', '4部'];
+
+    const newMatches = [];
+    let orderCounter = 1;
     const dbInserts = [];
-    let generatedCount = 0;
+    let totalGenerated = 0;
 
-    const groupMatchesMap = {};
-    let maxGroupMatches = 0;
+    // クラス×グループごとのラウンド別対戦マップ
+    const roundMatchesList = [];
 
-    groups.forEach(groupName => {
-      const groupTeams = clsEntries.filter(e => e.group === groupName);
-      groupMatchesMap[groupName] = [];
-      if (groupTeams.length >= 2) {
-        for (let i = 0; i < groupTeams.length; i++) {
-          for (let j = i + 1; j < groupTeams.length; j++) {
-            groupMatchesMap[groupName].push({
-              team1_id: groupTeams[i].id,
-              team2_id: groupTeams[j].id,
-              group_name: groupName
-            });
+    classes.forEach(cls => {
+      const clsEntries = activeEntries.filter(e => e.cls === cls && e.checkedIn);
+      const groupMatchesMap = {};
+      let maxGroupMatches = 0;
+
+      groups.forEach(groupName => {
+        const groupTeams = clsEntries.filter(e => e.group === groupName);
+        groupMatchesMap[groupName] = [];
+        if (groupTeams.length >= 2) {
+          for (let i = 0; i < groupTeams.length; i++) {
+            for (let j = i + 1; j < groupTeams.length; j++) {
+              groupMatchesMap[groupName].push({
+                cls: cls,
+                group_name: groupName,
+                team1_id: groupTeams[i].id,
+                team2_id: groupTeams[j].id
+              });
+            }
+          }
+          if (groupMatchesMap[groupName].length > maxGroupMatches) {
+            maxGroupMatches = groupMatchesMap[groupName].length;
           }
         }
-        if (groupMatchesMap[groupName].length > maxGroupMatches) {
-          maxGroupMatches = groupMatchesMap[groupName].length;
-        }
+      });
+
+      for (let round = 0; round < maxGroupMatches; round++) {
+        groups.forEach(groupName => {
+          if (groupMatchesMap[groupName] && groupMatchesMap[groupName][round]) {
+            roundMatchesList.push({
+              cls: cls,
+              round: round,
+              match: groupMatchesMap[groupName][round]
+            });
+          }
+        });
       }
     });
 
-    const orderedLeagueMatches = [];
-    for (let round = 0; round < maxGroupMatches; round++) {
-      groups.forEach(groupName => {
-        if (groupMatchesMap[groupName] && groupMatchesMap[groupName][round]) {
-          orderedLeagueMatches.push(groupMatchesMap[groupName][round]);
-        }
+    // ラウンド（第1戦、第2戦…）順に、クラス間（1部, 2部, 3部, 4部）を交差させて順番（matchOrder）を決める
+    const maxRounds = 10;
+    for (let r = 0; r < maxRounds; r++) {
+      classes.forEach(cls => {
+        const matchesInRound = roundMatchesList.filter(item => item.cls === cls && item.round === r);
+        matchesInRound.forEach(item => {
+          totalGenerated++;
+          const m = item.match;
+          const matchObj = {
+            id: `M-${cls}-${m.group_name}-${m.team1_id}-${m.team2_id}`,
+            cls: cls,
+            group_name: m.group_name,
+            match_type: 'league',
+            court_number: null,
+            team1_id: m.team1_id,
+            team2_id: m.team2_id,
+            team1_score: null,
+            team2_score: null,
+            status: 'waiting',
+            match_order: orderCounter++
+          };
+          dbInserts.push(matchObj);
+          newMatches.push({
+            id: matchObj.id,
+            cls: matchObj.cls,
+            group: matchObj.group_name,
+            matchType: matchObj.match_type,
+            courtNumber: matchObj.court_number,
+            team1Id: matchObj.team1_id,
+            team2Id: matchObj.team2_id,
+            team1Score: matchObj.team1_score,
+            team2Score: matchObj.team2_score,
+            status: matchObj.status,
+            matchOrder: matchObj.match_order
+          });
+        });
       });
     }
 
-    orderedLeagueMatches.forEach(m => {
-      generatedCount++;
-      const matchObj = {
-        id: `M-${targetCls}-${m.group_name}-${m.team1_id}-${m.team2_id}`,
-        cls: targetCls,
-        group_name: m.group_name,
-        match_type: 'league',
-        court_number: null,
-        team1_id: m.team1_id,
-        team2_id: m.team2_id,
-        team1_score: null,
-        team2_score: null,
-        status: 'waiting',
-        match_order: orderCounter++
-      };
-      dbInserts.push(matchObj);
-      newMatches.push({
-        id: matchObj.id,
-        cls: matchObj.cls,
-        group: matchObj.group_name,
-        matchType: matchObj.match_type,
-        courtNumber: matchObj.court_number,
-        team1Id: matchObj.team1_id,
-        team2Id: matchObj.team2_id,
-        team1Score: matchObj.team1_score,
-        team2Score: matchObj.team2_score,
-        status: matchObj.status,
-        matchOrder: matchObj.match_order
-      });
-    });
-
     setMatches(newMatches);
     if (isSupabaseConfigured) {
-      await supabase.from('matches').delete().eq('cls', targetCls).eq('match_type', 'league');
+      await supabase.from('matches').delete().gt('created_at', '1970-01-01');
       if (dbInserts.length > 0) {
         await supabase.from('matches').insert(dbInserts);
       }
     }
-    return generatedCount;
+    return totalGenerated;
+  };
+
+  const generateLeagueMatches = async (targetCls, currentEntriesList) => {
+    return await generateAllLeagueMatches(currentEntriesList);
   };
 
   // 決勝トーナメント自動振り分け（予選順位に基づく一括割り当て）
@@ -1170,6 +1192,33 @@ export default function App() {
     );
   }
 
+  // 現在コート進行中・コール中のペアID集合を取得
+  const getBusyTeamIds = () => {
+    const busyIds = new Set();
+    matches.forEach(m => {
+      if (m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
+        if (m.team1Id) busyIds.add(m.team1Id);
+        if (m.team2Id) busyIds.add(m.team2Id);
+      }
+    });
+    return busyIds;
+  };
+
+  // 待機中の試合の動的ソート（手が入っていて今すぐ動ける試合を最優先で上位へ繰り上げ）
+  const getSortedWaitingMatches = () => {
+    const busyIds = getBusyTeamIds();
+    const waitingMatches = matches.filter(m => m.status === 'waiting');
+
+    return [...waitingMatches].sort((a, b) => {
+      const aBusy = busyIds.has(a.team1Id) || busyIds.has(a.team2Id);
+      const bBusy = busyIds.has(b.team1Id) || busyIds.has(b.team2Id);
+
+      if (!aBusy && bBusy) return -1; // aは即呼び出し可能、bは手塞がり ➔ aを上へ
+      if (aBusy && !bBusy) return 1;  // bが即呼び出し可能 ➔ bを上へ
+      return a.matchOrder - b.matchOrder;
+    });
+  };
+
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
       <div className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
@@ -1805,9 +1854,9 @@ export default function App() {
                        onClick={async () => {
                          const count = await generateLeagueMatches(drawClass);
                          if (count > 0) {
-                           setDialog({ title: "対戦カード生成完了", message: `${drawClass} のグループ配置に基づき、対戦カード（${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
+                           setDialog({ title: "対戦カード生成完了", message: `全クラスのグループ配置に基づき、対戦カード（全${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
                          } else {
-                           setDialog({ title: "対戦カードクリア", message: `${drawClass} のグループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。各グループに2組以上配置してください。`, onClose: () => setDialog(null) });
+                           setDialog({ title: "対戦カードクリア", message: `グループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。各グループに2組以上配置してください。`, onClose: () => setDialog(null) });
                          }
                        }} 
                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1"
@@ -1878,10 +1927,7 @@ export default function App() {
                   <h3 className="text-xl font-bold flex items-center gap-2"><IconMatch /> コート進行・ドラッグ＆ドロップ割当</h3>
                   <button 
                     onClick={async () => {
-                      let totalGenerated = 0;
-                      for (const c of config.classes) {
-                        totalGenerated += await generateLeagueMatches(c);
-                      }
+                      const totalGenerated = await generateAllLeagueMatches();
                       setDialog({ title: "対戦カード再生成完了", message: `全クラスのグループ編成に基づき、合計 ${totalGenerated} 試合の対戦カードを更新・再生成しました。`, onClose: () => setDialog(null) });
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded font-bold shadow flex items-center gap-1"
@@ -2009,33 +2055,45 @@ export default function App() {
                   </div>
                </div>
 
-               {/* 待機中の優先対戦リスト (Drag元) */}
+               {/* 待機中の優先対戦リスト (Drag元：手が塞がっていない試合を動的に最上位へ繰り上げ表示) */}
                <div>
                   <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-blue-500 pl-2">📋 優先対戦リスト (待機中の試合)</h4>
                   <div className="bg-white rounded-xl border p-4 shadow-sm max-h-[500px] overflow-y-auto">
-                     {matches.filter(m => m.status === 'waiting').length > 0 ? (
+                     {getSortedWaitingMatches().length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                           {matches.filter(m => m.status === 'waiting').map(m => (
-                              <div 
-                                key={m.id}
-                                draggable
-                                onDragStart={(e) => handleMatchDragStart(e, m.id)}
-                                className="bg-gray-50 border hover:border-blue-400 p-3 rounded-lg cursor-move shadow-xs hover:shadow-sm transition-all flex flex-col justify-between"
-                              >
-                                 <div>
-                                    <div className="flex justify-between items-center mb-1.5">
-                                       <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {m.matchOrder}</span>
-                                       <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
-                                    </div>
-                                    <div className="font-bold text-sm text-gray-800 truncate">{getTeamNameWithClub(m.team1Id)}</div>
-                                    <div className="text-xs text-gray-400 text-center my-1 font-bold">vs</div>
-                                    <div className="font-bold text-sm text-gray-800 truncate">{getTeamNameWithClub(m.team2Id)}</div>
-                                 </div>
-                                 <div className="mt-3 pt-2 border-t text-right">
-                                    <span className="text-[10px] text-gray-400">ドラッグしてコートへ配置 ➔</span>
-                                 </div>
-                              </div>
-                           ))}
+                           {getSortedWaitingMatches().map(m => {
+                              const busyIds = getBusyTeamIds();
+                              const isTeam1Busy = busyIds.has(m.team1Id);
+                              const isTeam2Busy = busyIds.has(m.team2Id);
+                              const isAnyBusy = isTeam1Busy || isTeam2Busy;
+
+                              return (
+                                <div 
+                                  key={m.id}
+                                  draggable={!isAnyBusy}
+                                  onDragStart={(e) => !isAnyBusy && handleMatchDragStart(e, m.id)}
+                                  className={`border p-3 rounded-lg shadow-xs transition-all flex flex-col justify-between ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-move hover:shadow-sm'}`}
+                                >
+                                   <div>
+                                      <div className="flex justify-between items-center mb-1.5">
+                                         <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {m.matchOrder}</span>
+                                         <div className="flex items-center gap-1">
+                                            {isAnyBusy && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">他コートで進行中</span>}
+                                            <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
+                                         </div>
+                                      </div>
+                                      <div className={`font-bold text-sm truncate ${isTeam1Busy ? 'text-red-500 line-through' : 'text-gray-800'}`}>{getTeamNameWithClub(m.team1Id)}</div>
+                                      <div className="text-xs text-gray-400 text-center my-1 font-bold">vs</div>
+                                      <div className={`font-bold text-sm truncate ${isTeam2Busy ? 'text-red-500 line-through' : 'text-gray-800'}`}>{getTeamNameWithClub(m.team2Id)}</div>
+                                   </div>
+                                   <div className="mt-3 pt-2 border-t text-right">
+                                      <span className="text-[10px] text-gray-400">
+                                         {isAnyBusy ? 'ペア試合終了待ち ⏳' : 'ドラッグしてコートへ配置 ➔'}
+                                      </span>
+                                   </div>
+                                </div>
+                              );
+                           })}
                         </div>
                      ) : (
                         <div className="text-center text-gray-400 py-12">

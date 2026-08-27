@@ -198,8 +198,8 @@ export default function App() {
         setEntries([]);
         setMatches([]);
         if (isSupabaseConfigured) {
-          await supabase.from('entries').delete().neq('id', '0000_DUMMY');
-          await supabase.from('matches').delete().neq('id', '0000_DUMMY');
+          await supabase.from('entries').delete().gt('created_at', '1970-01-01');
+          await supabase.from('matches').delete().gt('created_at', '1970-01-01');
         }
         setDialog({ title: "削除完了", message: "すべてのエントリーおよび試合データを削除しました。", onClose: () => setDialog(null) });
       },

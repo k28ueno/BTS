@@ -12,7 +12,7 @@ const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) :
 
 function IconUser() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function IconTrophy() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>; }
-function IconSettings() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-.273l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>; }
+function IconSettings() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-.273l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>; }
 function IconCheckCircle() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>; }
 function IconSmartphone() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>; }
 function IconSearch() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
@@ -381,7 +381,7 @@ export default function App() {
     const updated = matches.map(m => m.id === matchId ? { ...m, status: newStatus } : m);
     setMatches(updated);
     if (isSupabaseConfigured) {
-      await supabase.from('matches').update({ status: newStatus }).eq('id', newStatus);
+      await supabase.from('matches').update({ status: newStatus }).eq('id', matchId);
     }
   };
 
@@ -896,23 +896,22 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 全コートの割り当て順に全審判を順次確定し、重複を除外する判定ロジック
-  const getRefereeForMatch = (targetMatch) => {
-    if (!targetMatch) return { main: '未定', line: '未定' };
+  // 全コートの審判割当を一括計算する関数（完全重複排除）
+  const getAllCourtReferees = () => {
+    const busyIds = getBusyTeamIds(); // コート進行中・コール中の全選手ID
+    const assignedRefIds = new Set(); // 既に審判に割り当てた選手ID
+    const refereeMap = {};
 
-    const busyIds = getBusyTeamIds();
-    const assignedRefIds = new Set();
-
-    // コート番号順に並べたアクティブ試合
+    // コート番号1〜courts順に並べたアクティブ試合
     const activeCourtMatches = matches
       .filter(m => m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress'))
-      .sort((a, b) => a.courtNumber - b.courtNumber);
+      .sort((a, b) => Number(a.courtNumber) - Number(b.courtNumber));
 
-    for (const m of activeCourtMatches) {
-      let mMainId = null;
-      let mLineId = null;
+    activeCourtMatches.forEach(m => {
+      let mainRefName = null;
+      let lineRefName = null;
 
-      // 直前完了試合があるか
+      // 1. 直前完了試合のチェック
       const prevCompletedMatches = matches.filter(pm => 
         pm.cls === m.cls && 
         pm.group === m.group && 
@@ -922,37 +921,55 @@ export default function App() {
 
       if (prevCompletedMatches.length > 0) {
         const lastMatch = prevCompletedMatches[prevCompletedMatches.length - 1];
-        const s1 = lastMatch.team1Score || 0;
-        const s2 = lastMatch.team2Score || 0;
-        mMainId = s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id;
-        mLineId = s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id;
-      } else {
-        // 初戦の場合、空きペアから重複なしで順次選出
-        const isAvailable = (e) => e.checkedIn && !busyIds.has(e.id) && !assignedRefIds.has(e.id) && e.id !== m.team1Id && e.id !== m.team2Id;
+        const s1 = Number(lastMatch.team1Score || 0);
+        const s2 = Number(lastMatch.team2Score || 0);
+        const winnerId = s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id;
+        const loserId = s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id;
 
-        const groupAvailable = entries.filter(e => e.cls === m.cls && e.group === m.group && isAvailable(e));
-        const classAvailable = entries.filter(e => e.cls === m.cls && e.group !== m.group && isAvailable(e));
-        const otherClassAvailable = entries.filter(e => e.cls !== m.cls && isAvailable(e));
-
-        const candidates = [...groupAvailable, ...classAvailable, ...otherClassAvailable];
-
-        if (candidates[0]) mMainId = candidates[0].id;
-        if (candidates[1]) mLineId = candidates[1].id;
-        else if (candidates[0]) mLineId = candidates[0].id;
+        if (winnerId && !busyIds.has(winnerId) && !assignedRefIds.has(winnerId)) {
+          mainRefName = getTeamNameWithClub(winnerId);
+          assignedRefIds.add(winnerId);
+        }
+        if (loserId && !busyIds.has(loserId) && !assignedRefIds.has(loserId)) {
+          lineRefName = getTeamNameWithClub(loserId);
+          assignedRefIds.add(loserId);
+        }
       }
 
-      if (mMainId) assignedRefIds.add(mMainId);
-      if (mLineId) assignedRefIds.add(mLineId);
+      // 2. 初戦または直前ペアが埋まっている場合のフォールバック（空きペアから選出）
+      const isAvailable = (e) => e.checkedIn && !busyIds.has(e.id) && !assignedRefIds.has(e.id) && e.id !== m.team1Id && e.id !== m.team2Id;
 
-      if (m.id === targetMatch.id) {
-        return {
-          main: mMainId ? getTeamNameWithClub(mMainId) : `${m.cls} 待機組 / 他クラス応援`,
-          line: mLineId ? getTeamNameWithClub(mLineId) : `${m.cls} 待機組 / 他クラス応援`
-        };
+      if (!mainRefName) {
+        const groupAvail = entries.filter(e => e.cls === m.cls && e.group === m.group && isAvailable(e));
+        const classAvail = entries.filter(e => e.cls === m.cls && e.group !== m.group && isAvailable(e));
+        const otherAvail = entries.filter(e => e.cls !== m.cls && isAvailable(e));
+        const candidates = [...groupAvail, ...classAvail, ...otherAvail];
+
+        if (candidates.length > 0) {
+          mainRefName = getTeamNameWithClub(candidates[0].id);
+          assignedRefIds.add(candidates[0].id);
+        }
       }
-    }
 
-    return { main: '本部調整', line: '本部調整' };
+      if (!lineRefName) {
+        const groupAvail = entries.filter(e => e.cls === m.cls && e.group === m.group && isAvailable(e));
+        const classAvail = entries.filter(e => e.cls === m.cls && e.group !== m.group && isAvailable(e));
+        const otherAvail = entries.filter(e => e.cls !== m.cls && isAvailable(e));
+        const candidates = [...groupAvail, ...classAvail, ...otherAvail];
+
+        if (candidates.length > 0) {
+          lineRefName = getTeamNameWithClub(candidates[0].id);
+          assignedRefIds.add(candidates[0].id);
+        }
+      }
+
+      refereeMap[m.courtNumber] = {
+        main: mainRefName || `${m.cls} 待機組 / 他クラス応援`,
+        line: lineRefName || `${m.cls} 待機組 / 他クラス応援`
+      };
+    });
+
+    return refereeMap;
   };
 
   const getTournamentSlotInfo = (cls, pos) => {
@@ -1341,68 +1358,70 @@ export default function App() {
          <button onClick={() => setDashTab('tournament')} className={`px-4 py-3 font-bold ${dashTab === 'tournament' ? 'text-[#2c5f4e] border-b-4 border-[#2c5f4e]' : 'text-gray-400'}`}>決勝トーナメント</button>
       </div>
       <div className="min-h-[400px]">
-        {dashTab === 'matches' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-             {Array.from({length: config.courts}).map((_, i) => {
-                const courtNum = i + 1;
-                const activeMatch = matches.find(m => m.courtNumber === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
-                
-                let statusLabel = '空き';
-                let badgeClass = 'bg-gray-100 text-gray-500';
-                if (activeMatch) {
-                  if (activeMatch.status === 'calling') { statusLabel = 'コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
-                  else if (activeMatch.status === 'recepted') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
-                  else if (activeMatch.status === 'in_progress') { statusLabel = '試合中'; badgeClass = 'bg-orange-100 text-orange-600 border border-orange-300 animate-pulse'; }
-                  else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
-                }
+        {dashTab === 'matches' && (() => {
+          const courtRefereeMap = getAllCourtReferees();
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+               {Array.from({length: config.courts}).map((_, i) => {
+                  const courtNum = i + 1;
+                  const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
+                  
+                  let statusLabel = '空き';
+                  let badgeClass = 'bg-gray-100 text-gray-500';
+                  if (activeMatch) {
+                    if (activeMatch.status === 'calling') { statusLabel = 'コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
+                    else if (activeMatch.status === 'recepted') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
+                    else if (activeMatch.status === 'in_progress') { statusLabel = '試合中'; badgeClass = 'bg-orange-100 text-orange-600 border border-orange-300 animate-pulse'; }
+                    else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
+                  }
 
-                return (
-                  <div key={`court-${i}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                     <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
-                        <span className="font-bold text-gray-600 text-sm">第 {courtNum} コート</span>
+                  const ref = courtRefereeMap[courtNum] || { main: '本部調整', line: '本部調整' };
 
-                        {activeMatch && (() => {
-                           const ref = getRefereeForMatch(activeMatch);
-                           return (
-                              <div className="relative group inline-block">
-                                 <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
-                                    審判 ℹ️
-                                 </span>
-                                 <div 
-                                   className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
-                                   style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
-                                 >
-                                    <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
-                                       <span>審判割り当て</span>
-                                       <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
-                                    </div>
-                                    <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
-                                    <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
-                                 </div>
-                              </div>
-                           );
-                        })()}
-                     </div>
+                  return (
+                    <div key={`court-${i}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                       <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
+                          <span className="font-bold text-gray-600 text-sm">第 {courtNum} コート</span>
 
-                     <div className="p-4 flex flex-col min-h-32 justify-between text-center">
-                       {activeMatch ? (
-                          <div>
-                             <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
-                                ({activeMatch.cls}) グループ{activeMatch.group}・{statusLabel}
-                             </span>
-                             <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
-                             <div className="text-xs text-gray-400 my-1">
-                                {activeMatch.status === 'completed' ? `${activeMatch.team1Score} - ${activeMatch.team2Score}` : 'vs'}
+                          {activeMatch && (
+                             <div className="relative group inline-block">
+                                <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
+                                   審判 ℹ️
+                                </span>
+                                <div 
+                                  className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
+                                  style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
+                                >
+                                   <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
+                                      <span>審判割り当て</span>
+                                      <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
+                                   </div>
+                                   <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
+                                   <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                </div>
                              </div>
-                             <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
-                          </div>
-                       ) : (<span className="text-gray-300 font-bold text-lg my-auto">空き</span>)}
-                     </div>
-                  </div>
-                );
-             })}
-          </div>
-        )}
+                          )}
+                       </div>
+
+                       <div className="p-4 flex flex-col min-h-32 justify-between text-center">
+                         {activeMatch ? (
+                            <div>
+                               <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
+                                  ({activeMatch.cls}) グループ{activeMatch.group}・{statusLabel}
+                               </span>
+                               <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
+                               <div className="text-xs text-gray-400 my-1">
+                                  {activeMatch.status === 'completed' ? `${activeMatch.team1Score} - ${activeMatch.team2Score}` : 'vs'}
+                               </div>
+                               <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+                            </div>
+                         ) : (<span className="text-gray-300 font-bold text-lg my-auto">空き</span>)}
+                       </div>
+                    </div>
+                  );
+               })}
+            </div>
+          );
+        })()}
         {dashTab === 'league' && (
           <div>
              <h3 className="text-xl font-bold mb-4">{selectedClass} - 予選リーグ</h3>
@@ -1989,134 +2008,138 @@ export default function App() {
 
                <div className="mb-8">
                   <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-[#2c5f4e] pl-2">🏸 コート配置状況 (空きコートにカードをドロップ)</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                     {Array.from({ length: config.courts }).map((_, i) => {
-                        const courtNum = i + 1;
-                        const activeMatch = matches.find(m => m.courtNumber === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
-                        
-                        let cardBgClass = 'bg-white border-dashed border-gray-300 hover:border-emerald-400';
-                        let badgeLabel = 'コール';
-                        let badgeBgClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                  {(() => {
+                    const courtRefereeMap = getAllCourtReferees();
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                         {Array.from({ length: config.courts }).map((_, i) => {
+                            const courtNum = i + 1;
+                            const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
+                            
+                            let cardBgClass = 'bg-white border-dashed border-gray-300 hover:border-emerald-400';
+                            let badgeLabel = 'コール';
+                            let badgeBgClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
 
-                        if (activeMatch) {
-                           if (activeMatch.status === 'calling') {
-                              cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                              badgeLabel = 'コール中';
-                              badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
-                           } else if (activeMatch.status === 'recepted') {
-                              cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';
-                              badgeLabel = '試合受付済';
-                              badgeBgClass = 'bg-blue-600 text-white';
-                           } else if (activeMatch.status === 'in_progress') {
-                              cardBgClass = 'bg-orange-50/80 border-orange-400 shadow-sm';
-                              badgeLabel = '試合中';
-                              badgeBgClass = 'bg-orange-500 text-white animate-pulse';
-                           } else if (activeMatch.status === 'completed') {
-                              cardBgClass = 'bg-green-50/80 border-green-500 shadow-sm';
-                              badgeLabel = 'スコア済';
-                              badgeBgClass = 'bg-green-600 text-white';
-                           }
-                        }
+                            if (activeMatch) {
+                               if (activeMatch.status === 'calling') {
+                                  cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
+                                  badgeLabel = 'コール中';
+                                  badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
+                               } else if (activeMatch.status === 'recepted') {
+                                  cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';
+                                  badgeLabel = '試合受付済';
+                                  badgeBgClass = 'bg-blue-600 text-white';
+                               } else if (activeMatch.status === 'in_progress') {
+                                  cardBgClass = 'bg-orange-50/80 border-orange-400 shadow-sm';
+                                  badgeLabel = '試合中';
+                                  badgeBgClass = 'bg-orange-500 text-white animate-pulse';
+                               } else if (activeMatch.status === 'completed') {
+                                  cardBgClass = 'bg-green-50/80 border-green-500 shadow-sm';
+                                  badgeLabel = 'スコア済';
+                                  badgeBgClass = 'bg-green-600 text-white';
+                               }
+                            }
 
-                        return (
-                           <div 
-                              key={`court-card-${courtNum}`}
-                              className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass}`}
-                              onDragOver={handleDragOver}
-                              onDrop={(e) => handleCourtDrop(e, courtNum)}
-                           >
-                              <div className="flex justify-between items-center border-b pb-1 mb-2">
-                                 <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
+                            const ref = courtRefereeMap[courtNum] || { main: '本部調整', line: '本部調整' };
 
-                                 {activeMatch && (() => {
-                                    const ref = getRefereeForMatch(activeMatch);
-                                    return (
-                                       <div className="relative group inline-block">
-                                          <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
-                                             審判 ℹ️
-                                          </span>
-                                          <div 
-                                            className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
-                                            style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
-                                          >
-                                             <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
-                                                <span>審判割り当て</span>
-                                                <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
-                                             </div>
-                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
-                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
-                                          </div>
-                                       </div>
-                                    );
-                                 })()}
-                              </div>
+                            return (
+                               <div 
+                                  key={`court-card-${courtNum}`}
+                                  className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass}`}
+                                  onDragOver={handleDragOver}
+                                  onDrop={(e) => handleCourtDrop(e, courtNum)}
+                               >
+                                  <div className="flex justify-between items-center border-b pb-1 mb-2">
+                                     <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
 
-                              {activeMatch ? (
-                                 <div 
-                                   draggable={activeMatch.status !== 'in_progress'}
-                                   onDragStart={(e) => activeMatch.status !== 'in_progress' && handleMatchDragStart(e, activeMatch.id)}
-                                   className={`p-2 rounded border bg-white shadow-xs ${activeMatch.status === 'in_progress' ? 'cursor-not-allowed border-orange-300' : 'cursor-move'}`}
-                                 >
-                                    <div className="text-[10px] font-bold text-gray-500 mb-1">({activeMatch.cls}) グループ{activeMatch.group}</div>
-                                    <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
-                                    
-                                    <div className="text-xs text-center font-bold my-1">
-                                       {activeMatch.status === 'completed' ? (
-                                          <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded font-extrabold">
-                                             {activeMatch.team1Score} - {activeMatch.team2Score}
-                                          </span>
-                                       ) : (
-                                          <span className="text-gray-400 text-[10px]">vs</span>
-                                       )}
-                                    </div>
+                                     {activeMatch && (
+                                        <div className="relative group inline-block">
+                                           <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
+                                              審判 ℹ️
+                                           </span>
+                                           <div 
+                                             className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
+                                             style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
+                                           >
+                                              <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
+                                                 <span>審判割り当て</span>
+                                                 <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
+                                              </div>
+                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
+                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                           </div>
+                                        </div>
+                                     )}
+                                  </div>
 
-                                    <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
-                                    
-                                    <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
-                                       <button 
-                                         onClick={() => handleAssignCourt(activeMatch.id, null)} 
-                                         className="text-[10px] text-red-500 hover:underline font-bold"
-                                       >
-                                          コート解除
-                                       </button>
+                                  {activeMatch ? (
+                                     <div 
+                                       draggable={activeMatch.status !== 'in_progress'}
+                                       onDragStart={(e) => activeMatch.status !== 'in_progress' && handleMatchDragStart(e, activeMatch.id)}
+                                       className={`p-2 rounded border bg-white shadow-xs ${activeMatch.status === 'in_progress' ? 'cursor-not-allowed border-orange-300' : 'cursor-move'}`}
+                                     >
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1">({activeMatch.cls}) グループ{activeMatch.group}</div>
+                                        <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
+                                        
+                                        <div className="text-xs text-center font-bold my-1">
+                                           {activeMatch.status === 'completed' ? (
+                                              <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded font-extrabold">
+                                                 {activeMatch.team1Score} - {activeMatch.team2Score}
+                                              </span>
+                                           ) : (
+                                              <span className="text-gray-400 text-[10px]">vs</span>
+                                           )}
+                                        </div>
 
-                                       {activeMatch.status === 'calling' && (
-                                          <button 
-                                            onClick={() => handleMatchStatusChange(activeMatch.id, 'in_progress')}
-                                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                          >
-                                             試合受付 ➔
-                                          </button>
-                                       )}
+                                        <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+                                        
+                                        <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
+                                           <button 
+                                             onClick={() => handleAssignCourt(activeMatch.id, null)} 
+                                             className="text-[10px] text-red-500 hover:underline font-bold"
+                                           >
+                                              コート解除
+                                           </button>
 
-                                       {activeMatch.status === 'in_progress' && (
-                                          <button 
-                                            onClick={() => setScoreModal({ match: activeMatch, s1: 0, s2: 0 })} 
-                                            className="text-[10px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                          >
-                                             スコア入力
-                                          </button>
-                                       )}
+                                           {activeMatch.status === 'calling' && (
+                                              <button 
+                                                onClick={() => handleMatchStatusChange(activeMatch.id, 'in_progress')}
+                                                className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                              >
+                                                 試合受付 ➔
+                                              </button>
+                                           )}
 
-                                       {activeMatch.status === 'completed' && (
-                                          <button 
-                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })} 
-                                            className="text-[10px] bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                          >
-                                             スコア修正
-                                          </button>
-                                       )}
-                                    </div>
-                                 </div>
-                              ) : (
-                                 <div className="text-center text-xs text-gray-400 py-6 font-medium">
-                                    ここに試合をドロップ
-                                 </div>
-                              )}
-                           </div>
-                        );
-                     })}
-                  </div>
+                                           {activeMatch.status === 'in_progress' && (
+                                              <button 
+                                                onClick={() => setScoreModal({ match: activeMatch, s1: 0, s2: 0 })} 
+                                                className="text-[10px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                              >
+                                                 スコア入力
+                                              </button>
+                                           )}
+
+                                           {activeMatch.status === 'completed' && (
+                                              <button 
+                                                onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })} 
+                                                className="text-[10px] bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                              >
+                                                 スコア修正
+                                              </button>
+                                           )}
+                                        </div>
+                                     </div>
+                                  ) : (
+                                     <div className="text-center text-xs text-gray-400 py-6 font-medium">
+                                        ここに試合をドロップ
+                                     </div>
+                                  )}
+                               </div>
+                            );
+                         })}
+                      </div>
+                    );
+                  })()}
                </div>
 
                <div>

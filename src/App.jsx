@@ -63,6 +63,15 @@ export default function App() {
   // テストデータ生成用パラメータ
   const [testGenCount, setTestGenCount] = useState(12);
 
+  // 1組（ペア）あたりの参加費を計算（一般が1人でもいれば一般料金、2人とも高校生なら高校生料金）
+  const getPairFee = (ent) => {
+    if (!ent) return 0;
+    if (ent.p1Fee === '一般' || ent.p2Fee === '一般') {
+      return config.fees['一般'] || 0;
+    }
+    return config.fees['高校生まで'] || 0;
+  };
+
   useEffect(() => {
     const initializeData = async () => {
       setLoading(true);
@@ -870,7 +879,7 @@ export default function App() {
           <div><strong className="block text-sm text-gray-500">日程</strong>{config.date}</div>
           <div><strong className="block text-sm text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
           <div className="md:col-span-2"><strong className="block text-sm text-gray-500">会場</strong>{config.venue}</div>
-          <div className="md:col-span-2"><strong className="block text-sm text-gray-500">参加費</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
+          <div className="md:col-span-2"><strong className="block text-sm text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
           <div className="md:col-span-2"><strong className="block text-sm text-gray-500">申込締切</strong><span className="text-red-500 font-bold">{config.deadline}</span></div>
           <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-sm mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
         </div>
@@ -1195,8 +1204,8 @@ export default function App() {
                 </div>
 
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.classes.join(',')} onChange={e=>setConfig({...config, classes: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="例: 1部,2部,3部" /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
               </div>
 
@@ -1544,7 +1553,16 @@ export default function App() {
 
           {adminTab === 'reception' && (
             <div>
-              <h3 className="text-xl font-bold mb-4">当日受付処理</h3>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                 <h3 className="text-xl font-bold">当日受付処理</h3>
+                 
+                 {/* 上段右：受付済参加費計 */}
+                 <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-3">
+                    <span className="text-xs text-gray-600">受付済: <strong>{entries.filter(e => e.checkedIn).length} / {entries.length} 組</strong></span>
+                    <span className="border-l border-emerald-300 h-4"></span>
+                    <span>受付済参加費計: <strong className="text-lg text-emerald-700 font-mono ml-1">¥{entries.filter(e => e.checkedIn).reduce((sum, e) => sum + getPairFee(e), 0).toLocaleString()}</strong></span>
+                 </div>
+              </div>
               
               <div className="bg-gray-100 p-4 rounded-lg mb-4 flex flex-col md:flex-row gap-3 items-center justify-between border">
                  <div className="flex items-center gap-2 w-full md:w-auto">
@@ -1593,37 +1611,44 @@ export default function App() {
                           <th className="p-3 w-24">クラス</th>
                           <th className="p-3 font-bold">所属クラブ (学校)</th>
                           <th className="p-3 font-bold">ペア</th>
+                          <th className="p-3 font-bold text-right w-32">参加費</th>
                        </tr>
                     </thead>
                     <tbody>
                        {filteredReceptionEntries.length > 0 ? (
-                          filteredReceptionEntries.map(ent => (
-                             <tr 
-                               key={ent.id} 
-                               className="border-t hover:bg-emerald-50/50 cursor-pointer transition-colors" 
-                               onClick={() => toggleCheckIn(ent.id, ent.checkedIn)}
-                             >
-                                <td className="p-3 text-center">
-                                   {ent.checkedIn ? (
-                                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold text-xs inline-flex items-center gap-1 shadow-sm">
-                                         <IconCheckCircle /> 済
-                                      </span>
-                                   ) : (
-                                      <span className="bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-bold text-xs inline-block">
-                                         未
-                                      </span>
-                                   )}
-                                </td>
-                                <td className="p-3 font-bold text-gray-700">{ent.cls}</td>
-                                <td className="p-3 text-gray-800 font-medium">{ent.club || '-'}</td>
-                                <td className="p-3 font-bold text-[#2c5f4e]">
-                                   {ent.p1Name} / {ent.p2Name}
-                                </td>
-                             </tr>
-                          ))
+                          filteredReceptionEntries.map(ent => {
+                             const pairFee = getPairFee(ent);
+                             return (
+                               <tr 
+                                 key={ent.id} 
+                                 className="border-t hover:bg-emerald-50/50 cursor-pointer transition-colors" 
+                                 onClick={() => toggleCheckIn(ent.id, ent.checkedIn)}
+                               >
+                                  <td className="p-3 text-center">
+                                     {ent.checkedIn ? (
+                                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold text-xs inline-flex items-center gap-1 shadow-sm">
+                                           <IconCheckCircle /> 済
+                                        </span>
+                                     ) : (
+                                        <span className="bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-bold text-xs inline-block">
+                                           未
+                                        </span>
+                                     )}
+                                  </td>
+                                  <td className="p-3 font-bold text-gray-700">{ent.cls}</td>
+                                  <td className="p-3 text-gray-800 font-medium">{ent.club || '-'}</td>
+                                  <td className="p-3 font-bold text-[#2c5f4e]">
+                                     {ent.p1Name} / {ent.p2Name}
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-gray-700">
+                                     ¥{pairFee.toLocaleString()}
+                                  </td>
+                               </tr>
+                             );
+                          })
                        ) : (
                           <tr>
-                             <td colSpan="4" className="p-8 text-center text-gray-400">
+                             <td colSpan="5" className="p-8 text-center text-gray-400">
                                 該当するエントリーが見つかりません。
                              </td>
                           </tr>

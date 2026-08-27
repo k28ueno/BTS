@@ -23,7 +23,6 @@ function IconPlus() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" 
 function IconClock() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
 function IconDatabase() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>; }
 
-// HH:mm 形式に整えるヘルパー関数
 const formatHHMM = (str) => {
   if (!str) return '08:50';
   const parts = str.split(':');
@@ -72,10 +71,8 @@ export default function App() {
 
   const [testGenCount, setTestGenCount] = useState(12);
 
-  // シミュレーション用：基準現在時刻ステート
   const [simCurrentTime, setSimCurrentTime] = useState('08:50');
 
-  // 現時刻をセットする関数
   const setSimToNow = () => {
     const now = new Date();
     const h = String(now.getHours()).padStart(2, '0');
@@ -365,8 +362,8 @@ export default function App() {
     }
 
     const existingMatch = matches.find(m => m.courtNumber === courtNum && courtNum !== null);
-    if (existingMatch && existingMatch.status === 'in_progress') {
-      setDialog({ title: "ドロップ不可", message: "試合中のコートには新しい試合をドラッグ割り当てできません。コート解除またはスコア確定を行ってください。", onClose: () => setDialog(null) });
+    if (existingMatch && (existingMatch.status === 'in_progress' || existingMatch.status === 'recepted')) {
+      setDialog({ title: "ドロップ不可", message: "進行中のコートには新しい試合をドラッグ割り当てできません。コート解除またはスコア確定を行ってください。", onClose: () => setDialog(null) });
       return;
     }
 
@@ -1377,7 +1374,7 @@ export default function App() {
                 let statusLabel = '空き';
                 let badgeClass = 'bg-gray-100 text-gray-500';
                 if (activeMatch) {
-                  if (activeMatch.status === 'calling') { statusLabel = '要コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
+                  if (activeMatch.status === 'calling') { statusLabel = 'コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
                   else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
                   else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
                 }
@@ -1918,18 +1915,18 @@ export default function App() {
                   <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                      <IconClock /> 試合数・終了予定時間 リアルタイムシミュレーション
                   </h3>
-                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-lg">
+                  <div className="flex items-center gap-3 bg-amber-50 border border-amber-300 px-4 py-2 rounded-xl shadow-sm">
                      <span className="text-sm font-bold text-amber-900">基準時間（変更可）:</span>
                      <input 
                        type="time" 
-                       className="p-1.5 border rounded bg-white font-mono font-bold text-lg text-gray-800 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
+                       className="p-1.5 border-2 border-amber-400 rounded-lg bg-white font-mono font-extrabold text-xl text-amber-900 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
                        value={simCurrentTime}
                        onChange={e => setSimCurrentTime(e.target.value)}
                      />
                      <button
                        type="button"
                        onClick={setSimToNow}
-                       className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-2 rounded-lg shadow-xs transition-colors"
+                       className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg shadow-sm transition-colors"
                      >
                        現時刻
                      </button>
@@ -2016,13 +2013,13 @@ export default function App() {
                         const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
                         
                         let cardBgClass = 'bg-white border-dashed border-gray-300 hover:border-emerald-400';
-                        let badgeLabel = '要コール';
+                        let badgeLabel = 'コール';
                         let badgeBgClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
 
                         if (activeMatch) {
                            if (activeMatch.status === 'calling') {
                               cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                              badgeLabel = '要コール';
+                              badgeLabel = 'コール';
                               badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
                            } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
                               cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';
@@ -2102,16 +2099,25 @@ export default function App() {
                                             onClick={() => handleMatchStatusChange(activeMatch.id, 'recepted')}
                                             className="text-[10px] bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
-                                             要コール
+                                             コール
                                           </button>
                                        )}
 
-                                       {(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') && (
+                                       {activeMatch.status === 'recepted' && (
+                                          <button 
+                                            onClick={() => handleMatchStatusChange(activeMatch.id, 'in_progress')}
+                                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             試合受付
+                                          </button>
+                                       )}
+
+                                       {activeMatch.status === 'in_progress' && (
                                           <button 
                                             onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })} 
                                             className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
-                                             試合受付
+                                             スコア入力
                                           </button>
                                        )}
 

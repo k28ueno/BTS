@@ -20,6 +20,7 @@ function IconMatch() { return <svg xmlns="http://www.w3.org/2000/svg" width="20"
 function IconRefresh() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>; }
 function IconTrash() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>; }
 function IconPlus() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
+function IconClock() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
@@ -62,6 +63,9 @@ export default function App() {
 
   const [testGenCount, setTestGenCount] = useState(12);
 
+  // シミュレーション用：基準現在時刻ステート (初期値は08:50)
+  const [simCurrentTime, setSimCurrentTime] = useState('08:50');
+
   const getPairFee = (ent) => {
     if (!ent) return 0;
     const cat = ent.feeCategory || ent.p1Fee || '一般';
@@ -100,6 +104,9 @@ export default function App() {
             avgMatchDuration: data.avgmatchduration || 15
           };
           setConfig(loadedConfig);
+          if (loadedConfig.timeStart) {
+            setSimCurrentTime(loadedConfig.timeStart);
+          }
           if(loadedConfig.classes && loadedConfig.classes.length > 0) {
              setSelectedClass(loadedConfig.classes[0]);
              setDrawClass(loadedConfig.classes[0]);
@@ -812,7 +819,6 @@ export default function App() {
     }
   };
 
-  // スコア保存（ダイアログ簡略化）
   const handleSaveScore = async (matchId, s1, s2) => {
     const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
@@ -1010,9 +1016,15 @@ export default function App() {
     return { team: null, label: `枠 ${pos}`, isBye: false };
   };
 
+  // 消化試合・未完了の残試合数および現在時刻を考慮したリアルタイムシミュレーション計算
   const calculateSimulation = () => {
     let totalEntries = entries.length;
+    let totalLeagueRemaining = 0;
+    let totalLeagueCompleted = 0;
     let totalLeagueMatches = 0;
+
+    let totalTournamentRemaining = 0;
+    let totalTournamentCompleted = 0;
     let totalTournamentMatches = 0;
 
     const classStats = config.classes.map(cls => {
@@ -1020,51 +1032,82 @@ export default function App() {
       const count = clsEntries.length;
       
       const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-      let leagueMatches = 0;
       let activeGroupCount = 0;
+      let calculatedLeagueTotal = 0;
 
       groupNames.forEach(g => {
         const inGroup = clsEntries.filter(e => e.group === g).length;
         if (inGroup > 0) {
           activeGroupCount++;
-          leagueMatches += (inGroup * (inGroup - 1)) / 2;
+          calculatedLeagueTotal += (inGroup * (inGroup - 1)) / 2;
         }
       });
 
-      let tournamentMatches = 0;
+      // 予選リーグの試合数・完了数・残り数
+      const actualLeagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+      const leagueTotal = actualLeagueMatches.length > 0 ? actualLeagueMatches.length : calculatedLeagueTotal;
+      const leagueCompleted = matches.filter(m => m.cls === cls && m.matchType === 'league' && m.status === 'completed').length;
+      const leagueRemaining = Math.max(0, leagueTotal - leagueCompleted);
+
+      // 決勝トーナメントの試合数・完了数・残り数
+      let calculatedTournamentTotal = 0;
       if (activeGroupCount > 0) {
         const advPerGroup = config.advancementCondition === 'top1' ? 1 : 2;
         const advTeams = activeGroupCount * advPerGroup;
         if (advTeams > 1) {
-          tournamentMatches = advTeams - 1;
+          calculatedTournamentTotal = advTeams - 1;
         }
       }
 
-      totalLeagueMatches += leagueMatches;
-      totalTournamentMatches += tournamentMatches;
+      const actualTournamentMatches = matches.filter(m => m.cls === cls && m.matchType === 'tournament');
+      const tournamentTotal = actualTournamentMatches.length > 0 ? actualTournamentMatches.length : calculatedTournamentTotal;
+      const tournamentCompleted = matches.filter(m => m.cls === cls && m.matchType === 'tournament' && m.status === 'completed').length;
+      const tournamentRemaining = Math.max(0, tournamentTotal - tournamentCompleted);
+
+      const totalMatches = leagueTotal + tournamentTotal;
+      const completedMatches = leagueCompleted + tournamentCompleted;
+      const remainingMatches = leagueRemaining + tournamentRemaining;
+
+      totalLeagueMatches += leagueTotal;
+      totalLeagueCompleted += leagueCompleted;
+      totalLeagueRemaining += leagueRemaining;
+
+      totalTournamentMatches += tournamentTotal;
+      totalTournamentCompleted += tournamentCompleted;
+      totalTournamentRemaining += tournamentRemaining;
 
       return {
         cls,
         count,
-        leagueMatches,
-        tournamentMatches,
-        totalMatches: leagueMatches + tournamentMatches
+        leagueTotal,
+        leagueCompleted,
+        leagueRemaining,
+        tournamentTotal,
+        tournamentCompleted,
+        tournamentRemaining,
+        totalMatches,
+        completedMatches,
+        remainingMatches
       };
     });
 
+    const totalRemainingMatches = totalLeagueRemaining + totalTournamentRemaining;
+    const totalCompletedMatches = totalLeagueCompleted + totalTournamentCompleted;
     const totalMatches = totalLeagueMatches + totalTournamentMatches;
+
     const courts = config.courts || 1;
     const avgDuration = config.avgMatchDuration || 15;
     
-    const totalMinutes = Math.ceil((totalMatches * avgDuration) / courts);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
+    // 残り総所要時間（分）＝ 残り試合数 × 平均所要時間 ÷ コート数
+    const remainingMinutes = Math.ceil((totalRemainingMatches * avgDuration) / courts);
+    const hours = Math.floor(remainingMinutes / 60);
+    const minutes = remainingMinutes % 60;
 
     let endTimeStr = '--:--';
-    if (config.timeStart) {
-      const [startH, startM] = config.timeStart.split(':').map(Number);
+    if (simCurrentTime) {
+      const [startH, startM] = simCurrentTime.split(':').map(Number);
       if (!isNaN(startH) && !isNaN(startM)) {
-        const endTotalM = startH * 60 + startM + totalMinutes;
+        const endTotalM = startH * 60 + startM + remainingMinutes;
         const endH = Math.floor(endTotalM / 60) % 24;
         const endM = endTotalM % 60;
         endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
@@ -1075,9 +1118,15 @@ export default function App() {
       classStats,
       totalEntries,
       totalLeagueMatches,
+      totalLeagueCompleted,
+      totalLeagueRemaining,
       totalTournamentMatches,
+      totalTournamentCompleted,
+      totalTournamentRemaining,
       totalMatches,
-      totalMinutes,
+      totalCompletedMatches,
+      totalRemainingMatches,
+      remainingMinutes,
       hours,
       minutes,
       endTimeStr
@@ -1313,8 +1362,7 @@ export default function App() {
                 let badgeClass = 'bg-gray-100 text-gray-500';
                 if (activeMatch) {
                   if (activeMatch.status === 'calling') { statusLabel = '要コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
-                  else if (activeMatch.status === 'recepted') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
-                  else if (activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
+                  else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
                   else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
                 }
 
@@ -1553,11 +1601,13 @@ export default function App() {
          <button onClick={() => setIsAdminLoggedIn(false)} className="text-sm bg-gray-700 px-3 py-1 rounded">ログアウト</button>
       </div>
       <div className="flex flex-col md:flex-row">
+        {/* 左サイドメニュー：ドロー編成の下にシミュレーションを追加 */}
         <div className="w-full md:w-48 bg-gray-50 border-r p-4 flex flex-col gap-2">
            <button onClick={() => setAdminTab('settings')} className={`p-2 text-left rounded font-bold ${adminTab === 'settings' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マスタ設定</button>
            <button onClick={() => setAdminTab('entries')} className={`p-2 text-left rounded font-bold ${adminTab === 'entries' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>エントリー管理</button>
            <button onClick={() => setAdminTab('reception')} className={`p-2 text-left rounded font-bold ${adminTab === 'reception' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>受付処理</button>
            <button onClick={() => setAdminTab('draw')} className={`p-2 text-left rounded font-bold ${adminTab === 'draw' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>ドロー編成</button>
+           <button onClick={() => setAdminTab('simulation')} className={`p-2 text-left rounded font-bold ${adminTab === 'simulation' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>シミュレーション</button>
            <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
         </div>
         <div className="flex-1 p-6 bg-gray-50/50 min-w-0">
@@ -1633,58 +1683,6 @@ export default function App() {
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
-              </div>
-
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-xl p-5 shadow-lg border border-slate-700 mt-6">
-                 <h4 className="text-lg font-bold border-b border-slate-700 pb-2 mb-4 text-orange-400 flex items-center gap-2">
-                   📊 試合数・終了予定時間 リアルタイムシミュレーション
-                 </h4>
-                 <div className="overflow-x-auto mb-4">
-                    <table className="w-full text-xs text-center border-collapse">
-                       <thead>
-                          <tr className="bg-slate-700/50 text-slate-300">
-                             <th className="p-2 text-left">クラス</th>
-                             <th className="p-2">エントリー組数</th>
-                             <th className="p-2">予選リーグ試合数</th>
-                             <th className="p-2">決勝T試合数</th>
-                             <th className="p-2 font-bold text-orange-300">合計試合数</th>
-                          </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-700/50">
-                          {simResult.classStats.map(s => (
-                             <tr key={s.cls} className="hover:bg-slate-700/30">
-                                <td className="p-2 text-left font-bold text-emerald-400">{s.cls}</td>
-                                <td className="p-2">{s.count} 組</td>
-                                <td className="p-2">{s.leagueMatches} 試合</td>
-                                <td className="p-2">{s.tournamentMatches} 試合</td>
-                                <td className="p-2 font-bold text-orange-300">{s.totalMatches} 試合</td>
-                             </tr>
-                          ))}
-                          <tr className="bg-slate-800 font-bold border-t-2 border-slate-600 text-sm">
-                             <td className="p-2 text-left text-white">全体合計</td>
-                             <td className="p-2 text-white">{simResult.totalEntries} 組</td>
-                             <td className="p-2 text-white">{simResult.totalLeagueMatches} 試合</td>
-                             <td className="p-2 text-white">{simResult.totalTournamentMatches} 試合</td>
-                             <td className="p-2 text-orange-400 text-base">{simResult.totalMatches} 試合</td>
-                          </tr>
-                       </tbody>
-                    </table>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-800/80 p-4 rounded-lg border border-slate-700">
-                    <div className="text-center border-r border-slate-700 last:border-none">
-                       <span className="block text-xs text-slate-400">使用コート数</span>
-                       <span className="text-xl font-extrabold text-white">{config.courts} 面</span>
-                    </div>
-                    <div className="text-center border-r border-slate-700 last:border-none">
-                       <span className="block text-xs text-slate-400">総所要時間 (1試合{config.avgMatchDuration}分計算)</span>
-                       <span className="text-xl font-extrabold text-emerald-400">約 {simResult.hours}時間 {simResult.minutes}分</span>
-                    </div>
-                    <div className="text-center">
-                       <span className="block text-xs text-slate-400">大会予想終了時刻 ({config.timeStart}開始)</span>
-                       <span className="text-xl font-extrabold text-orange-400">{simResult.endTimeStr} 頃</span>
-                    </div>
-                 </div>
               </div>
 
               <div className="border-t pt-4">
@@ -1931,6 +1929,80 @@ export default function App() {
                    </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {adminTab === 'simulation' && (
+            <div className="space-y-6">
+               <div className="flex flex-wrap justify-between items-center border-b pb-3 gap-2">
+                  <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                     <IconClock /> 試合数・終了予定時間 リアルタイムシミュレーション
+                  </h3>
+                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-lg">
+                     <span className="text-xs font-bold text-amber-900">基準時間（変更可）:</span>
+                     <input 
+                       type="time" 
+                       className="p-1 border rounded bg-white font-mono font-bold text-sm text-gray-800 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
+                       value={simCurrentTime}
+                       onChange={e => setSimCurrentTime(e.target.value)}
+                     />
+                  </div>
+               </div>
+
+               <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-2xl p-6 shadow-xl border border-slate-700">
+                 <div className="overflow-x-auto mb-6">
+                    <table className="w-full text-xs text-center border-collapse">
+                       <thead>
+                          <tr className="bg-slate-700/60 text-slate-200">
+                             <th className="p-2.5 text-left">クラス</th>
+                             <th className="p-2.5">エントリー組数</th>
+                             <th className="p-2.5">予選 (残 / 全)</th>
+                             <th className="p-2.5">決勝T (残 / 全)</th>
+                             <th className="p-2.5 text-emerald-300">完了試合</th>
+                             <th className="p-2.5 text-orange-300 font-bold">残り試合数</th>
+                             <th className="p-2.5">総試合数</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-700/50">
+                          {simResult.classStats.map(s => (
+                             <tr key={s.cls} className="hover:bg-slate-700/30">
+                                <td className="p-2.5 text-left font-bold text-emerald-400">{s.cls}</td>
+                                <td className="p-2.5">{s.count} 組</td>
+                                <td className="p-2.5"><span className="text-orange-300 font-bold">{s.leagueRemaining}</span> / {s.leagueTotal}</td>
+                                <td className="p-2.5"><span className="text-orange-300 font-bold">{s.tournamentRemaining}</span> / {s.tournamentTotal}</td>
+                                <td className="p-2.5 text-emerald-400 font-mono font-bold">{s.completedMatches} 試合</td>
+                                <td className="p-2.5 font-bold text-orange-400 text-sm font-mono">{s.remainingMatches} 試合</td>
+                                <td className="p-2.5 text-slate-400 font-mono">{s.totalMatches} 試合</td>
+                             </tr>
+                          ))}
+                          <tr className="bg-slate-800/90 font-bold border-t-2 border-slate-600 text-sm">
+                             <td className="p-3 text-left text-white">全体合計</td>
+                             <td className="p-3 text-white">{simResult.totalEntries} 組</td>
+                             <td className="p-3 text-white"><span className="text-orange-400">{simResult.totalLeagueRemaining}</span> / {simResult.totalLeagueMatches}</td>
+                             <td className="p-3 text-white"><span className="text-orange-400">{simResult.totalTournamentRemaining}</span> / {simResult.totalTournamentMatches}</td>
+                             <td className="p-3 text-emerald-400 font-mono">{simResult.totalCompletedMatches} 試合</td>
+                             <td className="p-3 text-orange-400 text-base font-mono">{simResult.totalRemainingMatches} 試合</td>
+                             <td className="p-3 text-slate-300 font-mono">{simResult.totalMatches} 試合</td>
+                          </tr>
+                       </tbody>
+                    </table>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-800/80 p-5 rounded-xl border border-slate-700">
+                    <div className="text-center border-b md:border-b-0 md:border-r border-slate-700 pb-3 md:pb-0">
+                       <span className="block text-xs text-slate-400 mb-1">使用コート数</span>
+                       <span className="text-2xl font-extrabold text-white">{config.courts} 面</span>
+                    </div>
+                    <div className="text-center border-b md:border-b-0 md:border-r border-slate-700 pb-3 md:pb-0">
+                       <span className="block text-xs text-slate-400 mb-1">残り総所要時間 (1試合{config.avgMatchDuration}分換算)</span>
+                       <span className="text-2xl font-extrabold text-emerald-400">約 {simResult.hours}時間 {simResult.minutes}分</span>
+                    </div>
+                    <div className="text-center">
+                       <span className="block text-xs text-slate-400 mb-1">大会予想終了時刻 ({simCurrentTime}時点基準)</span>
+                       <span className="text-2xl font-extrabold text-orange-400">{simResult.endTimeStr} 頃</span>
+                    </div>
+                 </div>
+              </div>
             </div>
           )}
 

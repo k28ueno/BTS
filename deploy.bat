@@ -19,7 +19,13 @@ git commit -m "Update site source"
 git push origin main
 echo.
 echo [3/3] Deploying dist to gh-pages branch...
-call npx gh-pages -d dist -r https://github.com/k28ueno/BTS.git
+call npx gh-pages -d dist
+if %errorlevel% neq 0 (
+  color 0C
+  echo Deploy failed!
+  pause
+  exit /b %errorlevel%
+)
 echo.
 echo ========================================
 echo  Successfully updated!

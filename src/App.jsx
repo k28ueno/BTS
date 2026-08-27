@@ -896,9 +896,13 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
+  // パターンA: 該当試合の審判ペア（主審・副審／線審）を自動判定（直前試合バグ修正 ＆ 空きペア個別割り当て）
   const getRefereeForMatch = (match) => {
     if (!match) return { main: '未定', line: '未定' };
 
+    const busyIds = getBusyTeamIds();
+
+    // 1. 同一クラス・同一グループで完了済みの最も直近の試合を探す
     const prevCompletedMatches = matches.filter(m => 
       m.cls === match.cls && 
       m.group === match.group && 
@@ -918,21 +922,30 @@ export default function App() {
       };
     }
 
-    const groupTeams = entries.filter(e => e.cls === match.cls && e.group === match.group && e.checkedIn);
-    const waitingTeams = groupTeams.filter(e => e.id !== match.team1Id && e.id !== match.team2Id);
+    // 2. 直前完了試合がない場合（初戦）
+    // 試合に入っていない空きペア（現在コートに出ていない＋対象試合の当事者でない）を検索
+    const isAvailable = (e) => e.checkedIn && !busyIds.has(e.id) && e.id !== match.team1Id && e.id !== match.team2Id;
 
-    if (waitingTeams.length > 0) {
-      const refTeam = waitingTeams[0];
-      const refName = getTeamNameWithClub(refTeam.id);
-      return {
-        main: refName,
-        line: refName
-      };
-    }
+    // ① 同一グループ内の空きペア
+    const groupAvailable = entries.filter(e => e.cls === match.cls && e.group === match.group && isAvailable(e));
+
+    // ② 同一クラスの他グループの空きペア
+    const classAvailable = entries.filter(e => e.cls === match.cls && e.group !== match.group && isAvailable(e));
+
+    // ③ 他クラスの空きペア
+    const otherClassAvailable = entries.filter(e => e.cls !== match.cls && isAvailable(e));
+
+    // 優先度順に並べる
+    const candidates = [...groupAvailable, ...classAvailable, ...otherClassAvailable];
+
+    const mainRef = candidates[0] ? getTeamNameWithClub(candidates[0].id) : '本部調整';
+    const lineRef = candidates[1] 
+      ? getTeamNameWithClub(candidates[1].id) 
+      : (candidates[0] ? `${getTeamNameWithClub(candidates[0].id)} (他クラス協力)` : '本部調整');
 
     return {
-      main: `${match.cls} 待機組 / 他クラス応援`,
-      line: `${match.cls} 待機組 / 他クラス応援`
+      main: mainRef,
+      line: lineRef
     };
   };
 
@@ -1342,7 +1355,6 @@ export default function App() {
                      <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
                         <span className="font-bold text-gray-600 text-sm">第 {courtNum} コート</span>
 
-                        {/* 審判表示 (ボタンの上側 bottom-full へ展開し対戦ペアを隠さない) */}
                         {activeMatch && (() => {
                            const ref = getRefereeForMatch(activeMatch);
                            return (
@@ -2010,7 +2022,6 @@ export default function App() {
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                  <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
 
-                                 {/* 審判表示 (ボタンの上側 bottom-full へ展開し対戦ペアを隠さない) */}
                                  {activeMatch && (() => {
                                     const ref = getRefereeForMatch(activeMatch);
                                     return (

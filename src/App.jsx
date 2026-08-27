@@ -518,23 +518,29 @@ export default function App() {
     };
 
     setEntries([...entries, newEntryState]);
-    setDialog({
+setDialog({
       title: "エントリー完了",
       message: (
         <div className="text-left">
           <p className="mb-2 text-green-600 font-bold">受付が完了しました！</p>
           <div className="bg-gray-100 p-4 mt-4 rounded-lg">
-             <div className="flex justify-between border-b pb-2 mb-2"><span className="text-gray-500">ID:</span><strong>{newId}</strong></div>
+             <div className="flex justify-between border-b pb-2 mb-2"><span className="text-gray-500">ID:</span><strong className="text-lg font-mono">{newId}</strong></div>
              <div className="flex justify-between"><span className="text-gray-500">パスワード (数字4桁):</span><strong className="text-orange-600 font-mono text-lg">{generatedPassword}</strong></div>
           </div>
-          <p className="text-xs text-gray-500 mt-2">※後から修正する際に必要です。数字4桁のパスワードを控えてください。</p>
+          
+          {/* 目立つ注意書きボックス */}
+          <div className="bg-red-50 border-l-4 border-red-500 p-3 mt-4 rounded">
+             <p className="text-xs font-bold text-red-700">
+               ⚠️ 注意：登録内容の変更・確認時に必要です
+             </p>
+             <p className="text-xs text-red-600 mt-1 font-bold">
+               上記【ID】と【パスワード】の両方を、必ずメモやスクリーンショットで控えて保管してください。
+             </p>
+          </div>
         </div>
       ),
       onClose: () => { setDialog(null); setCurrentTab('home'); }
     });
-    setEntryForm({ club: '', p1Name: '', p1Club: '', p1Fee: '一般', p2Name: '', p2Club: '', p2Fee: '一般', cls: config.classes[0] || '', contact: '' });
-  };
-
   const handleEditLogin = (e) => {
     e.preventDefault();
     if (!/^\d{4}$/.test(editLogin.password)) {

@@ -933,7 +933,7 @@ export default function App() {
       const s1 = lastMatch.team1Score || 0;
       const s2 = lastMatch.team2Score || 0;
       const winnerId = s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id;
-      const loserId = s1 >= s2 ? targetMatch.team2Id : lastMatch.team1Id;
+      const loserId = s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id;
       return {
         main: getTeamNameWithClub(winnerId),
         line: getTeamNameWithClub(loserId)

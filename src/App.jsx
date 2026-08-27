@@ -296,13 +296,23 @@ export default function App() {
   const handleMatchDragStart = (e, matchId) => { e.dataTransfer.setData('text/match-id', matchId); };
   const handleDragOver = (e) => { e.preventDefault(); };
   
+  // ドラッグ＆ドロップでグループを変更（未割り当て含む）した際に、対戦カードを自動でリアルタイム更新
   const handleDrop = async (e, targetGroup) => {
     e.preventDefault();
     const entryId = e.dataTransfer.getData('text/plain');
     if (!entryId) return;
-    setEntries(entries.map(ent => ent.id === entryId ? { ...ent, group: targetGroup } : ent));
+
+    const targetEntry = entries.find(ent => ent.id === entryId);
+    const updatedEntries = entries.map(ent => ent.id === entryId ? { ...ent, group: targetGroup } : ent);
+    setEntries(updatedEntries);
+
     if (isSupabaseConfigured) {
       await supabase.from('entries').update({ group: targetGroup }).eq('id', entryId);
+    }
+
+    // 配置変更に合わせて対戦カードをリアルタイム同期（未割り当て時は対戦カード消去）
+    if (targetEntry) {
+      await generateLeagueMatches(targetEntry.cls, updatedEntries);
     }
   };
 

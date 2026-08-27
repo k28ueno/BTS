@@ -12,7 +12,7 @@ const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) :
 
 function IconUser() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function IconTrophy() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>; }
-function IconSettings() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>; }
+function IconSettings() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-.273l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>; }
 function IconCheckCircle() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>; }
 function IconSmartphone() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>; }
 function IconSearch() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
@@ -60,10 +60,8 @@ export default function App() {
   const [receptionSearchQuery, setReceptionSearchQuery] = useState('');
   const [scoreModal, setScoreModal] = useState(null);
 
-  // テストデータ生成用パラメータ
   const [testGenCount, setTestGenCount] = useState(12);
 
-  // 1組（ペア）の参加費を計算
   const getPairFee = (ent) => {
     if (!ent) return 0;
     const cat = ent.feeCategory || ent.p1Fee || '一般';
@@ -197,7 +195,6 @@ export default function App() {
     }
   };
 
-  // 1. 全エントリー削除処理（Supabase対応）
   const handleDeleteAllEntries = () => {
     setDialog({
       title: "全エントリーの削除確認",
@@ -215,7 +212,6 @@ export default function App() {
     });
   };
 
-  // 2. 指定した組数でテストデータ生成処理
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
@@ -296,7 +292,6 @@ export default function App() {
   const handleMatchDragStart = (e, matchId) => { e.dataTransfer.setData('text/match-id', matchId); };
   const handleDragOver = (e) => { e.preventDefault(); };
   
-  // ドラッグ＆ドロップでグループを変更（未割り当て含む）した際に、対戦カードを自動でリアルタイム更新
   const handleDrop = async (e, targetGroup) => {
     e.preventDefault();
     const entryId = e.dataTransfer.getData('text/plain');
@@ -310,13 +305,11 @@ export default function App() {
       await supabase.from('entries').update({ group: targetGroup }).eq('id', entryId);
     }
 
-    // 配置変更に合わせて対戦カードをリアルタイム同期（未割り当て時は対戦カード消去）
     if (targetEntry) {
       await generateLeagueMatches(targetEntry.cls, updatedEntries);
     }
   };
 
-  // コート配置時の同一ペア重複チェック機能付きドロップ
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
@@ -325,7 +318,6 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
-    // すでに他のコートで進行中/コール中の試合に、同じペアが含まれているか重複チェック
     const busyMatch = matches.find(m => 
       m.id !== matchId && 
       m.courtNumber !== null && 
@@ -418,7 +410,6 @@ export default function App() {
     }
   };
 
-  // 予選リーグ自動振り分け（受付済の組のみが対象）
   const handleAutoDraw = async () => {
     const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
     if (checkedInEntries.length === 0) {
@@ -448,7 +439,6 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  // 予選リーグ対戦カード生成（全クラスの対戦カードを一括・全クラス交差順序で生成）
   const generateAllLeagueMatches = async (currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -551,7 +541,6 @@ export default function App() {
     return await generateAllLeagueMatches(currentEntriesList);
   };
 
-  // 決勝トーナメント自動振り分け（予選順位に基づく一括割り当て）
   const handleAutoDrawTournament = async () => {
     const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
     if (checkedInEntries.length === 0) {
@@ -569,7 +558,6 @@ export default function App() {
 
     let slotMapping = [];
     if (groupCount === 3 && numPerGroup === 2) {
-      // 6組進出（枠2, 枠6はシード）
       slotMapping = [
         { group: 'A', rank: 0, slot: 1 },
         { group: 'C', rank: 1, slot: 3 },
@@ -579,7 +567,6 @@ export default function App() {
         { group: 'C', rank: 0, slot: 8 },
       ];
     } else if (groupCount === 2 && numPerGroup === 2) {
-      // 4組進出
       slotMapping = [
         { group: 'A', rank: 0, slot: 1 },
         { group: 'B', rank: 1, slot: 2 },
@@ -587,7 +574,6 @@ export default function App() {
         { group: 'A', rank: 1, slot: 4 },
       ];
     } else {
-      // 8組進出
       slotMapping = [
         { group: 'A', rank: 0, slot: 1 },
         { group: 'B', rank: 1, slot: 2 },
@@ -632,7 +618,6 @@ export default function App() {
     }
   };
 
-  // エントリー送信（組の区分一括設定）
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
     const newId = (entries.length + 1).toString().padStart(4, '0');
@@ -688,7 +673,6 @@ export default function App() {
              <div className="flex justify-between"><span className="text-gray-500">パスワード (数字4桁):</span><strong className="text-orange-600 font-mono text-lg">{generatedPassword}</strong></div>
           </div>
           
-          {/* 目立つ注意書きボックス */}
           <div className="bg-red-50 border-l-4 border-red-500 p-3 mt-4 rounded">
              <p className="text-xs font-bold text-red-700">
                ⚠️ 注意：登録内容の修正・取消時に必要です
@@ -750,7 +734,6 @@ export default function App() {
     setCurrentEditId(null);
   };
 
-  // 参加者自身によるエントリー削除（取消）処理
   const handleDeleteSelfEntry = (id, p1Name) => {
     setDialog({
       title: "エントリー取消の確認",
@@ -829,7 +812,6 @@ export default function App() {
     }
   };
 
-  // スコア保存＆勝者・敗者への審判指示ポップアップ生成（他クラス応援注記追加）
   const handleSaveScore = async (matchId, s1, s2) => {
     const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
@@ -849,7 +831,6 @@ export default function App() {
     }
     setScoreModal(null);
 
-    // 審判指示用データの特定
     if (targetMatch) {
       const winnerId = s1 >= s2 ? targetMatch.team1Id : targetMatch.team2Id;
       const loserId = s1 >= s2 ? targetMatch.team2Id : targetMatch.team1Id;
@@ -893,7 +874,6 @@ export default function App() {
     }
   };
 
-  // 予選グループ順位計算関数
   const getGroupStandings = (cls, groupName) => {
     const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName);
     const groupMatches = matches.filter(m => m.cls === cls && m.group === groupName && m.status === 'completed');
@@ -916,11 +896,9 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // パターンA: 該当試合の審判ペア（主審・副審／線審）を自動判定
   const getRefereeForMatch = (match) => {
     if (!match) return { main: '未定', line: '未定' };
 
-    // 同一クラス・同一グループで完了済みの最も直近の試合を探す
     const prevCompletedMatches = matches.filter(m => 
       m.cls === match.cls && 
       m.group === match.group && 
@@ -940,7 +918,6 @@ export default function App() {
       };
     }
 
-    // 直前完了試合がない場合（初戦）➔ 同グループの待機ペア（第3試合等を行うペア）
     const groupTeams = entries.filter(e => e.cls === match.cls && e.group === match.group && e.checkedIn);
     const waitingTeams = groupTeams.filter(e => e.id !== match.team1Id && e.id !== match.team2Id);
 
@@ -953,16 +930,13 @@ export default function App() {
       };
     }
 
-    // 同一グループに待機ペアがいない場合（2組グループなど）
     return {
       main: `${match.cls} 待機組 / 他クラス応援`,
       line: `${match.cls} 待機組 / 他クラス応援`
     };
   };
 
-  // 決勝トーナメントの特定スロットに表示すべきペア・仮テキストを取得（進出組数・シード考慮）
   const getTournamentSlotInfo = (cls, pos) => {
-    // 1. 手動設定位置があるか確認（最優先）
     const manualTeam = entries.find(e => e.cls === cls && e.tournamentPosition === pos);
     if (manualTeam) {
       return { team: manualTeam, label: null, isBye: false };
@@ -976,7 +950,6 @@ export default function App() {
     const advCondition = config.advancementCondition || 'top2';
     const numPerGroup = advCondition === 'top1' ? 1 : 2;
 
-    // 3グループ（進出6組）で8枠ツリーの場合：枠2と枠6をシード(BYE)にする
     if (groupCount === 3 && numPerGroup === 2) {
       const slotRules6 = {
         1: { group: 'A', rank: 0, label: 'グループA 1位' },
@@ -1006,7 +979,6 @@ export default function App() {
       }
     }
 
-    // 2グループ（進出4組）の場合
     if (groupCount === 2 && numPerGroup === 2) {
       const slotRules4 = {
         1: { group: 'A', rank: 0, label: 'グループA 1位' },
@@ -1031,7 +1003,6 @@ export default function App() {
       }
     }
 
-    // 4グループ（進出8組）などデフォルト8枠パターン
     const slotRules8 = {
       1: { group: 'A', rank: 0, label: 'グループA 1位' },
       2: { group: 'B', rank: 1, label: 'グループB 2位' },
@@ -1238,7 +1209,6 @@ export default function App() {
     );
   }
 
-  // 現在コート進行中・コール中のペアID集合を取得
   const getBusyTeamIds = () => {
     const busyIds = new Set();
     matches.forEach(m => {
@@ -1250,7 +1220,6 @@ export default function App() {
     return busyIds;
   };
 
-  // 待機中の試合の動的ソート（手が入っていて今すぐ動ける試合を最優先で上位へ繰り上げ）
   const getSortedWaitingMatches = () => {
     const busyIds = getBusyTeamIds();
     const waitingMatches = matches.filter(m => m.status === 'waiting');
@@ -1259,15 +1228,14 @@ export default function App() {
       const aBusy = busyIds.has(a.team1Id) || busyIds.has(a.team2Id);
       const bBusy = busyIds.has(b.team1Id) || busyIds.has(b.team2Id);
 
-      if (!aBusy && bBusy) return -1; // aは即呼び出し可能、bは手塞がり ➔ aを上へ
-      if (aBusy && !bBusy) return 1;  // bが即呼び出し可能 ➔ bを上へ
+      if (!aBusy && bBusy) return -1;
+      if (aBusy && !bBusy) return 1;
       return a.matchOrder - b.matchOrder;
     });
   };
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-      {/* 当日の進行状況・対戦表案内（最上部に配置） */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-md p-6 text-center border border-blue-200">
          <h3 className="text-xl font-bold mb-2 text-blue-900">当日の進行状況・対戦表はこちら</h3>
          <button onClick={() => setCurrentTab('dashboard')} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow flex items-center justify-center gap-2 mx-auto"><IconSmartphone /> 進行状況ダッシュボードを開く</button>
@@ -1295,7 +1263,6 @@ export default function App() {
            </div>
         </div>
 
-        {/* 審判およびスコア提出ルール説明カード */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2">
               🏸 審判割り当て ＆ スコア提出の流れ
@@ -1335,7 +1302,6 @@ export default function App() {
          <button onClick={() => setCurrentTab('home')} className="text-sm text-gray-500 hover:text-gray-800 underline">ホームへ戻る</button>
       </div>
 
-      {/* 審判ルールのワンポイント表示 */}
       <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-lg text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
          <div>
             <span className="font-bold bg-emerald-700 text-white px-2 py-0.5 rounded text-[10px] mr-2">審判ルール</span>
@@ -1376,7 +1342,7 @@ export default function App() {
                      <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
                         <span className="font-bold text-gray-600 text-sm">第 {courtNum} コート</span>
 
-                        {/* 審判表示 (ホバー/タップ時ポップアップ表示) */}
+                        {/* 審判表示 (ボタンの「上側」にポップアップ展開して対戦ペアを隠さない) */}
                         {activeMatch && (() => {
                            const ref = getRefereeForMatch(activeMatch);
                            return (
@@ -1384,7 +1350,7 @@ export default function App() {
                                  <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
                                     審判 ℹ️
                                  </span>
-                                 <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-56 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-xl z-50 pointer-events-none transition-all">
+                                 <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all">
                                     <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
                                        <span>審判割り当て</span>
                                        <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
@@ -1507,7 +1473,6 @@ export default function App() {
             <input type="text" placeholder="例: 紀北バドミントンクラブ / ○○高校" className="w-full p-3 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={entryForm.club} onChange={(e) => setEntryForm({...entryForm, club: e.target.value})} required />
           </div>
 
-          {/* 組の参加費区分を一括設定 */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">参加区分 (1組あたりの料金) <span className="text-red-500">*</span></label>
             <div className="flex flex-wrap gap-6 p-3 border rounded bg-white">
@@ -1561,7 +1526,6 @@ export default function App() {
     </div>
   );
 
-  // 登録変更・取消ログイン画面
   const viewEditLogin = (
     <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-blue-500">
       <h2 className="text-2xl font-bold mb-6 text-center">登録内容の修正・取消</h2>
@@ -1606,7 +1570,6 @@ export default function App() {
          <button onClick={() => setIsAdminLoggedIn(false)} className="text-sm bg-gray-700 px-3 py-1 rounded">ログアウト</button>
       </div>
       <div className="flex flex-col md:flex-row">
-        {/* 左サイドメニュー：受付処理をエントリー管理の直下に配置 */}
         <div className="w-full md:w-48 bg-gray-50 border-r p-4 flex flex-col gap-2">
            <button onClick={() => setAdminTab('settings')} className={`p-2 text-left rounded font-bold ${adminTab === 'settings' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マスタ設定</button>
            <button onClick={() => setAdminTab('entries')} className={`p-2 text-left rounded font-bold ${adminTab === 'entries' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>エントリー管理</button>
@@ -1620,14 +1583,12 @@ export default function App() {
             <div className="space-y-6">
               <h3 className="text-xl font-bold border-b pb-2 flex items-center gap-2"><IconSettings /> 大会マスタ設定</h3>
 
-              {/* 大会データ管理・テスト生成ツール */}
               <div className="bg-slate-100 border border-slate-300 rounded-xl p-4 space-y-3">
                  <h4 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
                     ⚙️ 大会データ・テスト生成管理
                  </h4>
                  
                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between border-t border-slate-200 pt-3">
-                    {/* テストデータ生成 */}
                     <div className="flex items-center gap-2">
                        <span className="text-xs font-bold text-gray-700 whitespace-nowrap">各クラス:</span>
                        <input 
@@ -1647,7 +1608,6 @@ export default function App() {
                        </button>
                     </div>
 
-                    {/* 全エントリー削除 */}
                     <div>
                        <button 
                          onClick={handleDeleteAllEntries}
@@ -1692,7 +1652,6 @@ export default function App() {
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
               </div>
 
-              {/* シミュレーション表示 */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-xl p-5 shadow-lg border border-slate-700 mt-6">
                  <h4 className="text-lg font-bold border-b border-slate-700 pb-2 mb-4 text-orange-400 flex items-center gap-2">
                    📊 試合数・終了予定時間 リアルタイムシミュレーション
@@ -1795,7 +1754,6 @@ export default function App() {
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
                  <h3 className="text-xl font-bold">当日受付処理</h3>
                  
-                 {/* 上段右：受付済参加費計 */}
                  <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-3">
                     <span className="text-xs text-gray-600">受付済: <strong>{entries.filter(e => e.checkedIn).length} / {entries.length} 組</strong></span>
                     <span className="border-l border-emerald-300 h-4"></span>
@@ -1902,7 +1860,6 @@ export default function App() {
 
           {adminTab === 'draw' && (
             <div className="w-full overflow-hidden">
-              {/* 受付済限定に関する注記バー */}
               <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold flex items-center justify-between">
                  <span>⚠️ ドロー編成は「受付処理」で受付済（済）になった組のみが表示・割り当て対象となります。</span>
                  <span className="bg-amber-200 text-amber-800 px-2 py-0.5 rounded font-mono">
@@ -1948,7 +1905,6 @@ export default function App() {
               {drawType === 'league' ? (
                 <div className="flex gap-4 overflow-x-auto pb-6 w-full cursor-grab active:cursor-grabbing">
                    {['未割り当て', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(groupName => {
-                      // 受付済(checkedIn)のペアのみ表示対象
                       const groupTeams = entries.filter(e => e.cls === drawClass && e.checkedIn && e.group === groupName);
                       if (groupName !== '未割り当て' && groupTeams.length === 0 && !['A', 'B', 'C'].includes(groupName)) {
                         return null;
@@ -2010,7 +1966,6 @@ export default function App() {
                   </button>
                </div>
 
-               {/* コートエリア (Drop先) */}
                <div className="mb-8">
                   <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-[#2c5f4e] pl-2">🏸 コート配置状況 (空きコートにカードをドロップ)</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -2052,7 +2007,7 @@ export default function App() {
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                  <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
 
-                                 {/* 審判表示 (ホバー/タップ時ポップアップ表示) */}
+                                 {/* 審判表示 (ボタンの上側 bottom-full へ展開し対戦ペアを隠さない) */}
                                  {activeMatch && (() => {
                                     const ref = getRefereeForMatch(activeMatch);
                                     return (
@@ -2060,7 +2015,7 @@ export default function App() {
                                           <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
                                              審判 ℹ️
                                           </span>
-                                          <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-56 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-xl z-50 pointer-events-none transition-all">
+                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all">
                                              <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
                                                 <span>審判割り当て</span>
                                                 <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
@@ -2094,7 +2049,6 @@ export default function App() {
 
                                     <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
                                     
-                                    {/* ステータス切替アクションボタン */}
                                     <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
                                        <button 
                                          onClick={() => handleAssignCourt(activeMatch.id, null)} 
@@ -2142,7 +2096,6 @@ export default function App() {
                   </div>
                </div>
 
-               {/* 待機中の優先対戦リスト (Drag元：手が塞がっていない試合を動的に最上位へ繰り上げ表示) */}
                <div>
                   <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-blue-500 pl-2">📋 優先対戦リスト (待機中の試合)</h4>
                   <div className="bg-white rounded-xl border p-4 shadow-sm max-h-[500px] overflow-y-auto">

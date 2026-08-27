@@ -1600,6 +1600,7 @@ export default function App() {
          <button onClick={() => setIsAdminLoggedIn(false)} className="text-sm bg-gray-700 px-3 py-1 rounded">ログアウト</button>
       </div>
       <div className="flex flex-col md:flex-row">
+        {/* 左サイドメニュー：コート進行・スコアの下にデータ管理を配置 */}
         <div className="w-full md:w-48 bg-gray-50 border-r p-4 flex flex-col gap-2">
            <button onClick={() => setAdminTab('settings')} className={`p-2 text-left rounded font-bold ${adminTab === 'settings' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マスタ設定</button>
            <button onClick={() => setAdminTab('entries')} className={`p-2 text-left rounded font-bold ${adminTab === 'entries' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>エントリー管理</button>
@@ -1607,6 +1608,7 @@ export default function App() {
            <button onClick={() => setAdminTab('draw')} className={`p-2 text-left rounded font-bold ${adminTab === 'draw' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>ドロー編成</button>
            <button onClick={() => setAdminTab('simulation')} className={`p-2 text-left rounded font-bold ${adminTab === 'simulation' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>シミュレーション</button>
            <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
+           <button onClick={() => setAdminTab('data')} className={`p-2 text-left rounded font-bold ${adminTab === 'data' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>データ管理</button>
         </div>
         <div className="flex-1 p-6 bg-gray-50/50 min-w-0">
           
@@ -1614,42 +1616,6 @@ export default function App() {
             <div className="space-y-6">
               <h3 className="text-xl font-bold border-b pb-2 flex items-center gap-2"><IconSettings /> 大会マスタ設定</h3>
 
-              <div className="bg-slate-100 border border-slate-300 rounded-xl p-4 space-y-3">
-                 <h4 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
-                    ⚙️ 大会データ・テスト生成管理
-                 </h4>
-                 
-                 <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between border-t border-slate-200 pt-3">
-                    <div className="flex items-center gap-2">
-                       <span className="text-xs font-bold text-gray-700 whitespace-nowrap">各クラス:</span>
-                       <input 
-                         type="number" 
-                         min="1" 
-                         max="50"
-                         className="w-16 p-1.5 border rounded text-center text-sm font-bold bg-white"
-                         value={testGenCount}
-                         onChange={e => setTestGenCount(e.target.value)}
-                       />
-                       <span className="text-xs font-bold text-gray-700 whitespace-nowrap">組ずつ生成</span>
-                       <button 
-                         onClick={handleGenerateTestData}
-                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-2 rounded shadow-xs flex items-center gap-1"
-                       >
-                          <IconPlus /> テストデータ生成
-                       </button>
-                    </div>
-
-                    <div>
-                       <button 
-                         onClick={handleDeleteAllEntries}
-                         className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-3 py-2 rounded shadow-xs flex items-center gap-1 w-full sm:w-auto justify-center"
-                       >
-                          <IconTrash /> 全エントリー・全試合結果クリア
-                       </button>
-                    </div>
-                 </div>
-              </div>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">大会名</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.title} onChange={e=>setConfig({...config, title: e.target.value})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">開催日</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.date} onChange={e=>setConfig({...config, date: e.target.value})} /></div>
@@ -2021,134 +1987,130 @@ export default function App() {
 
                <div className="mb-8">
                   <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-[#2c5f4e] pl-2">🏸 コート配置状況 (空きコートにカードをドロップ)</h4>
-                  {(() => {
-                    const courtRefereeMap = getAllCourtReferees();
-                    return (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                         {Array.from({ length: config.courts }).map((_, i) => {
-                            const courtNum = i + 1;
-                            const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
-                            
-                            let cardBgClass = 'bg-white border-dashed border-gray-300 hover:border-emerald-400';
-                            let badgeLabel = '要コール';
-                            let badgeBgClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                     {Array.from({ length: config.courts }).map((_, i) => {
+                        const courtNum = i + 1;
+                        const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
+                        
+                        let cardBgClass = 'bg-white border-dashed border-gray-300 hover:border-emerald-400';
+                        let badgeLabel = '要コール';
+                        let badgeBgClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
 
-                            if (activeMatch) {
-                               if (activeMatch.status === 'calling') {
-                                  cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                                  badgeLabel = '要コール';
-                                  badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
-                               } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
-                                  cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';
-                                  badgeLabel = '試合受付';
-                                  badgeBgClass = 'bg-blue-600 text-white';
-                               } else if (activeMatch.status === 'completed') {
-                                  cardBgClass = 'bg-green-50/80 border-green-500 shadow-sm';
-                                  badgeLabel = 'スコア済';
-                                  badgeBgClass = 'bg-green-600 text-white';
-                               }
-                            }
+                        if (activeMatch) {
+                           if (activeMatch.status === 'calling') {
+                              cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
+                              badgeLabel = '要コール';
+                              badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
+                           } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
+                              cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';
+                              badgeLabel = '試合受付';
+                              badgeBgClass = 'bg-blue-600 text-white';
+                           } else if (activeMatch.status === 'completed') {
+                              cardBgClass = 'bg-green-50/80 border-green-500 shadow-sm';
+                              badgeLabel = 'スコア済';
+                              badgeBgClass = 'bg-green-600 text-white';
+                           }
+                        }
 
-                            const ref = courtRefereeMap[courtNum] || { main: '本部調整', line: '本部調整' };
+                        return (
+                           <div 
+                              key={`court-card-${courtNum}`}
+                              className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass}`}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleCourtDrop(e, courtNum)}
+                           >
+                              <div className="flex justify-between items-center border-b pb-1 mb-2">
+                                 <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
 
-                            return (
-                               <div 
-                                  key={`court-card-${courtNum}`}
-                                  className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass}`}
-                                  onDragOver={handleDragOver}
-                                  onDrop={(e) => handleCourtDrop(e, courtNum)}
-                               >
-                                  <div className="flex justify-between items-center border-b pb-1 mb-2">
-                                     <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
+                                 {activeMatch && (() => {
+                                    const ref = getRefereeForMatch(activeMatch);
+                                    return (
+                                       <div className="relative group inline-block">
+                                          <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
+                                             審判 ℹ️
+                                          </span>
+                                          <div 
+                                            className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
+                                            style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
+                                          >
+                                             <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
+                                                <span>審判割り当て</span>
+                                                <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
+                                             </div>
+                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
+                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                          </div>
+                                       </div>
+                                    );
+                                 })()}
+                              </div>
 
-                                     {activeMatch && (
-                                        <div className="relative group inline-block">
-                                           <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
-                                              審判 ℹ️
-                                           </span>
-                                           <div 
-                                             className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
-                                             style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
-                                           >
-                                              <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
-                                                 <span>審判割り当て</span>
-                                                 <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
-                                              </div>
-                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
-                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
-                                           </div>
-                                        </div>
-                                     )}
-                                  </div>
+                              {activeMatch ? (
+                                 <div 
+                                   draggable={activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted'}
+                                   onDragStart={(e) => activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted' && handleMatchDragStart(e, activeMatch.id)}
+                                   className={`p-2 rounded border bg-white shadow-xs ${(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') ? 'cursor-not-allowed border-blue-300' : 'cursor-move'}`}
+                                 >
+                                    <div className="text-[10px] font-bold text-gray-500 mb-1">({activeMatch.cls}) グループ{activeMatch.group}</div>
+                                    <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
+                                    
+                                    <div className="text-xs text-center font-bold my-1">
+                                       {activeMatch.status === 'completed' ? (
+                                          <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded font-extrabold">
+                                             {activeMatch.team1Score} - {activeMatch.team2Score}
+                                          </span>
+                                       ) : (
+                                          <span className="text-gray-400 text-[10px]">vs</span>
+                                       )}
+                                    </div>
 
-                                  {activeMatch ? (
-                                     <div 
-                                       draggable={activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted'}
-                                       onDragStart={(e) => activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted' && handleMatchDragStart(e, activeMatch.id)}
-                                       className={`p-2 rounded border bg-white shadow-xs ${(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') ? 'cursor-not-allowed border-blue-300' : 'cursor-move'}`}
-                                     >
-                                        <div className="text-[10px] font-bold text-gray-500 mb-1">({activeMatch.cls}) グループ{activeMatch.group}</div>
-                                        <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
-                                        
-                                        <div className="text-xs text-center font-bold my-1">
-                                           {activeMatch.status === 'completed' ? (
-                                              <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded font-extrabold">
-                                                 {activeMatch.team1Score} - {activeMatch.team2Score}
-                                              </span>
-                                           ) : (
-                                              <span className="text-gray-400 text-[10px]">vs</span>
-                                           )}
-                                        </div>
+                                    <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+                                    
+                                    <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
+                                       <button 
+                                         onClick={() => handleAssignCourt(activeMatch.id, null)} 
+                                         className="text-[10px] text-red-500 hover:underline font-bold"
+                                       >
+                                          コート解除
+                                       </button>
 
-                                        <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
-                                        
-                                        <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
-                                           <button 
-                                             onClick={() => handleAssignCourt(activeMatch.id, null)} 
-                                             className="text-[10px] text-red-500 hover:underline font-bold"
-                                           >
-                                              コート解除
-                                           </button>
+                                       {activeMatch.status === 'calling' && (
+                                          <button 
+                                            onClick={() => handleMatchStatusChange(activeMatch.id, 'in_progress')}
+                                            className="text-[10px] bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             要コール
+                                          </button>
+                                       )}
 
-                                           {activeMatch.status === 'calling' && (
-                                              <button 
-                                                onClick={() => handleMatchStatusChange(activeMatch.id, 'recepted')}
-                                                className="text-[10px] bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                              >
-                                                 要コール
-                                              </button>
-                                           )}
+                                       {(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') && (
+                                          <button 
+                                            onClick={() => setScoreModal({ match: activeMatch, s1: 0, s2: 0 })} 
+                                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             スコア入力
+                                          </button>
+                                       )}
 
-                                           {(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') && (
-                                              <button 
-                                                onClick={() => setScoreModal({ match: activeMatch, s1: 0, s2: 0 })} 
-                                                className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                              >
-                                                 スコア入力
-                                              </button>
-                                           )}
-
-                                           {activeMatch.status === 'completed' && (
-                                              <button 
-                                                onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })} 
-                                                className="text-[10px] bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                              >
-                                                 スコア修正
-                                              </button>
-                                           )}
-                                        </div>
-                                     </div>
-                                  ) : (
-                                     <div className="text-center text-xs text-gray-400 py-6 font-medium">
-                                        ここに試合をドロップ
-                                     </div>
-                                  )}
-                               </div>
-                            );
-                         })}
-                      </div>
-                    );
-                  })()}
+                                       {activeMatch.status === 'completed' && (
+                                          <button 
+                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })} 
+                                            className="text-[10px] bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             スコア修正
+                                          </button>
+                                       )}
+                                    </div>
+                                 </div>
+                              ) : (
+                                 <div className="text-center text-xs text-gray-400 py-6 font-medium">
+                                    ここに試合をドロップ
+                                 </div>
+                              )}
+                           </div>
+                        );
+                     })}
+                  </div>
                </div>
 
                <div>
@@ -2206,6 +2168,57 @@ export default function App() {
                      )}
                   </div>
                </div>
+            </div>
+          )}
+
+          {adminTab === 'data' && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-bold border-b pb-2 flex items-center gap-2 text-slate-800">
+                 <IconDatabase /> データ管理
+              </h3>
+
+              <div className="bg-white border rounded-xl p-6 shadow-sm space-y-6">
+                 <div>
+                    <h4 className="font-bold text-md text-gray-800 mb-2">⚙️ テスト用自動エントリー生成</h4>
+                    <p className="text-xs text-gray-500 mb-4">
+                       各クラスに指定した人数のテストエントリーを自動生成してデータベースに登録します。
+                    </p>
+                    <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-lg border">
+                       <span className="text-xs font-bold text-gray-700 whitespace-nowrap">各クラス:</span>
+                       <input 
+                         type="number" 
+                         min="1" 
+                         max="50"
+                         className="w-20 p-2 border rounded text-center text-sm font-bold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                         value={testGenCount}
+                         onChange={e => setTestGenCount(e.target.value)}
+                       />
+                       <span className="text-xs font-bold text-gray-700 whitespace-nowrap">組ずつ生成</span>
+                       <button 
+                         onClick={handleGenerateTestData}
+                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow flex items-center gap-1.5 ml-auto"
+                       >
+                          <IconPlus /> テストデータ生成実行
+                       </button>
+                    </div>
+                 </div>
+
+                 <div className="border-t pt-6">
+                    <h4 className="font-bold text-md text-red-600 mb-2">🗑️ 全データ初期化（削除）</h4>
+                    <p className="text-xs text-gray-500 mb-4">
+                       現在登録されている「すべてのエントリーデータ」および「全試合結果・コート進行状態」を一括削除します。大会やり直し時やテスト終了時に使用してください。
+                    </p>
+                    <div className="bg-red-50 border border-red-200 p-4 rounded-lg flex justify-between items-center">
+                       <span className="text-xs font-bold text-red-800">⚠️ 削除実行後はデータを元に戻せません</span>
+                       <button 
+                         onClick={handleDeleteAllEntries}
+                         className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow flex items-center gap-1.5"
+                       >
+                          <IconTrash /> 全エントリー・全試合結果クリア
+                       </button>
+                    </div>
+                 </div>
+              </div>
             </div>
           )}
 

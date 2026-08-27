@@ -916,6 +916,50 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
+  // パターンA: 該当試合の審判ペア（主審・副審／線審）を自動判定
+  const getRefereeForMatch = (match) => {
+    if (!match) return { main: '未定', line: '未定' };
+
+    // 同一クラス・同一グループで完了済みの最も直近の試合を探す
+    const prevCompletedMatches = matches.filter(m => 
+      m.cls === match.cls && 
+      m.group === match.group && 
+      m.status === 'completed' &&
+      m.id !== match.id
+    );
+
+    if (prevCompletedMatches.length > 0) {
+      const lastMatch = prevCompletedMatches[prevCompletedMatches.length - 1];
+      const s1 = lastMatch.team1Score || 0;
+      const s2 = lastMatch.team2Score || 0;
+      const winnerId = s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id;
+      const loserId = s1 >= s2 ? targetMatch.team2Id : lastMatch.team1Id;
+      return {
+        main: getTeamNameWithClub(winnerId),
+        line: getTeamNameWithClub(loserId)
+      };
+    }
+
+    // 直前完了試合がない場合（初戦）➔ 同グループの待機ペア（第3試合等を行うペア）
+    const groupTeams = entries.filter(e => e.cls === match.cls && e.group === match.group && e.checkedIn);
+    const waitingTeams = groupTeams.filter(e => e.id !== match.team1Id && e.id !== match.team2Id);
+
+    if (waitingTeams.length > 0) {
+      const refTeam = waitingTeams[0];
+      const refName = getTeamNameWithClub(refTeam.id);
+      return {
+        main: refName,
+        line: refName
+      };
+    }
+
+    // 同一グループに待機ペアがいない場合（2組グループなど）
+    return {
+      main: `${match.cls} 待機組 / 他クラス応援`,
+      line: `${match.cls} 待機組 / 他クラス応援`
+    };
+  };
+
   // 決勝トーナメントの特定スロットに表示すべきペア・仮テキストを取得（進出組数・シード考慮）
   const getTournamentSlotInfo = (cls, pos) => {
     // 1. 手動設定位置があるか確認（最優先）
@@ -1330,7 +1374,7 @@ export default function App() {
                 return (
                   <div key={`court-${i}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                      <div className="bg-gray-100 text-center py-2 font-bold text-gray-600 border-b">第 {courtNum} コート</div>
-                     <div className="p-4 flex flex-col h-32 justify-center items-center text-center">
+                     <div className="p-4 flex flex-col min-h-36 justify-between text-center">
                        {activeMatch ? (
                           <div>
                              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
@@ -1341,8 +1385,19 @@ export default function App() {
                                 {activeMatch.status === 'completed' ? `${activeMatch.team1Score} - ${activeMatch.team2Score}` : 'vs'}
                              </div>
                              <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+
+                             {/* 審判表示 (パターンA) */}
+                             {(() => {
+                                const ref = getRefereeForMatch(activeMatch);
+                                return (
+                                   <div className="mt-2 text-[10px] text-gray-600 bg-slate-50 p-1.5 rounded border border-slate-200 text-left space-y-0.5">
+                                      <div className="truncate"><span className="font-bold text-emerald-700">主審・副審:</span> {ref.main}</div>
+                                      <div className="truncate"><span className="font-bold text-slate-600">線審:</span> {ref.line}</div>
+                                   </div>
+                                );
+                             })()}
                           </div>
-                       ) : (<span className="text-gray-300 font-bold text-lg">空き</span>)}
+                       ) : (<span className="text-gray-300 font-bold text-lg my-auto">空き</span>)}
                      </div>
                   </div>
                 );
@@ -1978,7 +2033,7 @@ export default function App() {
                         return (
                            <div 
                               key={`court-card-${courtNum}`}
-                              className={`rounded-xl border-2 p-3 transition-all min-h-[160px] flex flex-col justify-between ${cardBgClass}`}
+                              className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass}`}
                               onDragOver={handleDragOver}
                               onDrop={(e) => handleCourtDrop(e, courtNum)}
                            >
@@ -2013,6 +2068,17 @@ export default function App() {
                                     </div>
 
                                     <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+
+                                    {/* 審判表示 (パターンA) */}
+                                    {(() => {
+                                       const ref = getRefereeForMatch(activeMatch);
+                                       return (
+                                          <div className="mt-2 text-[10px] text-gray-600 bg-slate-50 p-1.5 rounded border border-slate-200 text-left space-y-0.5">
+                                             <div className="truncate"><span className="font-bold text-emerald-700">主審・副審:</span> {ref.main}</div>
+                                             <div className="truncate"><span className="font-bold text-slate-600">線審:</span> {ref.line}</div>
+                                          </div>
+                                       );
+                                    })()}
                                     
                                     {/* ステータス切替アクションボタン */}
                                     <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">

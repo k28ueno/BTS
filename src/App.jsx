@@ -1373,8 +1373,31 @@ export default function App() {
 
                 return (
                   <div key={`court-${i}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                     <div className="bg-gray-100 text-center py-2 font-bold text-gray-600 border-b">第 {courtNum} コート</div>
-                     <div className="p-4 flex flex-col min-h-36 justify-between text-center">
+                     <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
+                        <span className="font-bold text-gray-600 text-sm">第 {courtNum} コート</span>
+
+                        {/* 審判表示 (ホバー/タップ時ポップアップ表示) */}
+                        {activeMatch && (() => {
+                           const ref = getRefereeForMatch(activeMatch);
+                           return (
+                              <div className="relative group inline-block">
+                                 <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
+                                    審判 ℹ️
+                                 </span>
+                                 <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-56 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-xl z-50 pointer-events-none transition-all">
+                                    <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
+                                       <span>審判割り当て</span>
+                                       <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
+                                    </div>
+                                    <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
+                                    <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                 </div>
+                              </div>
+                           );
+                        })()}
+                     </div>
+
+                     <div className="p-4 flex flex-col min-h-32 justify-between text-center">
                        {activeMatch ? (
                           <div>
                              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
@@ -1385,17 +1408,6 @@ export default function App() {
                                 {activeMatch.status === 'completed' ? `${activeMatch.team1Score} - ${activeMatch.team2Score}` : 'vs'}
                              </div>
                              <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
-
-                             {/* 審判表示 (パターンA) */}
-                             {(() => {
-                                const ref = getRefereeForMatch(activeMatch);
-                                return (
-                                   <div className="mt-2 text-[10px] text-gray-600 bg-slate-50 p-1.5 rounded border border-slate-200 text-left space-y-0.5">
-                                      <div className="truncate"><span className="font-bold text-emerald-700">主審・副審:</span> {ref.main}</div>
-                                      <div className="truncate"><span className="font-bold text-slate-600">線審:</span> {ref.line}</div>
-                                   </div>
-                                );
-                             })()}
                           </div>
                        ) : (<span className="text-gray-300 font-bold text-lg my-auto">空き</span>)}
                      </div>
@@ -2039,13 +2051,26 @@ export default function App() {
                            >
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                  <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
-                                 {activeMatch ? (
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeBgClass}`}>
-                                       {badgeLabel}
-                                    </span>
-                                 ) : (
-                                    <span className="text-[10px] text-gray-400">空き (ドロップ可)</span>
-                                 )}
+
+                                 {/* 審判表示 (ホバー/タップ時ポップアップ表示) */}
+                                 {activeMatch && (() => {
+                                    const ref = getRefereeForMatch(activeMatch);
+                                    return (
+                                       <div className="relative group inline-block">
+                                          <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
+                                             審判 ℹ️
+                                          </span>
+                                          <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-56 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-xl z-50 pointer-events-none transition-all">
+                                             <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
+                                                <span>審判割り当て</span>
+                                                <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
+                                             </div>
+                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
+                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                          </div>
+                                       </div>
+                                    );
+                                 })()}
                               </div>
 
                               {activeMatch ? (
@@ -2068,17 +2093,6 @@ export default function App() {
                                     </div>
 
                                     <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
-
-                                    {/* 審判表示 (パターンA) */}
-                                    {(() => {
-                                       const ref = getRefereeForMatch(activeMatch);
-                                       return (
-                                          <div className="mt-2 text-[10px] text-gray-600 bg-slate-50 p-1.5 rounded border border-slate-200 text-left space-y-0.5">
-                                             <div className="truncate"><span className="font-bold text-emerald-700">主審・副審:</span> {ref.main}</div>
-                                             <div className="truncate"><span className="font-bold text-slate-600">線審:</span> {ref.line}</div>
-                                          </div>
-                                       );
-                                    })()}
                                     
                                     {/* ステータス切替アクションボタン */}
                                     <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">

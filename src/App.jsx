@@ -381,7 +381,7 @@ export default function App() {
     const updated = matches.map(m => m.id === matchId ? { ...m, status: newStatus } : m);
     setMatches(updated);
     if (isSupabaseConfigured) {
-      await supabase.from('matches').update({ status: newStatus }).eq('id', matchId);
+      await supabase.from('matches').update({ status: newStatus }).eq('id', newStatus);
     }
   };
 
@@ -896,57 +896,63 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // パターンA: 該当試合の審判ペア（主審・副審／線審）を自動判定（直前試合バグ修正 ＆ 空きペア個別割り当て）
-  const getRefereeForMatch = (match) => {
-    if (!match) return { main: '未定', line: '未定' };
+  // 全コートの割り当て順に全審判を順次確定し、重複を除外する判定ロジック
+  const getRefereeForMatch = (targetMatch) => {
+    if (!targetMatch) return { main: '未定', line: '未定' };
 
     const busyIds = getBusyTeamIds();
+    const assignedRefIds = new Set();
 
-    // 1. 同一クラス・同一グループで完了済みの最も直近の試合を探す
-    const prevCompletedMatches = matches.filter(m => 
-      m.cls === match.cls && 
-      m.group === match.group && 
-      m.status === 'completed' &&
-      m.id !== match.id
-    );
+    // コート番号順に並べたアクティブ試合
+    const activeCourtMatches = matches
+      .filter(m => m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress'))
+      .sort((a, b) => a.courtNumber - b.courtNumber);
 
-    if (prevCompletedMatches.length > 0) {
-      const lastMatch = prevCompletedMatches[prevCompletedMatches.length - 1];
-      const s1 = lastMatch.team1Score || 0;
-      const s2 = lastMatch.team2Score || 0;
-      const winnerId = s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id;
-      const loserId = s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id;
-      return {
-        main: getTeamNameWithClub(winnerId),
-        line: getTeamNameWithClub(loserId)
-      };
+    for (const m of activeCourtMatches) {
+      let mMainId = null;
+      let mLineId = null;
+
+      // 直前完了試合があるか
+      const prevCompletedMatches = matches.filter(pm => 
+        pm.cls === m.cls && 
+        pm.group === m.group && 
+        pm.status === 'completed' &&
+        pm.id !== m.id
+      );
+
+      if (prevCompletedMatches.length > 0) {
+        const lastMatch = prevCompletedMatches[prevCompletedMatches.length - 1];
+        const s1 = lastMatch.team1Score || 0;
+        const s2 = lastMatch.team2Score || 0;
+        mMainId = s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id;
+        mLineId = s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id;
+      } else {
+        // 初戦の場合、空きペアから重複なしで順次選出
+        const isAvailable = (e) => e.checkedIn && !busyIds.has(e.id) && !assignedRefIds.has(e.id) && e.id !== m.team1Id && e.id !== m.team2Id;
+
+        const groupAvailable = entries.filter(e => e.cls === m.cls && e.group === m.group && isAvailable(e));
+        const classAvailable = entries.filter(e => e.cls === m.cls && e.group !== m.group && isAvailable(e));
+        const otherClassAvailable = entries.filter(e => e.cls !== m.cls && isAvailable(e));
+
+        const candidates = [...groupAvailable, ...classAvailable, ...otherClassAvailable];
+
+        if (candidates[0]) mMainId = candidates[0].id;
+        if (candidates[1]) mLineId = candidates[1].id;
+        else if (candidates[0]) mLineId = candidates[0].id;
+      }
+
+      if (mMainId) assignedRefIds.add(mMainId);
+      if (mLineId) assignedRefIds.add(mLineId);
+
+      if (m.id === targetMatch.id) {
+        return {
+          main: mMainId ? getTeamNameWithClub(mMainId) : `${m.cls} 待機組 / 他クラス応援`,
+          line: mLineId ? getTeamNameWithClub(mLineId) : `${m.cls} 待機組 / 他クラス応援`
+        };
+      }
     }
 
-    // 2. 直前完了試合がない場合（初戦）
-    // 試合に入っていない空きペア（現在コートに出ていない＋対象試合の当事者でない）を検索
-    const isAvailable = (e) => e.checkedIn && !busyIds.has(e.id) && e.id !== match.team1Id && e.id !== match.team2Id;
-
-    // ① 同一グループ内の空きペア
-    const groupAvailable = entries.filter(e => e.cls === match.cls && e.group === match.group && isAvailable(e));
-
-    // ② 同一クラスの他グループの空きペア
-    const classAvailable = entries.filter(e => e.cls === match.cls && e.group !== match.group && isAvailable(e));
-
-    // ③ 他クラスの空きペア
-    const otherClassAvailable = entries.filter(e => e.cls !== match.cls && isAvailable(e));
-
-    // 優先度順に並べる
-    const candidates = [...groupAvailable, ...classAvailable, ...otherClassAvailable];
-
-    const mainRef = candidates[0] ? getTeamNameWithClub(candidates[0].id) : '本部調整';
-    const lineRef = candidates[1] 
-      ? getTeamNameWithClub(candidates[1].id) 
-      : (candidates[0] ? `${getTeamNameWithClub(candidates[0].id)} (他クラス協力)` : '本部調整');
-
-    return {
-      main: mainRef,
-      line: lineRef
-    };
+    return { main: '本部調整', line: '本部調整' };
   };
 
   const getTournamentSlotInfo = (cls, pos) => {

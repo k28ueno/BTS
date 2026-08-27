@@ -1342,7 +1342,7 @@ export default function App() {
                      <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
                         <span className="font-bold text-gray-600 text-sm">第 {courtNum} コート</span>
 
-                        {/* 審判表示 (ボタンの「上側」にポップアップ展開して対戦ペアを隠さない) */}
+                        {/* 審判表示 (ボタンの上側 bottom-full へ展開し対戦ペアを隠さない) */}
                         {activeMatch && (() => {
                            const ref = getRefereeForMatch(activeMatch);
                            return (
@@ -1350,7 +1350,10 @@ export default function App() {
                                  <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
                                     審判 ℹ️
                                  </span>
-                                 <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all">
+                                 <div 
+                                   className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
+                                   style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
+                                 >
                                     <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
                                        <span>審判割り当て</span>
                                        <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
@@ -2015,7 +2018,10 @@ export default function App() {
                                           <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
                                              審判 ℹ️
                                           </span>
-                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all">
+                                          <div 
+                                            className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
+                                            style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
+                                          >
                                              <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
                                                 <span>審判割り当て</span>
                                                 <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
@@ -2185,7 +2191,6 @@ export default function App() {
         {currentTab === 'admin' && (isAdminLoggedIn ? viewAdmin : viewAdminLogin)}
       </main>
 
-      {/* スコア入力用モーダル */}
       {scoreModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in">
            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">

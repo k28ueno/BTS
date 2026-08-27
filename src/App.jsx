@@ -383,10 +383,14 @@ export default function App() {
     }
   };
 
+  // 予選リーグ自動振り分け（受付済の組のみが対象）
   const handleAutoDraw = async () => {
-    const currentEntries = entries.filter(e => e.cls === drawClass);
-    if (currentEntries.length === 0) return;
-    const shuffled = [...currentEntries].sort(() => Math.random() - 0.5);
+    const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
+    if (checkedInEntries.length === 0) {
+      setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。先に「受付処理」タブで受付を完了させてください。`, onClose: () => setDialog(null) });
+      return;
+    }
+    const shuffled = [...checkedInEntries].sort(() => Math.random() - 0.5);
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const groupCount = Math.max(3, Math.ceil(shuffled.length / 4));
     const activeGroups = groups.slice(0, groupCount);
@@ -406,12 +410,13 @@ export default function App() {
       await Promise.all(updates.map(u => supabase.from('entries').update({ group: u.group }).eq('id', u.id)));
     }
     await generateLeagueMatches(drawClass, newEntries);
-    setDialog({ title: "完了", message: "自動振り分けと予選対戦カードの生成が完了しました！", onClose: () => setDialog(null) });
+    setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
+  // 予選リーグ対戦カード生成（受付済の組のみ対象）
   const generateLeagueMatches = async (targetCls, currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
-    const clsEntries = activeEntries.filter(e => e.cls === targetCls);
+    const clsEntries = activeEntries.filter(e => e.cls === targetCls && e.checkedIn);
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const newMatches = matches.filter(m => m.cls !== targetCls || m.matchType !== 'league');
     
@@ -462,10 +467,14 @@ export default function App() {
     }
   };
 
+  // 決勝トーナメント自動振り分け（受付済の組のみが対象）
   const handleAutoDrawTournament = async () => {
-    const currentEntries = entries.filter(e => e.cls === drawClass);
-    if (currentEntries.length === 0) return;
-    const shuffled = [...currentEntries].sort(() => Math.random() - 0.5);
+    const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
+    if (checkedInEntries.length === 0) {
+      setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。先に「受付処理」タブで受付を完了させてください。`, onClose: () => setDialog(null) });
+      return;
+    }
+    const shuffled = [...checkedInEntries].sort(() => Math.random() - 0.5);
     const newEntries = [...entries];
     newEntries.forEach(ent => { if (ent.cls === drawClass) ent.tournamentPosition = null; });
     const updates = [];
@@ -484,7 +493,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       await Promise.all(updates.map(u => supabase.from('entries').update({ tournamentposition: u.tournamentposition }).eq('id', u.id)));
     }
-    setDialog({ title: "完了", message: "トーナメント枠にランダムに割り当てました。", onClose: () => setDialog(null) });
+    setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組からトーナメント枠にランダム割り当てしました。`, onClose: () => setDialog(null) });
   };
 
   // エントリー送信（組の区分一括設定）
@@ -1409,6 +1418,14 @@ export default function App() {
 
           {adminTab === 'draw' && (
             <div className="w-full overflow-hidden">
+              {/* 受付済限定に関する注記バー */}
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold flex items-center justify-between">
+                 <span>⚠️ ドロー編成は「受付処理」で受付済（済）になった組のみが表示・振り分け対象となります。</span>
+                 <span className="bg-amber-200 text-amber-800 px-2 py-0.5 rounded font-mono">
+                    {drawClass} 受付済: {entries.filter(e => e.cls === drawClass && e.checkedIn).length} / {entries.filter(e => e.cls === drawClass).length} 組
+                 </span>
+              </div>
+
               <div className="flex gap-4 mb-4">
                  <button onClick={() => setDrawType('league')} className={`px-4 py-2 rounded font-bold ${drawType === 'league' ? 'bg-white shadow text-[#2c5f4e]' : 'bg-gray-200'}`}>予選リーグ</button>
                  <button onClick={() => setDrawType('tournament')} className={`px-4 py-2 rounded font-bold ${drawType === 'tournament' ? 'bg-white shadow text-orange-600' : 'bg-gray-200'}`}>決勝トーナメント</button>
@@ -1418,7 +1435,7 @@ export default function App() {
                     {config.classes.map(c => <option key={c} value={c}>{c}</option>)}
                  </select>
                  <button onClick={drawType === 'league' ? handleAutoDraw : handleAutoDrawTournament} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
-                    自動ランダム振り分け
+                    受付済の組を自動ランダム振り分け
                  </button>
                  {drawType === 'league' && (
                    <button onClick={() => generateLeagueMatches(drawClass)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1">
@@ -1430,14 +1447,15 @@ export default function App() {
               {drawType === 'league' ? (
                 <div className="flex gap-4 overflow-x-auto pb-6 w-full cursor-grab active:cursor-grabbing">
                    {['未割り当て', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(groupName => {
-                      const groupTeams = entries.filter(e => e.cls === drawClass && e.group === groupName);
+                      // 受付済(checkedIn)のペアのみ表示対象
+                      const groupTeams = entries.filter(e => e.cls === drawClass && e.checkedIn && e.group === groupName);
                       if (groupName !== '未割り当て' && groupTeams.length === 0 && !['A', 'B', 'C'].includes(groupName)) {
                         return null;
                       }
                       return (
                         <div key={`admin-group-${groupName}`} className="min-w-[260px] max-w-[260px] bg-gray-100 rounded-lg p-3 border-2 border-dashed border-gray-300 flex-shrink-0" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, groupName)}>
                            <h4 className="font-bold mb-3 border-b-2 pb-2 flex justify-between items-center">
-                              <span>{groupName === '未割り当て' ? '未割り当て' : `グループ ${groupName}`}</span>
+                              <span>{groupName === '未割り当て' ? '未割り当て (受付済)' : `グループ ${groupName}`}</span>
                               <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full font-normal text-gray-600">{groupTeams.length}組</span>
                            </h4>
                            <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
@@ -1458,9 +1476,9 @@ export default function App() {
               ) : (
                 <div className="flex gap-6">
                    <div className="w-1/3 bg-gray-100 rounded-lg p-3 border-2 border-dashed border-gray-300" onDragOver={handleDragOver} onDrop={handleRemoveTournamentPosition}>
-                      <h4 className="font-bold mb-3 border-b-2 pb-2">未配置</h4>
+                      <h4 className="font-bold mb-3 border-b-2 pb-2">未配置 (受付済)</h4>
                       <div className="space-y-2">
-                         {entries.filter(e => e.cls === drawClass && !e.tournamentPosition).map(ent => (
+                         {entries.filter(e => e.cls === drawClass && e.checkedIn && !e.tournamentPosition).map(ent => (
                             <div key={ent.id} draggable onDragStart={(e) => handleDragStart(e, ent.id)} className="bg-white p-3 rounded shadow-sm border cursor-move text-sm font-bold">
                                <div>{getTeamNameWithClub(ent.id)}</div>
                             </div>

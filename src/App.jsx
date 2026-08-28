@@ -995,6 +995,7 @@ export default function App() {
     }
   };
 
+  // スコア保存（直前審判履歴をコート番号に記録）
   const handleSaveScore = async (matchId, s1, s2) => {
     const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
@@ -1065,14 +1066,17 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
+  // 審判判定：そのコートで直前にスコア確定された勝者・敗者の記録があれば最優先表示
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', line: '未定' };
 
     if (m.matchType === 'league') {
+      // 1. そのコートで直前にスコア確定された記録があれば最優先
       if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
         return lastCourtReferees[m.courtNumber];
       }
 
+      // 2. まだそのコートで過去のスコア確定記録がない場合（初戦等）の自動割り当て
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -1530,7 +1534,7 @@ export default function App() {
                 let statusLabel = '空き';
                 let badgeClass = 'bg-gray-100 text-gray-500';
                 if (activeMatch) {
-                  if (activeMatch.status === 'calling') { statusLabel = '要コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
+                  if (activeMatch.status === 'calling') { statusLabel = 'コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
                   else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
                   else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
                 }
@@ -2175,7 +2179,7 @@ export default function App() {
                         if (activeMatch) {
                            if (activeMatch.status === 'calling') {
                               cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                              badgeLabel = '要コール';
+                              badgeLabel = 'コール';
                               badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
                            } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
                               cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';

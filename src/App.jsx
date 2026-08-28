@@ -106,7 +106,29 @@ export default function App() {
     return null;
   };
 
-  // 【改修】他コートで審判確定しているペアを初戦審判候補から自動除外するロジック
+  // 他コートで審判確定しているペアID、または試合進行中の選手IDを全把握して除外用Setを作成
+  const getAllOccupiedRefereeIds = (currentCourtNum) => {
+    const occupied = new Set();
+
+    Object.keys(lastCourtReferees).forEach(cNum => {
+      if (Number(cNum) !== Number(currentCourtNum)) {
+        const ref = lastCourtReferees[cNum];
+        if (ref && ref.mainId) occupied.add(String(ref.mainId));
+        if (ref && ref.lineId) occupied.add(String(ref.lineId));
+      }
+    });
+
+    matches.forEach(m => {
+      if (m.courtNumber !== null && Number(m.courtNumber) !== Number(currentCourtNum) && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
+        if (m.team1Id) occupied.add(String(m.team1Id));
+        if (m.team2Id) occupied.add(String(m.team2Id));
+      }
+    });
+
+    return occupied;
+  };
+
+  // 【改修】他コートで審判確定しているペアを初戦審判候補から完全に自動除外するロジック
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
 
@@ -141,23 +163,7 @@ export default function App() {
       }
 
       // 2. コートで完了した試合がない場合（初戦）：グループ内待機ペアから選出
-      // ★他コートで次回審判確定しているペアID、または進行中試合に出場中の選手IDを収集して除外する
-      const otherCourtRefIds = new Set();
-
-      Object.keys(lastCourtReferees).forEach(cNum => {
-        if (Number(cNum) !== Number(m.courtNumber)) {
-          const ref = lastCourtReferees[cNum];
-          if (ref.mainId) otherCourtRefIds.add(String(ref.mainId));
-          if (ref.lineId) otherCourtRefIds.add(String(ref.lineId));
-        }
-      });
-
-      matches.forEach(x => {
-        if (x.courtNumber !== null && Number(x.courtNumber) !== Number(m.courtNumber) && (x.status === 'calling' || x.status === 'recepted' || x.status === 'in_progress')) {
-          if (x.team1Id) otherCourtRefIds.add(String(x.team1Id));
-          if (x.team2Id) otherCourtRefIds.add(String(x.team2Id));
-        }
-      });
+      const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
 
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
@@ -169,7 +175,7 @@ export default function App() {
       const waitingTeams = groupTeams.filter(e => 
         String(e.id) !== t1 && 
         String(e.id) !== t2 &&
-        !otherCourtRefIds.has(String(e.id))
+        !occupiedRefIds.has(String(e.id))
       );
 
       if (waitingTeams.length >= 2) {
@@ -1364,6 +1370,308 @@ export default function App() {
 
     return stats.sort((a, b) => b.wins - a.wins);
   };
+
+  const getTournamentSlotInfo = (cls, pos) => {
+    const classLeagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+    const isLeagueCompleted = classLeagueMatches.length > 0 && classLeagueMatches.every(m => m.status === 'completed');
+
+    const manualTeam = entries.find(e => e.cls === cls && e.tournamentPosition === pos);
+    if (manualTeam) {
+      return { team: manualTeam, label: null, isBye: false };
+    }
+
+    const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
+    const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => 
+      clsEntries.some(e => e.group === g)
+    );
+    const groupCount = activeGroups.length;
+    const advCondition = config.advancementCondition || 'top2';
+    const numPerGroup = advCondition === 'top1' ? 1 : 2;
+
+    if (groupCount === 3 && numPerGroup === 2) {
+      const slotRules6 = {
+        1: { group: 'A', rank: 0, label: 'グループA 1位' },
+        2: { isBye: true, label: 'シード (不戦勝)' },
+        3: { group: 'C', rank: 1, label: 'グループC 2位' },
+        4: { group: 'B', rank: 1, label: 'グループB 2位' },
+        5: { group: 'B', rank: 0, label: 'グループB 1位' },
+        6: { isBye: true, label: 'シード (不戦勝)' },
+        7: { group: 'A', rank: 1, label: 'グループA 2位' },
+        8: { group: 'C', rank: 0, label: 'グループC 1位' },
+      };
+
+      const rule = slotRules6[pos];
+      if (rule) {
+        if (rule.isBye) {
+          return { team: null, label: 'シード (不戦勝)', isBye: true };
+        }
+        if (isLeagueCompleted) {
+          const standings = getGroupStandings(cls, rule.group);
+          if (standings[rule.rank]) {
+            return { team: standings[rule.rank], label: null, isBye: false };
+          }
+        }
+        return { team: null, label: rule.label, isBye: false };
+      }
+    }
+
+    if (groupCount === 2 && numPerGroup === 2) {
+      const slotRules4 = {
+        1: { group: 'A', rank: 0, label: 'グループA 1位' },
+        2: { group: 'B', rank: 1, label: 'グループB 2位' },
+        3: { group: 'B', rank: 0, label: 'グループB 1位' },
+        4: { group: 'A', rank: 1, label: 'グループA 2位' },
+      };
+      const rule = slotRules4[pos];
+      if (rule) {
+        if (isLeagueCompleted) {
+          const standings = getGroupStandings(cls, rule.group);
+          if (standings[rule.rank]) {
+            return { team: standings[rule.rank], label: null, isBye: false };
+          }
+        }
+        return { team: null, label: rule.label, isBye: false };
+      }
+      if (pos > 4) {
+        return { team: null, label: '-', isBye: true };
+      }
+    }
+
+    const slotRules8 = {
+      1: { group: 'A', rank: 0, label: 'グループA 1位' },
+      2: { group: 'B', rank: 1, label: 'グループB 2位' },
+      3: { group: 'B', rank: 0, label: 'グループB 1位' },
+      4: { group: 'A', rank: 1, label: 'グループA 2位' },
+      5: { group: 'C', rank: 0, label: 'グループC 1位' },
+      6: { group: 'D', rank: 1, label: 'グループD 2位' },
+      7: { group: 'D', rank: 0, label: 'グループD 1位' },
+      8: { group: 'C', rank: 1, label: 'グループC 2位' },
+    };
+    const rule = slotRules8[pos];
+    if (rule) {
+      if (isLeagueCompleted) {
+        const standings = getGroupStandings(cls, rule.group);
+        if (standings[rule.rank] && rule.rank < numPerGroup) {
+          return { team: standings[rule.rank], label: null, isBye: false };
+        }
+      }
+      return { team: null, label: rule.label, isBye: false };
+    }
+
+    return { team: null, label: `枠 ${pos}`, isBye: false };
+  };
+
+  const calculateSimulation = () => {
+    let totalEntries = entries.length;
+    let totalLeagueRemaining = 0;
+    let totalLeagueCompleted = 0;
+    let totalLeagueMatches = 0;
+
+    let totalTournamentRemaining = 0;
+    let totalTournamentCompleted = 0;
+    let totalTournamentMatches = 0;
+
+    const classStats = config.classes.map(cls => {
+      const clsEntries = entries.filter(e => e.cls === cls);
+      const count = clsEntries.length;
+      
+      const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      let activeGroupCount = 0;
+      let calculatedLeagueTotal = 0;
+
+      groupNames.forEach(g => {
+        const inGroup = clsEntries.filter(e => e.group === g).length;
+        if (inGroup > 0) {
+          activeGroupCount++;
+          calculatedLeagueTotal += (inGroup * (inGroup - 1)) / 2;
+        }
+      });
+
+      const actualLeagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+      const leagueTotal = actualLeagueMatches.length > 0 ? actualLeagueMatches.length : calculatedLeagueTotal;
+      const leagueCompleted = matches.filter(m => m.cls === cls && m.matchType === 'league' && m.status === 'completed').length;
+      const leagueRemaining = Math.max(0, leagueTotal - leagueCompleted);
+
+      let calculatedTournamentTotal = 0;
+      if (activeGroupCount > 0) {
+        const advPerGroup = config.advancementCondition === 'top1' ? 1 : 2;
+        const advTeams = activeGroupCount * advPerGroup;
+        if (advTeams > 1) {
+          calculatedTournamentTotal = advTeams - 1;
+        }
+      }
+
+      const actualTournamentMatches = matches.filter(m => m.cls === cls && m.matchType === 'tournament');
+      const tournamentTotal = actualTournamentMatches.length > 0 ? actualTournamentMatches.length : calculatedTournamentTotal;
+      const tournamentCompleted = matches.filter(m => m.cls === cls && m.matchType === 'tournament' && m.status === 'completed').length;
+      const tournamentRemaining = Math.max(0, tournamentTotal - tournamentCompleted);
+
+      const totalMatches = leagueTotal + tournamentTotal;
+      const completedMatches = leagueCompleted + tournamentCompleted;
+      const remainingMatches = leagueRemaining + tournamentRemaining;
+
+      totalLeagueMatches += leagueTotal;
+      totalLeagueCompleted += leagueCompleted;
+      totalLeagueRemaining += leagueRemaining;
+
+      totalTournamentMatches += tournamentTotal;
+      totalTournamentCompleted += tournamentCompleted;
+      totalTournamentRemaining += tournamentRemaining;
+
+      return {
+        cls,
+        count,
+        leagueTotal,
+        leagueCompleted,
+        leagueRemaining,
+        tournamentTotal,
+        tournamentCompleted,
+        tournamentRemaining,
+        totalMatches,
+        completedMatches,
+        remainingMatches
+      };
+    });
+
+    const totalRemainingMatches = totalLeagueRemaining + totalTournamentRemaining;
+    const totalCompletedMatches = totalLeagueCompleted + totalTournamentCompleted;
+    const totalMatches = totalLeagueMatches + totalTournamentMatches;
+
+    const courts = config.courts || 1;
+    const avgDuration = config.avgMatchDuration || 15;
+    
+    const remainingMinutes = Math.ceil((totalRemainingMatches * avgDuration) / courts);
+    const hours = Math.floor(remainingMinutes / 60);
+    const minutes = remainingMinutes % 60;
+
+    let endTimeStr = '--:--';
+    if (simCurrentTime) {
+      const [startH, startM] = simCurrentTime.split(':').map(Number);
+      if (!isNaN(startH) && !isNaN(startM)) {
+        const endTotalM = startH * 60 + startM + remainingMinutes;
+        const endH = Math.floor(endTotalM / 60) % 24;
+        const endM = endTotalM % 60;
+        endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+      }
+    }
+
+    return {
+      classStats,
+      totalEntries,
+      totalLeagueMatches,
+      totalLeagueCompleted,
+      totalLeagueRemaining,
+      totalTournamentMatches,
+      totalTournamentCompleted,
+      totalTournamentRemaining,
+      totalMatches,
+      totalCompletedMatches,
+      totalRemainingMatches,
+      remainingMinutes,
+      hours,
+      minutes,
+      endTimeStr
+    };
+  };
+
+  const simResult = calculateSimulation();
+
+  const filteredReceptionEntries = entries.filter(ent => {
+    if (receptionClassFilter !== 'all' && ent.cls !== receptionClassFilter) {
+      return false;
+    }
+    if (receptionSearchQuery.trim() !== '') {
+      const query = receptionSearchQuery.toLowerCase();
+      const targetText = `${ent.id} ${ent.cls} ${ent.club} ${ent.p1Name} ${ent.p2Name} ${ent.p1Club} ${ent.p2Club}`.toLowerCase();
+      if (!targetText.includes(query)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  function createBracketSlot(cls, pos, isEditable) {
+    const slotInfo = getTournamentSlotInfo(cls, pos);
+    const team = slotInfo.team;
+
+    if (slotInfo.isBye) {
+      return (
+        <div key={`slot-${pos}`} className="border-2 border-gray-200 bg-gray-100 p-2 rounded w-44 h-14 flex flex-col items-center justify-center relative opacity-70">
+           <div className="text-[10px] text-gray-400 absolute top-1 left-2 font-mono">枠{pos}</div>
+           <div className="font-bold text-xs text-gray-400 text-center mt-1 px-1">シード (不戦勝)</div>
+        </div>
+      );
+    }
+
+    if (isEditable) {
+      return (
+        <div key={`slot-${pos}`} className={`border-2 ${team ? 'border-orange-500 bg-orange-50' : 'border-dashed border-gray-400 bg-white'} p-2 rounded w-44 h-16 flex flex-col items-center justify-center cursor-pointer relative shadow-sm z-10`} onDragOver={handleDragOver} onDrop={(e) => handleTournamentDrop(e, pos)} draggable={!!team} onDragStart={(e) => team && handleDragStart(e, team.id)}>
+           <div className="text-[10px] text-gray-500 absolute top-1 left-2 font-mono">枠{pos}</div>
+           <div className="font-bold text-xs truncate w-full text-center mt-2 px-1">{team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label || 'ドロップ'}</span>}</div>
+        </div>
+      );
+    }
+    return (
+      <div key={`slot-${pos}`} className={`border-2 ${team ? 'border-[#2c5f4e] bg-white' : 'border-dashed border-gray-300 bg-gray-50'} p-2 rounded w-44 h-14 flex flex-col items-center justify-center relative shadow-sm z-10`}>
+         <div className="text-[10px] text-gray-500 absolute top-1 left-2 font-mono">枠{pos}</div>
+         <div className="font-bold text-xs truncate w-full text-center mt-1 px-1">
+            {team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label}</span>}
+         </div>
+      </div>
+    );
+  }
+
+  function renderTournamentTree(cls, isEditable) {
+    return (
+      <div className="p-4 overflow-x-auto">
+        <div className="flex min-w-[900px] font-sans items-center">
+          <div className="flex flex-col justify-around h-[560px]">
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 1, isEditable)}{createBracketSlot(cls, 2, isEditable)}</div>
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 3, isEditable)}{createBracketSlot(cls, 4, isEditable)}</div>
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 5, isEditable)}{createBracketSlot(cls, 6, isEditable)}</div>
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 7, isEditable)}{createBracketSlot(cls, 8, isEditable)}</div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6 -ml-1 relative z-0">
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6">
+             <div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] relative z-10">
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6 -ml-1 py-[35px] relative z-0">
+             <div className="h-[140px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[140px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6">
+             <div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] relative z-10">
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">決勝進出</div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6 -ml-1 py-[105px] relative z-0">
+             <div className="h-[280px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6">
+             <div className="border-b-2 border-gray-400 w-full"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] relative z-10">
+             <div className="w-32 h-16 bg-yellow-50 border-2 border-yellow-400 rounded-xl shadow-md flex flex-col items-center justify-center text-yellow-800 font-bold">
+               <IconTrophy /> 優勝
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">

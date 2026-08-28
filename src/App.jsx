@@ -106,12 +106,9 @@ export default function App() {
     return null;
   };
 
-  // 連戦・自試合審判防止チェック付きの審判取得ロジック
+  // 【修正】連戦・自試合審判防止チェック付きの審判取得ロジック
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
-
-    const t1 = String(m.team1Id);
-    const t2 = String(m.team2Id);
 
     if (m.matchType === 'league') {
       // 1. そのコートで直前にスコア確定された記録があれば最優先固定
@@ -123,9 +120,12 @@ export default function App() {
         let lineText = lastRef.line;
         let lineId = lastRef.lineId;
 
-        // 【修正】m.status !== 'completed'（＝新しい未完了試合が配置された時）のみ連戦チェックを実行。
-        // スコア確定直後（m.status === 'completed'）は当事者そのものなので、連戦判定を行わず次回審判として勝者・敗者をそのまま正しく表示する。
+        // 【重大修正】m.status !== 'completed'（＝新しい未完了試合がコートに配置されている時）のみ連戦チェックを実行。
+        // スコア確定直後（m.status === 'completed'）は、前試合の勝者・敗者そのものなので、連戦判定を行わず次回審判として勝者・敗者をそのまま正しく表示する。
         if (m.status !== 'completed') {
+          const t1 = String(m.team1Id);
+          const t2 = String(m.team2Id);
+
           if (mainId && (String(mainId) === t1 || String(mainId) === t2)) {
             mainText = "他クラス/他ペア応援依頼 (連戦)";
             mainId = null;
@@ -145,6 +145,9 @@ export default function App() {
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
         
+      const t1 = String(m.team1Id);
+      const t2 = String(m.team2Id);
+
       const waitingTeams = groupTeams.filter(e => 
         String(e.id) !== t1 && 
         String(e.id) !== t2

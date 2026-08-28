@@ -887,83 +887,48 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 同一コートで直前に完了した試合の勝者・敗者を優先取得する審判判定ロジック
+  // 同一コートで直前に完了した試合の勝者・敗者を優先取得する審判判定ロジック（初戦のみ自動割り当て）
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', line: '未定' };
 
     if (m.matchType === 'league') {
-      // 1. まず同じ「コート番号」で直前に完了(completed)した試合を探す
+      // 1. 同一コートで「直前に完了(completed)している試合」を判定（2試合目以降）
       if (m.courtNumber !== null) {
-        const sameCourtPrevMatches = matches.filter(pm => 
+        const sameCourtCompletedMatches = matches.filter(pm => 
           Number(pm.courtNumber) === Number(m.courtNumber) && 
           pm.status === 'completed' && 
           pm.id !== m.id
         );
 
-        if (sameCourtPrevMatches.length > 0) {
-          const lastMatch = sameCourtPrevMatches[sameCourtPrevMatches.length - 1];
+        if (sameCourtCompletedMatches.length > 0) {
+          const lastMatch = sameCourtCompletedMatches[sameCourtCompletedMatches.length - 1];
           const s1 = Number(lastMatch.team1Score || 0);
           const s2 = Number(lastMatch.team2Score || 0);
           
           const winnerId = String(s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id);
           const loserId = String(s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id);
 
-          const isTeam1 = String(m.team1Id);
-          const isTeam2 = String(m.team2Id);
-
-          const mainRef = (winnerId === isTeam1 || winnerId === isTeam2) 
-                          ? '他ペア応援依頼 (連戦)' 
-                          : getTeamNameWithClub(winnerId);
-          
-          const lineRef = (loserId === isTeam1 || loserId === isTeam2) 
-                          ? '他ペア応援依頼 (連戦)' 
-                          : getTeamNameWithClub(loserId);
-
-          return { main: mainRef, line: lineRef };
+          return {
+            main: getTeamNameWithClub(winnerId),
+            line: getTeamNameWithClub(loserId)
+          };
         }
       }
 
-      // 2. コートに過去完了試合がない場合は、同じグループの直前完了試合を探す
-      const prevMatches = matches
-        .filter(pm => pm.cls === m.cls && pm.group === m.group && pm.matchOrder < m.matchOrder && pm.status === 'completed')
-        .sort((a, b) => b.matchOrder - a.matchOrder);
-
-      if (prevMatches.length > 0) {
-        const lastMatch = prevMatches[0];
-        const s1 = Number(lastMatch.team1Score || 0);
-        const s2 = Number(lastMatch.team2Score || 0);
+      // 2. そのコートでまだ完了試合が存在しない場合（初戦の自動割り当て）
+      const groupTeams = entries
+        .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
         
-        const winnerId = String(s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id);
-        const loserId = String(s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id);
+      const waitingTeams = groupTeams.filter(e => String(e.id) !== String(m.team1Id) && String(e.id) !== String(m.team2Id));
 
-        const isTeam1 = String(m.team1Id);
-        const isTeam2 = String(m.team2Id);
-
-        const mainRef = (winnerId === isTeam1 || winnerId === isTeam2) 
-                        ? '他ペア応援依頼 (連戦)' 
-                        : getTeamNameWithClub(winnerId);
-        
-        const lineRef = (loserId === isTeam1 || loserId === isTeam2) 
-                        ? '他ペア応援依頼 (連戦)' 
-                        : getTeamNameWithClub(loserId);
-
-        return { main: mainRef, line: lineRef };
+      if (waitingTeams.length >= 2) {
+         return { main: getTeamNameWithClub(waitingTeams[0].id), line: getTeamNameWithClub(waitingTeams[1].id) };
+      } else if (waitingTeams.length === 1) {
+         const refName = getTeamNameWithClub(waitingTeams[0].id);
+         return { main: refName, line: refName };
       } else {
-        // 3. 完了試合が全くないグループ初戦時の待機ペア
-        const groupTeams = entries
-          .filter(e => e.cls === m.cls && e.group === m.group)
-          .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-          
-        const waitingTeams = groupTeams.filter(e => String(e.id) !== String(m.team1Id) && String(e.id) !== String(m.team2Id));
-
-        if (waitingTeams.length >= 2) {
-           return { main: getTeamNameWithClub(waitingTeams[0].id), line: getTeamNameWithClub(waitingTeams[1].id) };
-        } else if (waitingTeams.length === 1) {
-           const refName = getTeamNameWithClub(waitingTeams[0].id);
-           return { main: refName, line: refName };
-        } else {
-           return { main: "他クラス空きペア応援", line: "他クラス空きペア応援" };
-        }
+         return { main: "他クラス空きペア応援", line: "他クラス空きペア応援" };
       }
     } else {
       return { main: "本部調整 / 敗者審判", line: "本部調整 / 敗者審判" };

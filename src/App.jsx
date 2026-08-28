@@ -507,6 +507,50 @@ export default function App() {
     return null;
   };
 
+  // 【改修】初戦固定審判と直前完了審判を固定選出するロジック
+  const getRefereeForMatch = (m) => {
+    if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
+
+    if (m.matchType === 'league') {
+      // 1. そのコートで直前にスコア確定された記録があれば最優先固定
+      if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
+        return lastCourtReferees[m.courtNumber];
+      }
+
+      // 2. そのコートでまだ完了試合がない場合（初戦）：グループ内の待機ペアを固定選出（自ペア・対戦ペア以外）
+      const groupTeams = entries
+        .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        
+      const waitingTeams = groupTeams.filter(e => 
+        String(e.id) !== String(m.team1Id) && 
+        String(e.id) !== String(m.team2Id)
+      );
+
+      if (waitingTeams.length >= 2) {
+         return { 
+           main: getTeamNameWithClub(waitingTeams[0].id), 
+           mainId: waitingTeams[0].id,
+           line: getTeamNameWithClub(waitingTeams[1].id),
+           lineId: waitingTeams[1].id
+         };
+      } else if (waitingTeams.length === 1) {
+         const refName = getTeamNameWithClub(waitingTeams[0].id);
+         return { 
+           main: refName, 
+           mainId: waitingTeams[0].id, 
+           line: "他クラス/他ペア応援依頼", 
+           lineId: null 
+         };
+      } else {
+         return { main: "他クラス/他ペア応援依頼", mainId: null, line: "他クラス/他ペア応援依頼", lineId: null };
+      }
+    } else {
+      return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null };
+    }
+  };
+
+  // 【改修】コートで現在進行中または審判担当中のペアマップを取得（他コートでドラッグ配置時の重複チェック用）
   const getBusyTeamDetails = () => {
     const busyMap = new Map();
 
@@ -517,7 +561,7 @@ export default function App() {
 
         const ref = getRefereeForMatch(m);
         if (ref.mainId) busyMap.set(String(ref.mainId), { court: m.courtNumber, role: '審判担当中' });
-        if (ref.lineId) busyMap.set(String(ref.lineId), { court: m.courtNumber, role: '審判担当中' });
+        if (ref.lineId && ref.lineId !== ref.mainId) busyMap.set(String(ref.lineId), { court: m.courtNumber, role: '審判担当中' });
       }
     });
 
@@ -529,7 +573,6 @@ export default function App() {
     return new Set(busyMap.keys());
   };
 
-  // 【復元】優先対戦リストのソート用関数
   const getSortedWaitingMatches = () => {
     const busyIds = getBusyTeamIds();
     const waitingMatches = matches.filter(m => m.status === 'waiting');
@@ -552,6 +595,7 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
+    // 重複チェック（試合中または他コートで審判中のペアを検出）
     const busyMap = getBusyTeamDetails();
     const team1Busy = busyMap.get(String(targetMatch.team1Id));
     const team2Busy = busyMap.get(String(targetMatch.team2Id));
@@ -1200,28 +1244,6 @@ export default function App() {
       ),
       onClose: () => setDialog(null)
     });
-  };
-
-  const getGroupStandings = (cls, groupName) => {
-    const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName);
-    const groupMatches = matches.filter(m => m.cls === cls && m.group === groupName && m.status === 'completed');
-
-    const stats = groupEntries.map(ent => {
-      let wins = 0;
-      let losses = 0;
-      groupMatches.forEach(m => {
-        if (m.team1Id === ent.id) {
-          if (m.team1Score > m.team2Score) wins++;
-          else if (m.team1Score < m.team2Score) losses++;
-        } else if (m.team2Id === ent.id) {
-          if (m.team2Score > m.team1Score) wins++;
-          else if (m.team2Score < m.team1Score) losses++;
-        }
-      });
-      return { ...ent, wins, losses };
-    });
-
-    return stats.sort((a, b) => b.wins - a.wins);
   };
 
   const viewHome = (

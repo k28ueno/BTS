@@ -331,6 +331,24 @@ export default function App() {
     }
   };
 
+  // 指定コートで現在「呼び出し・受付・進行中」または「最後スコア済」の試合を取得
+  const getActiveMatchForCourt = (courtNum) => {
+    const courtMatches = matches.filter(m => Number(m.courtNumber) === Number(courtNum));
+    if (courtMatches.length === 0) return null;
+
+    // 1. 未完了の試合 (calling, recepted, in_progress)
+    const active = courtMatches.find(m => m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress');
+    if (active) return active;
+
+    // 2. なければ最後に完了した試合
+    const completedList = courtMatches.filter(m => m.status === 'completed');
+    if (completedList.length > 0) {
+      return completedList[completedList.length - 1];
+    }
+
+    return null;
+  };
+
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
@@ -361,18 +379,16 @@ export default function App() {
       return;
     }
 
-    const existingMatch = matches.find(m => m.courtNumber === courtNum && courtNum !== null);
-    if (existingMatch && (existingMatch.status === 'in_progress' || existingMatch.status === 'recepted')) {
+    const currentActiveOnCourt = getActiveMatchForCourt(courtNum);
+    if (currentActiveOnCourt && (currentActiveOnCourt.status === 'in_progress' || currentActiveOnCourt.status === 'recepted')) {
       setDialog({ title: "ドロップ不可", message: "進行中のコートには新しい試合をドラッグ割り当てできません。コート解除またはスコア確定を行ってください。", onClose: () => setDialog(null) });
       return;
     }
 
     const updated = matches.map(m => {
-      if (m.courtNumber === courtNum && courtNum !== null) {
-        if (m.id === matchId) {
-          return { ...m, courtNumber: courtNum, status: (m.team1Score !== null && m.team2Score !== null) ? 'completed' : 'calling' };
-        }
-        return { ...m, courtNumber: null, status: (m.team1Score !== null && m.team2Score !== null) ? 'completed' : 'waiting' };
+      // ドロップ先コートの未完了試合があれば解任する（完了済み試合のcourtNumber履歴は保持！）
+      if (Number(m.courtNumber) === Number(courtNum) && m.id !== matchId && m.status !== 'completed') {
+        return { ...m, courtNumber: null, status: 'waiting' };
       }
       if (m.id === matchId) {
         const isScored = m.team1Score !== null && m.team2Score !== null;
@@ -388,8 +404,8 @@ export default function App() {
     setMatches(updated);
 
     if (isSupabaseConfigured) {
-      if (courtNum !== null && existingMatch) {
-        await supabase.from('matches').update({ court_number: null, status: (existingMatch.team1Score !== null && existingMatch.team2Score !== null) ? 'completed' : 'waiting' }).eq('id', existingMatch.id);
+      if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
+        await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
       }
       await supabase.from('matches').update({ 
         court_number: courtNum, 
@@ -887,7 +903,7 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 同一コートで直前に完了した試合の勝者・敗者を優先取得する審判判定ロジック（初戦のみ自動割り当て）
+  // 同一コートで直前に完了した試合の勝者・敗者を最優先取得する審判判定ロジック
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', line: '未定' };
 
@@ -1368,7 +1384,7 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
              {Array.from({length: config.courts}).map((_, i) => {
                 const courtNum = i + 1;
-                const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
+                const activeMatch = getActiveMatchForCourt(courtNum);
                 
                 let statusLabel = '空き';
                 let badgeClass = 'bg-gray-100 text-gray-500';
@@ -2009,16 +2025,16 @@ export default function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                      {Array.from({ length: config.courts }).map((_, i) => {
                         const courtNum = i + 1;
-                        const activeMatch = matches.find(m => Number(m.courtNumber) === courtNum && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress' || m.status === 'completed'));
+                        const activeMatch = getActiveMatchForCourt(courtNum);
                         
                         let cardBgClass = 'bg-white border-dashed border-gray-300 hover:border-emerald-400';
-                        let badgeLabel = 'コール';
+                        let badgeLabel = '要コール';
                         let badgeBgClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
 
                         if (activeMatch) {
                            if (activeMatch.status === 'calling') {
                               cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                              badgeLabel = 'コール';
+                              badgeLabel = '要コール';
                               badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
                            } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
                               cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';

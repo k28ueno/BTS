@@ -1286,12 +1286,13 @@ export default function App() {
     }
   };
 
-  // 【改修】「スコア解除」ボタン処理（直接呼び出し用）
+  // 【改修】スコア解除ボタン処理（ステータスを in_progress に戻す）
   const handleResetScore = async (matchId) => {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
-    const newStatus = targetMatch.courtNumber ? 'calling' : 'waiting';
+    // スコア解除時はコートに配置された状態で「スコア入力（in_progress）」に戻す
+    const newStatus = targetMatch.courtNumber ? 'in_progress' : 'waiting';
 
     const updated = matches.map(m => m.id === matchId ? {
       ...m,
@@ -1324,7 +1325,7 @@ export default function App() {
       message: (
         <div className="text-left space-y-3">
            <div className="bg-amber-50 text-amber-800 p-3 rounded-lg font-bold text-sm flex items-center gap-2">
-              <IconCheckCircle /> 試合結果（スコア）を解除し、未入力状態に戻しました。
+              <IconCheckCircle /> 試合結果（スコア）を解除し、スコア入力状態に戻しました。
            </div>
         </div>
       ),

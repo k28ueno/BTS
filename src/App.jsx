@@ -75,6 +75,115 @@ export default function App() {
 
   const [lastCourtReferees, setLastCourtReferees] = useState({});
 
+  // ----------------------------------------------------------------
+  // 共通ヘルパー関数群（参照エラー防止のため最上部に定義）
+  // ----------------------------------------------------------------
+  const getTeamNameWithClub = (teamId) => {
+    const ent = entries.find(e => String(e.id) === String(teamId));
+    if (!ent) return '未定';
+    const clubStr = ent.club ? ` (${ent.club})` : '';
+    return `${ent.p1Name}・${ent.p2Name}${clubStr}`;
+  };
+
+  const getPairFee = (ent) => {
+    if (!ent) return 0;
+    const cat = ent.feeCategory || ent.p1Fee || '一般';
+    return config.fees[cat] ?? (cat === '高校生まで' ? 2000 : 4000);
+  };
+
+  const getActiveMatchForCourt = (courtNum) => {
+    const courtMatches = matches.filter(m => Number(m.courtNumber) === Number(courtNum));
+    if (courtMatches.length === 0) return null;
+
+    const active = courtMatches.find(m => m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress');
+    if (active) return active;
+
+    const completedList = courtMatches.filter(m => m.status === 'completed');
+    if (completedList.length > 0) {
+      return completedList[completedList.length - 1];
+    }
+
+    return null;
+  };
+
+  const getRefereeForMatch = (m) => {
+    if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
+
+    if (m.matchType === 'league') {
+      if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
+        return lastCourtReferees[m.courtNumber];
+      }
+
+      const groupTeams = entries
+        .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        
+      const waitingTeams = groupTeams.filter(e => 
+        String(e.id) !== String(m.team1Id) && 
+        String(e.id) !== String(m.team2Id)
+      );
+
+      if (waitingTeams.length >= 2) {
+         return { 
+           main: getTeamNameWithClub(waitingTeams[0].id), 
+           mainId: waitingTeams[0].id,
+           line: getTeamNameWithClub(waitingTeams[1].id),
+           lineId: waitingTeams[1].id
+         };
+      } else if (waitingTeams.length === 1) {
+         const refName = getTeamNameWithClub(waitingTeams[0].id);
+         return { 
+           main: refName, 
+           mainId: waitingTeams[0].id, 
+           line: "他クラス/他ペア応援依頼", 
+           lineId: null 
+         };
+      } else {
+         return { main: "他クラス/他ペア応援依頼", mainId: null, line: "他クラス/他ペア応援依頼", lineId: null };
+      }
+    } else {
+      return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null };
+    }
+  };
+
+  const getBusyTeamDetails = () => {
+    const busyMap = new Map();
+
+    matches.forEach(m => {
+      if (m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
+        if (m.team1Id) busyMap.set(String(m.team1Id), { court: m.courtNumber, role: '試合進行中' });
+        if (m.team2Id) busyMap.set(String(m.team2Id), { court: m.courtNumber, role: '試合進行中' });
+
+        const ref = getRefereeForMatch(m);
+        if (ref.mainId) busyMap.set(String(ref.mainId), { court: m.courtNumber, role: '審判担当中' });
+        if (ref.lineId && ref.lineId !== ref.mainId) busyMap.set(String(ref.lineId), { court: m.courtNumber, role: '審判担当中' });
+      }
+    });
+
+    return busyMap;
+  };
+
+  const getBusyTeamIds = () => {
+    const busyMap = getBusyTeamDetails();
+    return new Set(busyMap.keys());
+  };
+
+  const getSortedWaitingMatches = () => {
+    const busyIds = getBusyTeamIds();
+    const waitingMatches = matches.filter(m => m.status === 'waiting');
+
+    return [...waitingMatches].sort((a, b) => {
+      const aBusy = busyIds.has(String(a.team1Id)) || busyIds.has(String(a.team2Id));
+      const bBusy = busyIds.has(String(b.team1Id)) || busyIds.has(String(b.team2Id));
+
+      if (!aBusy && bBusy) return -1;
+      if (aBusy && !bBusy) return 1;
+      return a.matchOrder - b.matchOrder;
+    });
+  };
+
+  // ----------------------------------------------------------------
+
   useEffect(() => {
     if (config.classes && config.classes.length > 0) {
       setTestGenCounts(prev => {
@@ -92,12 +201,6 @@ export default function App() {
     const h = String(now.getHours()).padStart(2, '0');
     const m = String(now.getMinutes()).padStart(2, '0');
     setSimCurrentTime(`${h}:${m}`);
-  };
-
-  const getPairFee = (ent) => {
-    if (!ent) return 0;
-    const cat = ent.feeCategory || ent.p1Fee || '一般';
-    return config.fees[cat] ?? (cat === '高校生まで' ? 2000 : 4000);
   };
 
   useEffect(() => {
@@ -492,101 +595,6 @@ export default function App() {
     }
   };
 
-  const getActiveMatchForCourt = (courtNum) => {
-    const courtMatches = matches.filter(m => Number(m.courtNumber) === Number(courtNum));
-    if (courtMatches.length === 0) return null;
-
-    const active = courtMatches.find(m => m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress');
-    if (active) return active;
-
-    const completedList = courtMatches.filter(m => m.status === 'completed');
-    if (completedList.length > 0) {
-      return completedList[completedList.length - 1];
-    }
-
-    return null;
-  };
-
-  // 【改修】初戦固定審判と直前完了審判を固定選出するロジック
-  const getRefereeForMatch = (m) => {
-    if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
-
-    if (m.matchType === 'league') {
-      // 1. そのコートで直前にスコア確定された記録があれば最優先固定
-      if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
-        return lastCourtReferees[m.courtNumber];
-      }
-
-      // 2. そのコートでまだ完了試合がない場合（初戦）：グループ内の待機ペアを固定選出（自ペア・対戦ペア以外）
-      const groupTeams = entries
-        .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
-        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-        
-      const waitingTeams = groupTeams.filter(e => 
-        String(e.id) !== String(m.team1Id) && 
-        String(e.id) !== String(m.team2Id)
-      );
-
-      if (waitingTeams.length >= 2) {
-         return { 
-           main: getTeamNameWithClub(waitingTeams[0].id), 
-           mainId: waitingTeams[0].id,
-           line: getTeamNameWithClub(waitingTeams[1].id),
-           lineId: waitingTeams[1].id
-         };
-      } else if (waitingTeams.length === 1) {
-         const refName = getTeamNameWithClub(waitingTeams[0].id);
-         return { 
-           main: refName, 
-           mainId: waitingTeams[0].id, 
-           line: "他クラス/他ペア応援依頼", 
-           lineId: null 
-         };
-      } else {
-         return { main: "他クラス/他ペア応援依頼", mainId: null, line: "他クラス/他ペア応援依頼", lineId: null };
-      }
-    } else {
-      return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null };
-    }
-  };
-
-  // 【改修】コートで現在進行中または審判担当中のペアマップを取得（他コートでドラッグ配置時の重複チェック用）
-  const getBusyTeamDetails = () => {
-    const busyMap = new Map();
-
-    matches.forEach(m => {
-      if (m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
-        if (m.team1Id) busyMap.set(String(m.team1Id), { court: m.courtNumber, role: '試合進行中' });
-        if (m.team2Id) busyMap.set(String(m.team2Id), { court: m.courtNumber, role: '試合進行中' });
-
-        const ref = getRefereeForMatch(m);
-        if (ref.mainId) busyMap.set(String(ref.mainId), { court: m.courtNumber, role: '審判担当中' });
-        if (ref.lineId && ref.lineId !== ref.mainId) busyMap.set(String(ref.lineId), { court: m.courtNumber, role: '審判担当中' });
-      }
-    });
-
-    return busyMap;
-  };
-
-  const getBusyTeamIds = () => {
-    const busyMap = getBusyTeamDetails();
-    return new Set(busyMap.keys());
-  };
-
-  const getSortedWaitingMatches = () => {
-    const busyIds = getBusyTeamIds();
-    const waitingMatches = matches.filter(m => m.status === 'waiting');
-
-    return [...waitingMatches].sort((a, b) => {
-      const aBusy = busyIds.has(String(a.team1Id)) || busyIds.has(String(a.team2Id));
-      const bBusy = busyIds.has(String(b.team1Id)) || busyIds.has(String(b.team2Id));
-
-      if (!aBusy && bBusy) return -1;
-      if (aBusy && !bBusy) return 1;
-      return a.matchOrder - b.matchOrder;
-    });
-  };
-
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
@@ -595,7 +603,6 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
-    // 重複チェック（試合中または他コートで審判中のペアを検出）
     const busyMap = getBusyTeamDetails();
     const team1Busy = busyMap.get(String(targetMatch.team1Id));
     const team2Busy = busyMap.get(String(targetMatch.team2Id));
@@ -1245,6 +1252,135 @@ export default function App() {
       onClose: () => setDialog(null)
     });
   };
+
+  const calculateSimulation = () => {
+    let totalEntries = entries.length;
+    let totalLeagueRemaining = 0;
+    let totalLeagueCompleted = 0;
+    let totalLeagueMatches = 0;
+
+    let totalTournamentRemaining = 0;
+    let totalTournamentCompleted = 0;
+    let totalTournamentMatches = 0;
+
+    const classStats = config.classes.map(cls => {
+      const clsEntries = entries.filter(e => e.cls === cls);
+      const count = clsEntries.length;
+      
+      const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      let activeGroupCount = 0;
+      let calculatedLeagueTotal = 0;
+
+      groupNames.forEach(g => {
+        const inGroup = clsEntries.filter(e => e.group === g).length;
+        if (inGroup > 0) {
+          activeGroupCount++;
+          calculatedLeagueTotal += (inGroup * (inGroup - 1)) / 2;
+        }
+      });
+
+      const actualLeagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+      const leagueTotal = actualLeagueMatches.length > 0 ? actualLeagueMatches.length : calculatedLeagueTotal;
+      const leagueCompleted = matches.filter(m => m.cls === cls && m.matchType === 'league' && m.status === 'completed').length;
+      const leagueRemaining = Math.max(0, leagueTotal - leagueCompleted);
+
+      let calculatedTournamentTotal = 0;
+      if (activeGroupCount > 0) {
+        const advPerGroup = config.advancementCondition === 'top1' ? 1 : 2;
+        const advTeams = activeGroupCount * advPerGroup;
+        if (advTeams > 1) {
+          calculatedTournamentTotal = advTeams - 1;
+        }
+      }
+
+      const actualTournamentMatches = matches.filter(m => m.cls === cls && m.matchType === 'tournament');
+      const tournamentTotal = actualTournamentMatches.length > 0 ? actualTournamentMatches.length : calculatedTournamentTotal;
+      const tournamentCompleted = matches.filter(m => m.cls === cls && m.matchType === 'tournament' && m.status === 'completed').length;
+      const tournamentRemaining = Math.max(0, tournamentTotal - tournamentCompleted);
+
+      const totalMatches = leagueTotal + tournamentTotal;
+      const completedMatches = leagueCompleted + tournamentCompleted;
+      const remainingMatches = leagueRemaining + tournamentRemaining;
+
+      totalLeagueMatches += leagueTotal;
+      totalLeagueCompleted += leagueCompleted;
+      totalLeagueRemaining += leagueRemaining;
+
+      totalTournamentMatches += tournamentTotal;
+      totalTournamentCompleted += tournamentCompleted;
+      totalTournamentRemaining += tournamentRemaining;
+
+      return {
+        cls,
+        count,
+        leagueTotal,
+        leagueCompleted,
+        leagueRemaining,
+        tournamentTotal,
+        tournamentCompleted,
+        tournamentRemaining,
+        totalMatches,
+        completedMatches,
+        remainingMatches
+      };
+    });
+
+    const totalRemainingMatches = totalLeagueRemaining + totalTournamentRemaining;
+    const totalCompletedMatches = totalLeagueCompleted + totalTournamentCompleted;
+    const totalMatches = totalLeagueMatches + totalTournamentMatches;
+
+    const courts = config.courts || 1;
+    const avgDuration = config.avgMatchDuration || 15;
+    
+    const remainingMinutes = Math.ceil((totalRemainingMatches * avgDuration) / courts);
+    const hours = Math.floor(remainingMinutes / 60);
+    const minutes = remainingMinutes % 60;
+
+    let endTimeStr = '--:--';
+    if (simCurrentTime) {
+      const [startH, startM] = simCurrentTime.split(':').map(Number);
+      if (!isNaN(startH) && !isNaN(startM)) {
+        const endTotalM = startH * 60 + startM + remainingMinutes;
+        const endH = Math.floor(endTotalM / 60) % 24;
+        const endM = endTotalM % 60;
+        endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+      }
+    }
+
+    return {
+      classStats,
+      totalEntries,
+      totalLeagueMatches,
+      totalLeagueCompleted,
+      totalLeagueRemaining,
+      totalTournamentMatches,
+      totalTournamentCompleted,
+      totalTournamentRemaining,
+      totalMatches,
+      totalCompletedMatches,
+      totalRemainingMatches,
+      remainingMinutes,
+      hours,
+      minutes,
+      endTimeStr
+    };
+  };
+
+  const simResult = calculateSimulation();
+
+  const filteredReceptionEntries = entries.filter(ent => {
+    if (receptionClassFilter !== 'all' && ent.cls !== receptionClassFilter) {
+      return false;
+    }
+    if (receptionSearchQuery.trim() !== '') {
+      const query = receptionSearchQuery.toLowerCase();
+      const targetText = `${ent.id} ${ent.cls} ${ent.club} ${ent.p1Name} ${ent.p2Name} ${ent.p1Club} ${ent.p2Club}`.toLowerCase();
+      if (!targetText.includes(query)) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">

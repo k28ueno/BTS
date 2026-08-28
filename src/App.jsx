@@ -123,14 +123,18 @@ export default function App() {
         let lineText = lastRef.line;
         let lineId = lastRef.lineId;
 
-        if (mainId && (String(mainId) === t1 || String(mainId) === t2)) {
-          mainText = "他クラス/他ペア応援依頼 (連戦)";
-          mainId = null;
-        }
+        // 【修正】m.status !== 'completed'（＝新しい未完了試合が配置された時）のみ連戦チェックを実行。
+        // スコア確定直後（m.status === 'completed'）は当事者そのものなので、連戦判定を行わず次回審判として勝者・敗者をそのまま正しく表示する。
+        if (m.status !== 'completed') {
+          if (mainId && (String(mainId) === t1 || String(mainId) === t2)) {
+            mainText = "他クラス/他ペア応援依頼 (連戦)";
+            mainId = null;
+          }
 
-        if (lineId && (String(lineId) === t1 || String(lineId) === t2)) {
-          lineText = "他クラス/他ペア応援依頼 (連戦)";
-          lineId = null;
+          if (lineId && (String(lineId) === t1 || String(lineId) === t2)) {
+            lineText = "他クラス/他ペア応援依頼 (連戦)";
+            lineId = null;
+          }
         }
 
         return { main: mainText, mainId, line: lineText, lineId };
@@ -618,7 +622,6 @@ export default function App() {
     }
   };
 
-  // 【改修】ドロップ先コート（courtNum）の「次回審判予定ペア」と、ドロップしようとする試合（targetMatch）のペアが一致した場合のブロック制御を追加
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
@@ -627,7 +630,6 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
-    // 1. 他コートで「試合進行中」または「他コートの審判担当中」のチェック
     const busyMap = getBusyTeamDetails();
     const team1Busy = busyMap.get(String(targetMatch.team1Id));
     const team2Busy = busyMap.get(String(targetMatch.team2Id));
@@ -652,7 +654,6 @@ export default function App() {
       return;
     }
 
-    // 2. 【新規追加】ドロップ先コート（courtNum）で「審判予定ペア」として設定されているペアの自試合配置ブロック
     let courtRefMainId = null;
     let courtRefLineId = null;
 

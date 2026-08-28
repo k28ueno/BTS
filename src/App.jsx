@@ -817,7 +817,7 @@ export default function App() {
     return await generateClassLeagueMatches(targetCls, currentEntriesList);
   };
 
-  // 【改修】予選リーグの全試合完了チェックを追加
+  // 予選全試合完了チェック機能付きのトーナメント自動反映
   const handleAutoDrawTournament = async () => {
     const classLeagueMatches = matches.filter(m => m.cls === drawClass && m.matchType === 'league');
     
@@ -1184,34 +1184,49 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
+  // 試合中でないペアから審判を選出（自コートまたは他コートの重複試合防止）
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', line: '未定' };
 
+    const busyIds = getBusyTeamIds();
+
     if (m.matchType === 'league') {
       if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
-        return lastCourtReferees[m.courtNumber];
+        const lastRef = lastCourtReferees[m.courtNumber];
+        return lastRef;
       }
 
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
         
-      const waitingTeams = groupTeams.filter(e => String(e.id) !== String(m.team1Id) && String(e.id) !== String(m.team2Id));
+      const availableWaitingTeams = groupTeams.filter(e => 
+        String(e.id) !== String(m.team1Id) && 
+        String(e.id) !== String(m.team2Id) && 
+        !busyIds.has(String(e.id))
+      );
 
-      if (waitingTeams.length >= 2) {
-         return { main: getTeamNameWithClub(waitingTeams[0].id), line: getTeamNameWithClub(waitingTeams[1].id) };
-      } else if (waitingTeams.length === 1) {
-         const refName = getTeamNameWithClub(waitingTeams[0].id);
-         return { main: refName, line: refName };
+      if (availableWaitingTeams.length >= 2) {
+         return { 
+           main: getTeamNameWithClub(availableWaitingTeams[0].id), 
+           line: getTeamNameWithClub(availableWaitingTeams[1].id) 
+         };
+      } else if (availableWaitingTeams.length === 1) {
+         const refName = getTeamNameWithClub(availableWaitingTeams[0].id);
+         return { main: refName, line: "他ペア応援依頼 (試合中)" };
       } else {
-         return { main: "他クラス空きペア応援", line: "他クラス空きペア応援" };
+         return { main: "他クラス/他ペア応援依頼", line: "他クラス/他ペア応援依頼" };
       }
     } else {
       return { main: "本部調整 / 敗者審判", line: "本部調整 / 敗者審判" };
     }
   };
 
+  // 【改修】予選未終了時はトーナメント枠をブランク（未確定）表示にする
   const getTournamentSlotInfo = (cls, pos) => {
+    const classLeagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+    const isLeagueCompleted = classLeagueMatches.length > 0 && classLeagueMatches.every(m => m.status === 'completed');
+
     const manualTeam = entries.find(e => e.cls === cls && e.tournamentPosition === pos);
     if (manualTeam) {
       return { team: manualTeam, label: null, isBye: false };
@@ -1242,11 +1257,9 @@ export default function App() {
         if (rule.isBye) {
           return { team: null, label: 'シード (不戦勝)', isBye: true };
         }
-        const standings = getGroupStandings(cls, rule.group);
-        if (standings[rule.rank]) {
-          const groupMatches = matches.filter(m => m.cls === cls && m.group === rule.group);
-          const completedMatches = groupMatches.filter(m => m.status === 'completed');
-          if (groupMatches.length > 0 && groupMatches.length === completedMatches.length) {
+        if (isLeagueCompleted) {
+          const standings = getGroupStandings(cls, rule.group);
+          if (standings[rule.rank]) {
             return { team: standings[rule.rank], label: null, isBye: false };
           }
         }
@@ -1263,11 +1276,9 @@ export default function App() {
       };
       const rule = slotRules4[pos];
       if (rule) {
-        const standings = getGroupStandings(cls, rule.group);
-        if (standings[rule.rank]) {
-          const groupMatches = matches.filter(m => m.cls === cls && m.group === rule.group);
-          const completedMatches = groupMatches.filter(m => m.status === 'completed');
-          if (groupMatches.length > 0 && groupMatches.length === completedMatches.length) {
+        if (isLeagueCompleted) {
+          const standings = getGroupStandings(cls, rule.group);
+          if (standings[rule.rank]) {
             return { team: standings[rule.rank], label: null, isBye: false };
           }
         }
@@ -1290,11 +1301,9 @@ export default function App() {
     };
     const rule = slotRules8[pos];
     if (rule) {
-      const standings = getGroupStandings(cls, rule.group);
-      if (standings[rule.rank] && rule.rank < numPerGroup) {
-        const groupMatches = matches.filter(m => m.cls === cls && m.group === rule.group);
-        const completedMatches = groupMatches.filter(m => m.status === 'completed');
-        if (groupMatches.length > 0 && groupMatches.length === completedMatches.length) {
+      if (isLeagueCompleted) {
+        const standings = getGroupStandings(cls, rule.group);
+        if (standings[rule.rank] && rule.rank < numPerGroup) {
           return { team: standings[rule.rank], label: null, isBye: false };
         }
       }

@@ -633,7 +633,6 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  // 全クラスの予選リーグ対戦カード一括生成
   const generateAllLeagueMatches = async (currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -732,7 +731,6 @@ export default function App() {
     return totalGenerated;
   };
 
-  // 【改修】選択中のクラスのみの予選リーグ対戦カード生成関数
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -802,7 +800,6 @@ export default function App() {
       });
     }
 
-    // 他クラス・他タイプの試合を残し、選択クラスの予選試合のみ更新
     const otherMatches = matches.filter(m => !(m.cls === targetCls && m.matchType === 'league'));
     const updatedMatches = [...otherMatches, ...newClassMatches];
     setMatches(updatedMatches);
@@ -820,10 +817,32 @@ export default function App() {
     return await generateClassLeagueMatches(targetCls, currentEntriesList);
   };
 
+  // 【改修】予選リーグの全試合完了チェックを追加
   const handleAutoDrawTournament = async () => {
+    const classLeagueMatches = matches.filter(m => m.cls === drawClass && m.matchType === 'league');
+    
+    if (classLeagueMatches.length === 0) {
+      setDialog({
+        title: "自動反映不可",
+        message: `【${drawClass}】の予選リーグ対戦カードが生成されていません。先に「予選リーグ」タブで対戦カードを生成してください。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+
+    const unfinishedMatches = classLeagueMatches.filter(m => m.status !== 'completed');
+    if (unfinishedMatches.length > 0) {
+      setDialog({
+        title: "予選未終了",
+        message: `【${drawClass}】の予選リーグ試合（未消化 ${unfinishedMatches.length} 試合）がまだすべて終了していません。全予選試合のスコア入力を完了させてから実行してください。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+
     const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
     if (checkedInEntries.length === 0) {
-      setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。先に「受付処理」タブで受付を完了させてください。`, onClose: () => setDialog(null) });
+      setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。`, onClose: () => setDialog(null) });
       return;
     }
 
@@ -891,9 +910,9 @@ export default function App() {
     }
 
     if (assignedCount > 0) {
-      setDialog({ title: "順位反映完了", message: `予選結果に基づき、${assignedCount} 組を結勝トーナメント枠に割り当てました。手動で枠を変更することも可能です。`, onClose: () => setDialog(null) });
+      setDialog({ title: "順位反映完了", message: `【${drawClass}】の全予選結果に基づき、${assignedCount} 組を結勝トーナメント枠に割り当てました。手動で枠を変更することも可能です。`, onClose: () => setDialog(null) });
     } else {
-      setDialog({ title: "完了", message: "予選グループ数に応じたトーナメント枠を設定しました。手動でドラッグ＆ドロップして位置を調整できます。", onClose: () => setDialog(null) });
+      setDialog({ title: "完了", message: "予選グループ数に応じたトーナメント枠を設定しました。", onClose: () => setDialog(null) });
     }
   };
 
@@ -2097,7 +2116,7 @@ export default function App() {
                      </button>
                      <button 
                        onClick={async () => {
-                         const count = await generateLeagueMatches(drawClass);
+                         const count = await generateClassLeagueMatches(drawClass);
                          if (count > 0) {
                            setDialog({ title: "対戦カード生成完了", message: `【${drawClass}】のグループ配置に基づき、対戦カード（全${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
                          } else {

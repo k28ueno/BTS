@@ -570,7 +570,7 @@ export default function App() {
                 timeopen: data.config.timeOpen,
                 timereception: data.config.timeReception,
                 timestart: data.config.timeStart,
-                venue: data.config.venue,
+                venue: data.venue,
                 deadline: data.deadline,
                 notes: data.config.notes,
                 classes: data.config.classes,
@@ -1286,7 +1286,7 @@ export default function App() {
     }
   };
 
-  // 【改修】スコア解除ボタン処理（ステータスを in_progress に戻す）
+  // 「スコア解除」ボタン処理（ステータスを in_progress に戻す）
   const handleResetScore = async (matchId) => {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
@@ -1521,7 +1521,14 @@ export default function App() {
                 return (
                   <div key={`court-${i}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                      <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
-                        <span className="font-bold text-gray-600 text-sm">第 {courtNum} コート</span>
+                        <div className="flex items-center gap-2">
+                           <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
+                           {activeMatch && activeMatch.status !== 'calling' && (
+                              <span className="text-red-600 font-bold text-xs">
+                                 {activeMatch.status === 'completed' ? '試合済' : (activeMatch.status === 'recepted' ? 'コール済' : '試合中')}
+                              </span>
+                           )}
+                        </div>
 
                         {activeMatch && (() => {
                            const ref = getRefereeForMatch(activeMatch);
@@ -2179,7 +2186,14 @@ export default function App() {
                               onDrop={(e) => handleCourtDrop(e, courtNum)}
                            >
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
-                                 <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
+                                 <div className="flex items-center gap-2">
+                                    <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
+                                    {activeMatch && activeMatch.status !== 'calling' && (
+                                       <span className="text-red-600 font-bold text-xs">
+                                          {activeMatch.status === 'completed' ? '試合済' : (activeMatch.status === 'recepted' ? 'コール済' : '試合中')}
+                                       </span>
+                                    )}
+                                 </div>
 
                                  {activeMatch && (() => {
                                     const ref = getRefereeForMatch(activeMatch);

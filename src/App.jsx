@@ -69,12 +69,25 @@ export default function App() {
   const [receptionSearchQuery, setReceptionSearchQuery] = useState('');
   const [scoreModal, setScoreModal] = useState(null);
 
-  const [testGenCount, setTestGenCount] = useState(12);
+  // クラス別のテスト生成組数ステート
+  const [testGenCounts, setTestGenCounts] = useState({});
 
   const [simCurrentTime, setSimCurrentTime] = useState('08:50');
 
   // 各コート直前の完了試合による審判履歴ステート
   const [lastCourtReferees, setLastCourtReferees] = useState({});
+
+  useEffect(() => {
+    if (config.classes && config.classes.length > 0) {
+      setTestGenCounts(prev => {
+        const updated = { ...prev };
+        config.classes.forEach(c => {
+          if (updated[c] === undefined) updated[c] = 12;
+        });
+        return updated;
+      });
+    }
+  }, [config.classes]);
 
   const setSimToNow = () => {
     const now = new Date();
@@ -237,18 +250,19 @@ export default function App() {
     });
   };
 
+  // クラス別テストデータ生成処理
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
     const givenNames = ['太郎', '次郎', '健太', '大輔', '直樹', '拓也', '翔太', '花子', '美咲', '彩乃', '葵', '優花', '結衣', '陽菜'];
 
-    const numPerClass = parseInt(testGenCount) || 10;
     const newEntries = [];
     const dbPayloads = [];
 
     let currentIdCount = entries.length;
 
     config.classes.forEach(cls => {
+      const numPerClass = parseInt(testGenCounts[cls]) || 0;
       for (let i = 1; i <= numPerClass; i++) {
         currentIdCount++;
         const newId = currentIdCount.toString().padStart(4, '0');
@@ -299,6 +313,11 @@ export default function App() {
       }
     });
 
+    if (newEntries.length === 0) {
+      setDialog({ title: "注意", message: "生成する組数が設定されていません。各クラスの組数を入力してください。", onClose: () => setDialog(null) });
+      return;
+    }
+
     const updatedEntries = [...entries, ...newEntries];
     setEntries(updatedEntries);
 
@@ -308,9 +327,136 @@ export default function App() {
 
     setDialog({
       title: "テストデータ作成完了",
-      message: `各クラス ${numPerClass} 組ずつ（合計 ${numPerClass * config.classes.length} 組）のテストエントリーを作成しました。`,
+      message: `合計 ${newEntries.length} 組のテストエントリーを作成しました。`,
       onClose: () => setDialog(null)
     });
+  };
+
+  // バックアップ保存 (退避)
+  const handleExportBackup = () => {
+    const backupData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      config: config,
+      entries: entries,
+      matches: matches,
+      lastCourtReferees: lastCourtReferees
+    };
+
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}`;
+    
+    link.href = url;
+    link.download = `badminton_backup_${dateStr}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // バックアップ復元 (読み込み)
+  const handleImportBackup = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data || !data.config || !Array.isArray(data.entries) || !Array.isArray(data.matches)) {
+          throw new Error('バックアップファイルのフォーマットが正しくありません。');
+        }
+
+        setDialog({
+          title: "バックアップ復元の確認",
+          message: "現在のすべての設定・エントリー・試合結果データを上書き復元します。本当によろしいですか？",
+          onConfirm: async () => {
+            setLoading(true);
+            
+            setConfig(data.config);
+            setEntries(data.entries);
+            setMatches(data.matches);
+            if (data.lastCourtReferees) {
+              setLastCourtReferees(data.lastCourtReferees);
+            }
+
+            if (isSupabaseConfigured) {
+              await supabase.from('entries').delete().gt('created_at', '1970-01-01');
+              await supabase.from('matches').delete().gt('created_at', '1970-01-01');
+
+              const payloadSettings = {
+                id: 1,
+                title: data.config.title,
+                date: data.config.date,
+                timeopen: data.config.timeOpen,
+                timereception: data.config.timeReception,
+                timestart: data.config.timeStart,
+                venue: data.config.venue,
+                deadline: data.config.deadline,
+                notes: data.config.notes,
+                classes: data.config.classes,
+                courts: data.config.courts,
+                fees: data.config.fees,
+                advancementcondition: data.config.advancementCondition,
+                avgmatchduration: data.config.avgMatchDuration
+              };
+              await supabase.from('settings').upsert(payloadSettings);
+
+              if (data.entries.length > 0) {
+                const dbEntries = data.entries.map(ent => ({
+                  id: ent.id,
+                  cls: ent.cls,
+                  contact: ent.contact,
+                  club: ent.club,
+                  p1name: ent.p1Name,
+                  p1club: ent.p1Club,
+                  p1fee: ent.p1Fee,
+                  p2name: ent.p2Name,
+                  p2club: ent.p2Club,
+                  p2fee: ent.p2Fee,
+                  password: ent.password,
+                  checkedin: ent.checkedIn,
+                  group: ent.group,
+                  tournamentposition: ent.tournamentPosition
+                }));
+                await supabase.from('entries').insert(dbEntries);
+              }
+
+              if (data.matches.length > 0) {
+                const dbMatches = data.matches.map(m => ({
+                  id: m.id,
+                  cls: m.cls,
+                  group_name: m.group,
+                  match_type: m.matchType,
+                  court_number: m.courtNumber,
+                  team1_id: m.team1Id,
+                  team2_id: m.team2Id,
+                  team1_score: m.team1Score,
+                  team2_score: m.team2Score,
+                  status: m.status,
+                  match_order: m.matchOrder
+                }));
+                await supabase.from('matches').insert(dbMatches);
+              }
+            }
+
+            setLoading(false);
+            setDialog({ title: "復元完了", message: "バックアップデータからの復元が完了しました！", onClose: () => setDialog(null) });
+          },
+          onClose: () => setDialog(null)
+        });
+      } catch (err) {
+        console.error("Backup import error:", err);
+        setDialog({ title: "復元エラー", message: "バックアップファイルの読み込みに失敗しました。詳細: " + err.message, onClose: () => setDialog(null) });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
   };
 
   const handleDragStart = (e, entryId) => { e.dataTransfer.setData('text/plain', entryId); };
@@ -849,7 +995,6 @@ export default function App() {
     }
   };
 
-  // スコア保存（直前審判履歴をコート番号に記録）
   const handleSaveScore = async (matchId, s1, s2) => {
     const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
@@ -920,17 +1065,14 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 審判判定：そのコートで直前にスコア確定された勝者・敗者の記録があれば最優先表示
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', line: '未定' };
 
     if (m.matchType === 'league') {
-      // 1. そのコートで直前にスコア確定された記録があれば最優先
       if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
         return lastCourtReferees[m.courtNumber];
       }
 
-      // 2. まだそのコートで過去のスコア確定記録がない場合（初戦等）の自動割り当て
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -2033,7 +2175,7 @@ export default function App() {
                         if (activeMatch) {
                            if (activeMatch.status === 'calling') {
                               cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                              badgeLabel = 'コール';
+                              badgeLabel = '要コール';
                               badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
                            } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
                               cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';
@@ -2220,34 +2362,87 @@ export default function App() {
                  <IconDatabase /> データ管理
               </h3>
 
-              <div className="bg-white border rounded-xl p-6 shadow-sm space-y-6">
+              <div className="bg-white border rounded-xl p-6 shadow-sm space-y-8">
+                 {/* 1. クラス別テスト自動エントリー生成 */}
                  <div>
-                    <h4 className="font-bold text-md text-gray-800 mb-2">⚙️ テスト用自動エントリー生成</h4>
+                    <h4 className="font-bold text-md text-gray-800 mb-2 flex items-center gap-1.5">
+                       ⚙️ テスト用自動エントリー生成 (クラス別)
+                    </h4>
                     <p className="text-xs text-gray-500 mb-4">
-                       各クラスに指定した人数のテストエントリーを自動生成してデータベースに登録します。
+                       各クラスごとに指定した人数のテストエントリーを自動生成してデータベースに登録します。
                     </p>
-                    <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-lg border">
-                       <span className="text-xs font-bold text-gray-700 whitespace-nowrap">各クラス:</span>
-                       <input 
-                         type="number" 
-                         min="1" 
-                         max="50"
-                         className="w-20 p-2 border rounded text-center text-sm font-bold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
-                         value={testGenCount}
-                         onChange={e => setTestGenCount(e.target.value)}
-                       />
-                       <span className="text-xs font-bold text-gray-700 whitespace-nowrap">組ずつ生成</span>
-                       <button 
-                         onClick={handleGenerateTestData}
-                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow flex items-center gap-1.5 ml-auto"
-                       >
-                          <IconPlus /> テストデータ生成実行
-                       </button>
+                    <div className="space-y-3 bg-gray-50 p-4 rounded-lg border">
+                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {config.classes.map(cls => (
+                             <div key={`test-gen-${cls}`} className="bg-white p-2.5 rounded border flex flex-col items-center shadow-2xs">
+                                <span className="font-bold text-xs text-[#2c5f4e] mb-1">{cls}</span>
+                                <div className="flex items-center gap-1">
+                                   <input 
+                                     type="number" 
+                                     min="0" 
+                                     max="50"
+                                     className="w-16 p-1 border rounded text-center text-sm font-bold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                                     value={testGenCounts[cls] !== undefined ? testGenCounts[cls] : 12}
+                                     onChange={e => setTestGenCounts({ ...testGenCounts, [cls]: parseInt(e.target.value) || 0 })}
+                                   />
+                                   <span className="text-xs font-bold text-gray-600">組</span>
+                                </div>
+                             </div>
+                          ))}
+                       </div>
+                       <div className="flex justify-end pt-2">
+                          <button 
+                            onClick={handleGenerateTestData}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow flex items-center gap-1.5"
+                          >
+                             <IconPlus /> テストデータ生成実行
+                          </button>
+                       </div>
                     </div>
                  </div>
 
+                 {/* 2. データの退避・復元 (ローカル) */}
                  <div className="border-t pt-6">
-                    <h4 className="font-bold text-md text-red-600 mb-2">🗑️ 全データ初期化（削除）</h4>
+                    <h4 className="font-bold text-md text-gray-800 mb-2 flex items-center gap-1.5">
+                       💾 データの退避・復元 (ローカルバックアップ)
+                    </h4>
+                    <p className="text-xs text-gray-500 mb-4">
+                       現在の設定・エントリー・試合結果・審判割り当てデータをJSONファイルとしてパソコンに保存（退避）したり、保存したファイルから復元できます。
+                    </p>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border">
+                       <div className="bg-white p-4 rounded-lg border shadow-2xs space-y-2">
+                          <span className="font-bold text-xs text-gray-700 block">① データをローカルに退避 (ダウンロード)</span>
+                          <p className="text-[11px] text-gray-500">現在の全状態をファイル（.json）として保存します。</p>
+                          <button 
+                            onClick={handleExportBackup}
+                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2"
+                          >
+                             📥 バックアップファイルを保存（退避）
+                          </button>
+                       </div>
+
+                       <div className="bg-white p-4 rounded-lg border shadow-2xs space-y-2">
+                          <span className="font-bold text-xs text-gray-700 block">② 保存ファイルから復元 (アップロード)</span>
+                          <p className="text-[11px] text-gray-500">退避したJSONファイルを読み込み、データを全上書き復元します。</p>
+                          <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2 cursor-pointer">
+                             📤 バックアップファイルを選択して復元
+                             <input 
+                               type="file" 
+                               accept=".json" 
+                               onChange={handleImportBackup} 
+                               className="hidden" 
+                             />
+                          </label>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* 3. 全データ初期化（削除） */}
+                 <div className="border-t pt-6">
+                    <h4 className="font-bold text-md text-red-600 mb-2 flex items-center gap-1.5">
+                       🗑️ 全データ初期化（削除）
+                    </h4>
                     <p className="text-xs text-gray-500 mb-4">
                        現在登録されている「すべてのエントリーデータ」および「全試合結果・コート進行状態」を一括削除します。大会やり直し時やテスト終了時に使用してください。
                     </p>

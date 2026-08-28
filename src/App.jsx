@@ -73,6 +73,9 @@ export default function App() {
 
   const [simCurrentTime, setSimCurrentTime] = useState('08:50');
 
+  // 各コート直前の完了試合による審判履歴ステート
+  const [lastCourtReferees, setLastCourtReferees] = useState({});
+
   const setSimToNow = () => {
     const now = new Date();
     const h = String(now.getHours()).padStart(2, '0');
@@ -223,6 +226,7 @@ export default function App() {
       onConfirm: async () => {
         setEntries([]);
         setMatches([]);
+        setLastCourtReferees({});
         if (isSupabaseConfigured) {
           await supabase.from('entries').delete().gt('created_at', '1970-01-01');
           await supabase.from('matches').delete().gt('created_at', '1970-01-01');
@@ -331,16 +335,13 @@ export default function App() {
     }
   };
 
-  // 指定コートで現在「呼び出し・受付・進行中」または「最後スコア済」の試合を取得
   const getActiveMatchForCourt = (courtNum) => {
     const courtMatches = matches.filter(m => Number(m.courtNumber) === Number(courtNum));
     if (courtMatches.length === 0) return null;
 
-    // 1. 未完了の試合 (calling, recepted, in_progress)
     const active = courtMatches.find(m => m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress');
     if (active) return active;
 
-    // 2. なければ最後に完了した試合
     const completedList = courtMatches.filter(m => m.status === 'completed');
     if (completedList.length > 0) {
       return completedList[completedList.length - 1];
@@ -386,7 +387,6 @@ export default function App() {
     }
 
     const updated = matches.map(m => {
-      // ドロップ先コートの未完了試合があれば解任する（完了済み試合のcourtNumber履歴は保持！）
       if (Number(m.courtNumber) === Number(courtNum) && m.id !== matchId && m.status !== 'completed') {
         return { ...m, courtNumber: null, status: 'waiting' };
       }
@@ -849,6 +849,7 @@ export default function App() {
     }
   };
 
+  // スコア保存（直前審判履歴をコート番号に記録）
   const handleSaveScore = async (matchId, s1, s2) => {
     const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
@@ -866,6 +867,22 @@ export default function App() {
         status: 'completed'
       }).eq('id', matchId);
     }
+
+    if (targetMatch && targetMatch.courtNumber !== null) {
+      const winnerId = s1 >= s2 ? targetMatch.team1Id : targetMatch.team2Id;
+      const loserId = s1 >= s2 ? targetMatch.team2Id : targetMatch.team1Id;
+      const winnerName = getTeamNameWithClub(winnerId);
+      const loserName = getTeamNameWithClub(loserId);
+
+      setLastCourtReferees(prev => ({
+        ...prev,
+        [targetMatch.courtNumber]: {
+          main: winnerName,
+          line: loserName
+        }
+      }));
+    }
+
     setScoreModal(null);
 
     setDialog({
@@ -903,35 +920,17 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 同一コートで直前に完了した試合の勝者・敗者を最優先取得する審判判定ロジック
+  // 審判判定：そのコートで直前にスコア確定された勝者・敗者の記録があれば最優先表示
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', line: '未定' };
 
     if (m.matchType === 'league') {
-      // 1. 同一コートで「直前に完了(completed)している試合」を判定（2試合目以降）
-      if (m.courtNumber !== null) {
-        const sameCourtCompletedMatches = matches.filter(pm => 
-          Number(pm.courtNumber) === Number(m.courtNumber) && 
-          pm.status === 'completed' && 
-          pm.id !== m.id
-        );
-
-        if (sameCourtCompletedMatches.length > 0) {
-          const lastMatch = sameCourtCompletedMatches[sameCourtCompletedMatches.length - 1];
-          const s1 = Number(lastMatch.team1Score || 0);
-          const s2 = Number(lastMatch.team2Score || 0);
-          
-          const winnerId = String(s1 >= s2 ? lastMatch.team1Id : lastMatch.team2Id);
-          const loserId = String(s1 >= s2 ? lastMatch.team2Id : lastMatch.team1Id);
-
-          return {
-            main: getTeamNameWithClub(winnerId),
-            line: getTeamNameWithClub(loserId)
-          };
-        }
+      // 1. そのコートで直前にスコア確定された記録があれば最優先
+      if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
+        return lastCourtReferees[m.courtNumber];
       }
 
-      // 2. そのコートでまだ完了試合が存在しない場合（初戦の自動割り当て）
+      // 2. まだそのコートで過去のスコア確定記録がない場合（初戦等）の自動割り当て
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -1389,7 +1388,7 @@ export default function App() {
                 let statusLabel = '空き';
                 let badgeClass = 'bg-gray-100 text-gray-500';
                 if (activeMatch) {
-                  if (activeMatch.status === 'calling') { statusLabel = 'コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
+                  if (activeMatch.status === 'calling') { statusLabel = '要コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
                   else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
                   else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
                 }
@@ -2034,7 +2033,7 @@ export default function App() {
                         if (activeMatch) {
                            if (activeMatch.status === 'calling') {
                               cardBgClass = 'bg-yellow-50/80 border-yellow-400 shadow-sm';
-                              badgeLabel = '要コール';
+                              badgeLabel = 'コール';
                               badgeBgClass = 'bg-yellow-500 text-white animate-pulse';
                            } else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') {
                               cardBgClass = 'bg-blue-50/80 border-blue-400 shadow-sm';

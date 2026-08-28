@@ -106,7 +106,7 @@ export default function App() {
     return null;
   };
 
-  // 【修正】連戦・自試合審判防止チェック付きの審判取得ロジック
+  // 連戦・自試合審判防止チェック付きの審判取得ロジック
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
 
@@ -120,8 +120,6 @@ export default function App() {
         let lineText = lastRef.line;
         let lineId = lastRef.lineId;
 
-        // 【重大修正】m.status !== 'completed'（＝新しい未完了試合がコートに配置されている時）のみ連戦チェックを実行。
-        // スコア確定直後（m.status === 'completed'）は、前試合の勝者・敗者そのものなので、連戦判定を行わず次回審判として勝者・敗者をそのまま正しく表示する。
         if (m.status !== 'completed') {
           const t1 = String(m.team1Id);
           const t2 = String(m.team2Id);
@@ -625,6 +623,7 @@ export default function App() {
     }
   };
 
+  // 【改修】ドロップ制御：ドロップ先コートで進行中（calling, recepted, in_progress）の試合がある場合、その試合の「審判予定ペア」のみをドラッグブロック対象とする。空きコート（スコア確定直後等）への自試合ドロップは正しく許可。
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
@@ -633,6 +632,7 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
+    // 1. 他コートで「試合進行中」または「他コートの審判担当中」のチェック
     const busyMap = getBusyTeamDetails();
     const team1Busy = busyMap.get(String(targetMatch.team1Id));
     const team2Busy = busyMap.get(String(targetMatch.team2Id));
@@ -657,48 +657,43 @@ export default function App() {
       return;
     }
 
-    let courtRefMainId = null;
-    let courtRefLineId = null;
-
-    if (lastCourtReferees[courtNum]) {
-      courtRefMainId = lastCourtReferees[courtNum].mainId;
-      courtRefLineId = lastCourtReferees[courtNum].lineId;
-    } else {
-      const activeOnCourt = getActiveMatchForCourt(courtNum);
-      if (activeOnCourt) {
-        const ref = getRefereeForMatch(activeOnCourt);
-        courtRefMainId = ref.mainId;
-        courtRefLineId = ref.lineId;
-      }
-    }
-
-    const isTeam1RefOnThisCourt = (courtRefMainId && String(targetMatch.team1Id) === String(courtRefMainId)) || (courtRefLineId && String(targetMatch.team1Id) === String(courtRefLineId));
-    const isTeam2RefOnThisCourt = (courtRefMainId && String(targetMatch.team2Id) === String(courtRefMainId)) || (courtRefLineId && String(targetMatch.team2Id) === String(courtRefLineId));
-
-    if (isTeam1RefOnThisCourt) {
-      const teamName = getTeamNameWithClub(targetMatch.team1Id);
-      setDialog({
-        title: "コート配置不可",
-        message: `「${teamName}」は第${courtNum}コートの審判予定ペアです。自組が審判予定のコートに自組の試合を配置することはできません。`,
-        onClose: () => setDialog(null)
-      });
-      return;
-    }
-
-    if (isTeam2RefOnThisCourt) {
-      const teamName = getTeamNameWithClub(targetMatch.team2Id);
-      setDialog({
-        title: "コート配置不可",
-        message: `「${teamName}」は第${courtNum}コートの審判予定ペアです。自組が審判予定のコートに自組の試合を配置することはできません。`,
-        onClose: () => setDialog(null)
-      });
-      return;
-    }
-
+    // 2. ドロップ先コートに【現在進行中（呼び出し中・受付済・進行中）】の試合がある場合のみ、その試合の審判予定ペアとの重複をブロック
     const currentActiveOnCourt = getActiveMatchForCourt(courtNum);
-    if (currentActiveOnCourt && (currentActiveOnCourt.status === 'in_progress' || currentActiveOnCourt.status === 'recepted')) {
-      setDialog({ title: "ドロップ不可", message: "進行中のコートには新しい試合をドラッグ割り当てできません。コート解除またはスコア確定を行ってください。", onClose: () => setDialog(null) });
-      return;
+    if (currentActiveOnCourt) {
+      if (currentActiveOnCourt.status === 'in_progress' || currentActiveOnCourt.status === 'recepted') {
+        setDialog({ title: "ドロップ不可", message: "進行中のコートには新しい試合をドラッグ割り当てできません。コート解除またはスコア確定を行ってください。", onClose: () => setDialog(null) });
+        return;
+      }
+
+      // コール中等で進行中の場合、その試合の審判予定者と同じペアの自試合ドロップをブロック
+      if (currentActiveOnCourt.status === 'calling') {
+        const ref = getRefereeForMatch(currentActiveOnCourt);
+        const courtRefMainId = ref.mainId;
+        const courtRefLineId = ref.lineId;
+
+        const isTeam1Ref = (courtRefMainId && String(targetMatch.team1Id) === String(courtRefMainId)) || (courtRefLineId && String(targetMatch.team1Id) === String(courtRefLineId));
+        const isTeam2Ref = (courtRefMainId && String(targetMatch.team2Id) === String(courtRefMainId)) || (courtRefLineId && String(targetMatch.team2Id) === String(courtRefLineId));
+
+        if (isTeam1Ref) {
+          const teamName = getTeamNameWithClub(targetMatch.team1Id);
+          setDialog({
+            title: "コート配置不可",
+            message: `「${teamName}」は現在第${courtNum}コートで【審判担当中】です。同時に自組の試合を配置することはできません。`,
+            onClose: () => setDialog(null)
+          });
+          return;
+        }
+
+        if (isTeam2Ref) {
+          const teamName = getTeamNameWithClub(targetMatch.team2Id);
+          setDialog({
+            title: "コート配置不可",
+            message: `「${teamName}」は現在第${courtNum}コートで【審判担当中】です。同時に自組の試合を配置することはできません。`,
+            onClose: () => setDialog(null)
+          });
+          return;
+        }
+      }
     }
 
     const updated = matches.map(m => {

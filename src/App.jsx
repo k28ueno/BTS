@@ -69,12 +69,10 @@ export default function App() {
   const [receptionSearchQuery, setReceptionSearchQuery] = useState('');
   const [scoreModal, setScoreModal] = useState(null);
 
-  // クラス別のテスト生成組数ステート
   const [testGenCounts, setTestGenCounts] = useState({});
 
   const [simCurrentTime, setSimCurrentTime] = useState('08:50');
 
-  // 各コート直前の完了試合による審判履歴ステート
   const [lastCourtReferees, setLastCourtReferees] = useState({});
 
   useEffect(() => {
@@ -236,6 +234,8 @@ export default function App() {
     setDialog({
       title: "全エントリーの削除確認",
       message: "登録されているすべてのエントリーデータと試合結果データを削除します。本当によろしいですか？",
+      confirmText: "削除する",
+      confirmBg: "bg-red-600 hover:bg-red-700",
       onConfirm: async () => {
         setEntries([]);
         setMatches([]);
@@ -250,7 +250,6 @@ export default function App() {
     });
   };
 
-  // クラス別テストデータ生成処理
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
@@ -332,7 +331,6 @@ export default function App() {
     });
   };
 
-  // バックアップ保存 (退避)
   const handleExportBackup = () => {
     const backupData = {
       version: '1.0',
@@ -359,7 +357,6 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  // バックアップ復元 (読み込み)
   const handleImportBackup = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -375,6 +372,8 @@ export default function App() {
         setDialog({
           title: "バックアップ復元の確認",
           message: "現在のすべての設定・エントリー・試合結果データを上書き復元します。本当によろしいですか？",
+          confirmText: "復元する",
+          confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
           onConfirm: async () => {
             setLoading(true);
             
@@ -921,6 +920,8 @@ export default function App() {
     setDialog({
       title: "エントリー取消の確認",
       message: `${p1Name} ペアのエントリーを取り消します（登録が完全に削除されます）。本当によろしいですか？`,
+      confirmText: "取消実行",
+      confirmBg: "bg-red-600 hover:bg-red-700",
       onConfirm: async () => {
         if (isSupabaseConfigured) {
           await supabase.from('entries').delete().eq('id', id);
@@ -942,6 +943,8 @@ export default function App() {
     setDialog({
       title: "削除確認",
       message: `${p1Name} ペアのエントリーを削除しますか？`,
+      confirmText: "削除する",
+      confirmBg: "bg-red-600 hover:bg-red-700",
       onConfirm: async () => {
         if (isSupabaseConfigured) {
           await supabase.from('entries').delete().eq('id', id);
@@ -995,7 +998,6 @@ export default function App() {
     }
   };
 
-  // スコア保存（直前審判履歴をコート番号に記録）
   const handleSaveScore = async (matchId, s1, s2) => {
     const targetMatch = matches.find(m => m.id === matchId);
     const updated = matches.map(m => m.id === matchId ? {
@@ -1066,17 +1068,14 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
-  // 審判判定：そのコートで直前にスコア確定された勝者・敗者の記録があれば最優先表示
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', line: '未定' };
 
     if (m.matchType === 'league') {
-      // 1. そのコートで直前にスコア確定された記録があれば最優先
       if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
         return lastCourtReferees[m.courtNumber];
       }
 
-      // 2. まだそのコートで過去のスコア確定記録がない場合（初戦等）の自動割り当て
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -1534,7 +1533,7 @@ export default function App() {
                 let statusLabel = '空き';
                 let badgeClass = 'bg-gray-100 text-gray-500';
                 if (activeMatch) {
-                  if (activeMatch.status === 'calling') { statusLabel = 'コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
+                  if (activeMatch.status === 'calling') { statusLabel = '要コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
                   else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
                   else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
                 }
@@ -2362,34 +2361,34 @@ export default function App() {
 
           {adminTab === 'data' && (
             <div className="space-y-6">
-              <h3 className="text-xl font-bold border-b pb-2 flex items-center gap-2 text-slate-800">
+              <h3 className="text-2xl font-bold border-b pb-2 flex items-center gap-2 text-slate-800">
                  <IconDatabase /> データ管理
               </h3>
 
               <div className="bg-white border rounded-xl p-6 shadow-sm space-y-8">
                  {/* 1. クラス別テスト自動エントリー生成 */}
                  <div>
-                    <h4 className="font-bold text-md text-gray-800 mb-2 flex items-center gap-1.5">
+                    <h4 className="font-bold text-lg text-gray-800 mb-2 flex items-center gap-1.5">
                        ⚙️ テスト用自動エントリー生成 (クラス別)
                     </h4>
-                    <p className="text-xs text-gray-500 mb-4">
+                    <p className="text-sm text-gray-600 mb-4">
                        各クラスごとに指定した人数のテストエントリーを自動生成してデータベースに登録します。
                     </p>
                     <div className="space-y-3 bg-gray-50 p-4 rounded-lg border">
                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           {config.classes.map(cls => (
-                             <div key={`test-gen-${cls}`} className="bg-white p-2.5 rounded border flex flex-col items-center shadow-2xs">
-                                <span className="font-bold text-xs text-[#2c5f4e] mb-1">{cls}</span>
+                             <div key={`test-gen-${cls}`} className="bg-white p-3 rounded border flex flex-col items-center shadow-2xs">
+                                <span className="font-bold text-sm text-[#2c5f4e] mb-1">{cls}</span>
                                 <div className="flex items-center gap-1">
                                    <input 
                                      type="number" 
                                      min="0" 
                                      max="50"
-                                     className="w-16 p-1 border rounded text-center text-sm font-bold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                                     className="w-16 p-1 border rounded text-center text-base font-bold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
                                      value={testGenCounts[cls] !== undefined ? testGenCounts[cls] : 12}
                                      onChange={e => setTestGenCounts({ ...testGenCounts, [cls]: parseInt(e.target.value) || 0 })}
                                    />
-                                   <span className="text-xs font-bold text-gray-600">組</span>
+                                   <span className="text-sm font-bold text-gray-700">組</span>
                                 </div>
                              </div>
                           ))}
@@ -2397,7 +2396,7 @@ export default function App() {
                        <div className="flex justify-end pt-2">
                           <button 
                             onClick={handleGenerateTestData}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow flex items-center gap-1.5"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-2.5 rounded-lg shadow flex items-center gap-1.5"
                           >
                              <IconPlus /> テストデータ生成実行
                           </button>
@@ -2407,29 +2406,29 @@ export default function App() {
 
                  {/* 2. データの退避・復元 (ローカル) */}
                  <div className="border-t pt-6">
-                    <h4 className="font-bold text-md text-gray-800 mb-2 flex items-center gap-1.5">
+                    <h4 className="font-bold text-lg text-gray-800 mb-2 flex items-center gap-1.5">
                        💾 データの退避・復元 (ローカルバックアップ)
                     </h4>
-                    <p className="text-xs text-gray-500 mb-4">
+                    <p className="text-sm text-gray-600 mb-4">
                        現在の設定・エントリー・試合結果・審判割り当てデータをJSONファイルとしてパソコンに保存（退避）したり、保存したファイルから復元できます。
                     </p>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border">
                        <div className="bg-white p-4 rounded-lg border shadow-2xs space-y-2">
-                          <span className="font-bold text-xs text-gray-700 block">① データをローカルに退避 (ダウンロード)</span>
-                          <p className="text-[11px] text-gray-500">現在の全状態をファイル（.json）として保存します。</p>
+                          <span className="font-bold text-sm text-gray-800 block">① データをローカルに退避 (ダウンロード)</span>
+                          <p className="text-xs text-gray-600">現在の全状態をファイル（.json）として保存します。</p>
                           <button 
                             onClick={handleExportBackup}
-                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2"
+                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2"
                           >
                              📥 バックアップファイルを保存（退避）
                           </button>
                        </div>
 
                        <div className="bg-white p-4 rounded-lg border shadow-2xs space-y-2">
-                          <span className="font-bold text-xs text-gray-700 block">② 保存ファイルから復元 (アップロード)</span>
-                          <p className="text-[11px] text-gray-500">退避したJSONファイルを読み込み、データを全上書き復元します。</p>
-                          <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2 cursor-pointer">
+                          <span className="font-bold text-sm text-gray-800 block">② 保存ファイルから復元 (アップロード)</span>
+                          <p className="text-xs text-gray-600">退避したJSONファイルを読み込み、データを全上書き復元します。</p>
+                          <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2 cursor-pointer">
                              📤 バックアップファイルを選択して復元
                              <input 
                                type="file" 
@@ -2444,17 +2443,17 @@ export default function App() {
 
                  {/* 3. 全データ初期化（削除） */}
                  <div className="border-t pt-6">
-                    <h4 className="font-bold text-md text-red-600 mb-2 flex items-center gap-1.5">
+                    <h4 className="font-bold text-lg text-red-600 mb-2 flex items-center gap-1.5">
                        🗑️ 全データ初期化（削除）
                     </h4>
-                    <p className="text-xs text-gray-500 mb-4">
+                    <p className="text-sm text-gray-600 mb-4">
                        現在登録されている「すべてのエントリーデータ」および「全試合結果・コート進行状態」を一括削除します。大会やり直し時やテスト終了時に使用してください。
                     </p>
                     <div className="bg-red-50 border border-red-200 p-4 rounded-lg flex justify-between items-center">
-                       <span className="text-xs font-bold text-red-800">⚠️ 削除実行後はデータを元に戻せません</span>
+                       <span className="text-sm font-bold text-red-800">⚠️ 削除実行後はデータを元に戻せません</span>
                        <button 
                          onClick={handleDeleteAllEntries}
-                         className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow flex items-center gap-1.5"
+                         className="bg-red-600 hover:bg-red-700 text-white font-bold text-sm px-5 py-2.5 rounded-lg shadow flex items-center gap-1.5"
                        >
                           <IconTrash /> 全エントリー・全試合結果クリア
                        </button>
@@ -2539,7 +2538,14 @@ export default function App() {
               <h3 className="text-xl font-bold mb-4 text-gray-800">{dialog.title}</h3>
               <div className="text-gray-600 mb-6">{dialog.message}</div>
               <div className="flex justify-end">
-                {dialog.onConfirm && <button onClick={dialog.onConfirm} className="bg-red-500 text-white px-6 py-2 rounded-lg font-bold mr-2">削除する</button>}
+                {dialog.onConfirm && (
+                  <button 
+                    onClick={dialog.onConfirm} 
+                    className={`${dialog.confirmBg || 'bg-red-500'} text-white px-6 py-2 rounded-lg font-bold mr-2`}
+                  >
+                    {dialog.confirmText || '削除する'}
+                  </button>
+                )}
                 <button onClick={dialog.close || dialog.onClose} className="bg-[#2c5f4e] text-white px-6 py-2 rounded-lg font-bold">閉じる</button>
               </div>
            </div>

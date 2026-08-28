@@ -2360,35 +2360,35 @@ export default function App() {
           )}
 
           {adminTab === 'data' && (
-            <div className="space-y-6">
-              <h3 className="text-2xl font-bold border-b pb-2 flex items-center gap-2 text-slate-800">
+            <div className="space-y-8">
+              <h3 className="text-3xl font-extrabold border-b pb-3 flex items-center gap-2 text-slate-800">
                  <IconDatabase /> データ管理
               </h3>
 
-              <div className="bg-white border rounded-xl p-6 shadow-sm space-y-8">
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-8">
                  {/* 1. クラス別テスト自動エントリー生成 */}
                  <div>
-                    <h4 className="font-bold text-lg text-gray-800 mb-2 flex items-center gap-1.5">
+                    <h4 className="font-extrabold text-xl text-gray-800 mb-2 flex items-center gap-2">
                        ⚙️ テスト用自動エントリー生成 (クラス別)
                     </h4>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-base text-gray-600 mb-4 font-medium">
                        各クラスごとに指定した人数のテストエントリーを自動生成してデータベースに登録します。
                     </p>
-                    <div className="space-y-3 bg-gray-50 p-4 rounded-lg border">
-                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="space-y-4 bg-gray-50 p-5 rounded-lg border">
+                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                           {config.classes.map(cls => (
-                             <div key={`test-gen-${cls}`} className="bg-white p-3 rounded border flex flex-col items-center shadow-2xs">
-                                <span className="font-bold text-sm text-[#2c5f4e] mb-1">{cls}</span>
-                                <div className="flex items-center gap-1">
+                             <div key={`test-gen-${cls}`} className="bg-white p-3.5 rounded-lg border flex flex-col items-center shadow-xs">
+                                <span className="font-bold text-base text-[#2c5f4e] mb-1.5">{cls}</span>
+                                <div className="flex items-center gap-1.5">
                                    <input 
                                      type="number" 
                                      min="0" 
                                      max="50"
-                                     className="w-16 p-1 border rounded text-center text-base font-bold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                                     className="w-20 p-2 border-2 border-gray-300 rounded text-center text-xl font-extrabold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
                                      value={testGenCounts[cls] !== undefined ? testGenCounts[cls] : 12}
                                      onChange={e => setTestGenCounts({ ...testGenCounts, [cls]: parseInt(e.target.value) || 0 })}
                                    />
-                                   <span className="text-sm font-bold text-gray-700">組</span>
+                                   <span className="text-base font-bold text-gray-700">組</span>
                                 </div>
                              </div>
                           ))}
@@ -2396,7 +2396,7 @@ export default function App() {
                        <div className="flex justify-end pt-2">
                           <button 
                             onClick={handleGenerateTestData}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-2.5 rounded-lg shadow flex items-center gap-1.5"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 transition-colors"
                           >
                              <IconPlus /> テストデータ生成実行
                           </button>
@@ -2405,30 +2405,34 @@ export default function App() {
                  </div>
 
                  {/* 2. データの退避・復元 (ローカル) */}
-                 <div className="border-t pt-6">
-                    <h4 className="font-bold text-lg text-gray-800 mb-2 flex items-center gap-1.5">
+                 <div className="border-t-2 pt-6">
+                    <h4 className="font-extrabold text-xl text-gray-800 mb-2 flex items-center gap-2">
                        💾 データの退避・復元 (ローカルバックアップ)
                     </h4>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-base text-gray-600 mb-4 font-medium">
                        現在の設定・エントリー・試合結果・審判割り当てデータをJSONファイルとしてパソコンに保存（退避）したり、保存したファイルから復元できます。
                     </p>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border">
-                       <div className="bg-white p-4 rounded-lg border shadow-2xs space-y-2">
-                          <span className="font-bold text-sm text-gray-800 block">① データをローカルに退避 (ダウンロード)</span>
-                          <p className="text-xs text-gray-600">現在の全状態をファイル（.json）として保存します。</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 bg-gray-50 p-5 rounded-lg border">
+                       <div className="bg-white p-5 rounded-lg border shadow-xs space-y-3 flex flex-col justify-between">
+                          <div>
+                             <span className="font-extrabold text-base text-gray-800 block mb-1">① データをローカルに退避 (ダウンロード)</span>
+                             <p className="text-sm text-gray-600 font-medium">現在の全状態をファイル（.json）として保存します。</p>
+                          </div>
                           <button 
                             onClick={handleExportBackup}
-                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2"
+                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-base py-3 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 transition-colors"
                           >
                              📥 バックアップファイルを保存（退避）
                           </button>
                        </div>
 
-                       <div className="bg-white p-4 rounded-lg border shadow-2xs space-y-2">
-                          <span className="font-bold text-sm text-gray-800 block">② 保存ファイルから復元 (アップロード)</span>
-                          <p className="text-xs text-gray-600">退避したJSONファイルを読み込み、データを全上書き復元します。</p>
-                          <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2.5 rounded-lg shadow flex items-center justify-center gap-1.5 mt-2 cursor-pointer">
+                       <div className="bg-white p-5 rounded-lg border shadow-xs space-y-3 flex flex-col justify-between">
+                          <div>
+                             <span className="font-extrabold text-base text-gray-800 block mb-1">② 保存ファイルから復元 (アップロード)</span>
+                             <p className="text-sm text-gray-600 font-medium">退避したJSONファイルを読み込み、データを全上書き復元します。</p>
+                          </div>
+                          <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors">
                              📤 バックアップファイルを選択して復元
                              <input 
                                type="file" 
@@ -2442,18 +2446,18 @@ export default function App() {
                  </div>
 
                  {/* 3. 全データ初期化（削除） */}
-                 <div className="border-t pt-6">
-                    <h4 className="font-bold text-lg text-red-600 mb-2 flex items-center gap-1.5">
+                 <div className="border-t-2 pt-6">
+                    <h4 className="font-extrabold text-xl text-red-600 mb-2 flex items-center gap-2">
                        🗑️ 全データ初期化（削除）
                     </h4>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-base text-gray-600 mb-4 font-medium">
                        現在登録されている「すべてのエントリーデータ」および「全試合結果・コート進行状態」を一括削除します。大会やり直し時やテスト終了時に使用してください。
                     </p>
-                    <div className="bg-red-50 border border-red-200 p-4 rounded-lg flex justify-between items-center">
-                       <span className="text-sm font-bold text-red-800">⚠️ 削除実行後はデータを元に戻せません</span>
+                    <div className="bg-red-50 border-2 border-red-200 p-5 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                       <span className="text-base font-bold text-red-800">⚠️ 削除実行後はデータを元に戻せません</span>
                        <button 
                          onClick={handleDeleteAllEntries}
-                         className="bg-red-600 hover:bg-red-700 text-white font-bold text-sm px-5 py-2.5 rounded-lg shadow flex items-center gap-1.5"
+                         className="bg-red-600 hover:bg-red-700 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 whitespace-nowrap transition-colors"
                        >
                           <IconTrash /> 全エントリー・全試合結果クリア
                        </button>

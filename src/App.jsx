@@ -250,7 +250,7 @@ export default function App() {
     });
   };
 
-  // 【改修】クラス別テストデータ生成処理（既存データを削除してから生成）
+  // 【改修】クラス別テストデータ生成処理（既存データを完全削除してから新規作成）
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
@@ -343,7 +343,7 @@ export default function App() {
 
     setDialog({
       title: "テストデータ作成完了",
-      message: `既存データをクリアし、新たに合計 ${newEntries.length} 組のテストエントリーを作成しました。`,
+      message: `※既存データを全削除（クリア）した上で、新たに合計 ${newEntries.length} 組のテストエントリーを作成しました。`,
       onClose: () => setDialog(null)
     });
   };
@@ -2385,11 +2385,14 @@ export default function App() {
               <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-8">
                  {/* 1. クラス別テスト自動エントリー生成 */}
                  <div>
-                    <h4 className="font-extrabold text-xl text-gray-800 mb-2 flex items-center gap-2">
+                    <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">
                        ⚙️ テスト用自動エントリー生成 (クラス別)
                     </h4>
-                    <p className="text-base text-gray-600 mb-4 font-medium">
-                       ※既存のエントリーおよび試合データはすべてクリア（初期化）された上で、各クラスごとに指定した組数のテストエントリーを新たに生成・登録します。
+                    <p className="text-base text-gray-600 font-medium mb-1">
+                       各クラスごとに指定した人数のテストエントリーを自動生成してデータベースに登録します。
+                    </p>
+                    <p className="text-sm font-bold text-red-600 mb-4 bg-red-50 p-2.5 rounded border border-red-200">
+                       ⚠️ 注意: テストデータを生成すると、現在のエントリーおよび試合結果データは一度すべて自動的にクリア（初期化）されます。
                     </p>
                     <div className="space-y-4 bg-gray-50 p-5 rounded-lg border">
                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

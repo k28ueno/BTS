@@ -76,7 +76,7 @@ export default function App() {
   const [lastCourtReferees, setLastCourtReferees] = useState({});
 
   // ----------------------------------------------------------------
-  // 共通ヘルパー関数群（参照エラー防止のため最上部に定義）
+  // 共通ヘルパー関数群
   // ----------------------------------------------------------------
   const getTeamNameWithClub = (teamId) => {
     const ent = entries.find(e => String(e.id) === String(teamId));
@@ -106,21 +106,44 @@ export default function App() {
     return null;
   };
 
+  // 連戦・自試合審判防止チェック付きの審判取得ロジック
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
 
+    const t1 = String(m.team1Id);
+    const t2 = String(m.team2Id);
+
     if (m.matchType === 'league') {
+      // 1. そのコートで直前にスコア確定された記録があれば最優先固定
       if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
-        return lastCourtReferees[m.courtNumber];
+        const lastRef = lastCourtReferees[m.courtNumber];
+        
+        let mainText = lastRef.main;
+        let mainId = lastRef.mainId;
+        let lineText = lastRef.line;
+        let lineId = lastRef.lineId;
+
+        if (mainId && (String(mainId) === t1 || String(mainId) === t2)) {
+          mainText = "他クラス/他ペア応援依頼 (連戦)";
+          mainId = null;
+        }
+
+        if (lineId && (String(lineId) === t1 || String(lineId) === t2)) {
+          lineText = "他クラス/他ペア応援依頼 (連戦)";
+          lineId = null;
+        }
+
+        return { main: mainText, mainId, line: lineText, lineId };
       }
 
+      // 2. そのコートでまだ完了記録がない場合（初戦等）：グループ内待機ペアから選出
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
         
       const waitingTeams = groupTeams.filter(e => 
-        String(e.id) !== String(m.team1Id) && 
-        String(e.id) !== String(m.team2Id)
+        String(e.id) !== t1 && 
+        String(e.id) !== t2
       );
 
       if (waitingTeams.length >= 2) {
@@ -595,6 +618,7 @@ export default function App() {
     }
   };
 
+  // 【改修】ドロップ先コート（courtNum）の「次回審判予定ペア」と、ドロップしようとする試合（targetMatch）のペアが一致した場合のブロック制御を追加
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
@@ -603,6 +627,7 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
+    // 1. 他コートで「試合進行中」または「他コートの審判担当中」のチェック
     const busyMap = getBusyTeamDetails();
     const team1Busy = busyMap.get(String(targetMatch.team1Id));
     const team2Busy = busyMap.get(String(targetMatch.team2Id));
@@ -622,6 +647,45 @@ export default function App() {
       setDialog({
         title: "コート配置不可",
         message: `「${teamName}」は現在 第${team2Busy.court}コート で【${team2Busy.role}】です。同時に複数コートへ配置することはできません。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+
+    // 2. 【新規追加】ドロップ先コート（courtNum）で「審判予定ペア」として設定されているペアの自試合配置ブロック
+    let courtRefMainId = null;
+    let courtRefLineId = null;
+
+    if (lastCourtReferees[courtNum]) {
+      courtRefMainId = lastCourtReferees[courtNum].mainId;
+      courtRefLineId = lastCourtReferees[courtNum].lineId;
+    } else {
+      const activeOnCourt = getActiveMatchForCourt(courtNum);
+      if (activeOnCourt) {
+        const ref = getRefereeForMatch(activeOnCourt);
+        courtRefMainId = ref.mainId;
+        courtRefLineId = ref.lineId;
+      }
+    }
+
+    const isTeam1RefOnThisCourt = (courtRefMainId && String(targetMatch.team1Id) === String(courtRefMainId)) || (courtRefLineId && String(targetMatch.team1Id) === String(courtRefLineId));
+    const isTeam2RefOnThisCourt = (courtRefMainId && String(targetMatch.team2Id) === String(courtRefMainId)) || (courtRefLineId && String(targetMatch.team2Id) === String(courtRefLineId));
+
+    if (isTeam1RefOnThisCourt) {
+      const teamName = getTeamNameWithClub(targetMatch.team1Id);
+      setDialog({
+        title: "コート配置不可",
+        message: `「${teamName}」は第${courtNum}コートの審判予定ペアです。自組が審判予定のコートに自組の試合を配置することはできません。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+
+    if (isTeam2RefOnThisCourt) {
+      const teamName = getTeamNameWithClub(targetMatch.team2Id);
+      setDialog({
+        title: "コート配置不可",
+        message: `「${teamName}」は第${courtNum}コートの審判予定ペアです。自組が審判予定のコートに自組の試合を配置することはできません。`,
         onClose: () => setDialog(null)
       });
       return;
@@ -1253,6 +1317,118 @@ export default function App() {
     });
   };
 
+  const getGroupStandings = (cls, groupName) => {
+    const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName);
+    const groupMatches = matches.filter(m => m.cls === cls && m.group === groupName && m.status === 'completed');
+
+    const stats = groupEntries.map(ent => {
+      let wins = 0;
+      let losses = 0;
+      groupMatches.forEach(m => {
+        if (m.team1Id === ent.id) {
+          if (m.team1Score > m.team2Score) wins++;
+          else if (m.team1Score < m.team2Score) losses++;
+        } else if (m.team2Id === ent.id) {
+          if (m.team2Score > m.team1Score) wins++;
+          else if (m.team2Score < m.team1Score) losses++;
+        }
+      });
+      return { ...ent, wins, losses };
+    });
+
+    return stats.sort((a, b) => b.wins - a.wins);
+  };
+
+  const getTournamentSlotInfo = (cls, pos) => {
+    const classLeagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+    const isLeagueCompleted = classLeagueMatches.length > 0 && classLeagueMatches.every(m => m.status === 'completed');
+
+    const manualTeam = entries.find(e => e.cls === cls && e.tournamentPosition === pos);
+    if (manualTeam) {
+      return { team: manualTeam, label: null, isBye: false };
+    }
+
+    const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
+    const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => 
+      clsEntries.some(e => e.group === g)
+    );
+    const groupCount = activeGroups.length;
+    const advCondition = config.advancementCondition || 'top2';
+    const numPerGroup = advCondition === 'top1' ? 1 : 2;
+
+    if (groupCount === 3 && numPerGroup === 2) {
+      const slotRules6 = {
+        1: { group: 'A', rank: 0, label: 'グループA 1位' },
+        2: { isBye: true, label: 'シード (不戦勝)' },
+        3: { group: 'C', rank: 1, label: 'グループC 2位' },
+        4: { group: 'B', rank: 1, label: 'グループB 2位' },
+        5: { group: 'B', rank: 0, label: 'グループB 1位' },
+        6: { isBye: true, label: 'シード (不戦勝)' },
+        7: { group: 'A', rank: 1, label: 'グループA 2位' },
+        8: { group: 'C', rank: 0, label: 'グループC 1位' },
+      };
+
+      const rule = slotRules6[pos];
+      if (rule) {
+        if (rule.isBye) {
+          return { team: null, label: 'シード (不戦勝)', isBye: true };
+        }
+        if (isLeagueCompleted) {
+          const standings = getGroupStandings(cls, rule.group);
+          if (standings[rule.rank]) {
+            return { team: standings[rule.rank], label: null, isBye: false };
+          }
+        }
+        return { team: null, label: rule.label, isBye: false };
+      }
+    }
+
+    if (groupCount === 2 && numPerGroup === 2) {
+      const slotRules4 = {
+        1: { group: 'A', rank: 0, label: 'グループA 1位' },
+        2: { group: 'B', rank: 1, label: 'グループB 2位' },
+        3: { group: 'B', rank: 0, label: 'グループB 1位' },
+        4: { group: 'A', rank: 1, label: 'グループA 2位' },
+      };
+      const rule = slotRules4[pos];
+      if (rule) {
+        if (isLeagueCompleted) {
+          const standings = getGroupStandings(cls, rule.group);
+          if (standings[rule.rank]) {
+            return { team: standings[rule.rank], label: null, isBye: false };
+          }
+        }
+        return { team: null, label: rule.label, isBye: false };
+      }
+      if (pos > 4) {
+        return { team: null, label: '-', isBye: true };
+      }
+    }
+
+    const slotRules8 = {
+      1: { group: 'A', rank: 0, label: 'グループA 1位' },
+      2: { group: 'B', rank: 1, label: 'グループB 2位' },
+      3: { group: 'B', rank: 0, label: 'グループB 1位' },
+      4: { group: 'A', rank: 1, label: 'グループA 2位' },
+      5: { group: 'C', rank: 0, label: 'グループC 1位' },
+      6: { group: 'D', rank: 1, label: 'グループD 2位' },
+      7: { group: 'D', rank: 0, label: 'グループD 1位' },
+      8: { group: 'C', rank: 1, label: 'グループC 2位' },
+    };
+    const rule = slotRules8[pos];
+    if (rule) {
+      if (isLeagueCompleted) {
+        const standings = getGroupStandings(cls, rule.group);
+        if (standings[rule.rank] && rule.rank < numPerGroup) {
+          return { team: standings[rule.rank], label: null, isBye: false };
+        }
+      }
+      return { team: null, label: rule.label, isBye: false };
+    }
+
+    return { team: null, label: `枠 ${pos}`, isBye: false };
+  };
+
   const calculateSimulation = () => {
     let totalEntries = entries.length;
     let totalLeagueRemaining = 0;
@@ -1381,6 +1557,89 @@ export default function App() {
     }
     return true;
   });
+
+  function createBracketSlot(cls, pos, isEditable) {
+    const slotInfo = getTournamentSlotInfo(cls, pos);
+    const team = slotInfo.team;
+
+    if (slotInfo.isBye) {
+      return (
+        <div key={`slot-${pos}`} className="border-2 border-gray-200 bg-gray-100 p-2 rounded w-44 h-14 flex flex-col items-center justify-center relative opacity-70">
+           <div className="text-[10px] text-gray-400 absolute top-1 left-2 font-mono">枠{pos}</div>
+           <div className="font-bold text-xs text-gray-400 text-center mt-1 px-1">シード (不戦勝)</div>
+        </div>
+      );
+    }
+
+    if (isEditable) {
+      return (
+        <div key={`slot-${pos}`} className={`border-2 ${team ? 'border-orange-500 bg-orange-50' : 'border-dashed border-gray-400 bg-white'} p-2 rounded w-44 h-16 flex flex-col items-center justify-center cursor-pointer relative shadow-sm z-10`} onDragOver={handleDragOver} onDrop={(e) => handleTournamentDrop(e, pos)} draggable={!!team} onDragStart={(e) => team && handleDragStart(e, team.id)}>
+           <div className="text-[10px] text-gray-500 absolute top-1 left-2 font-mono">枠{pos}</div>
+           <div className="font-bold text-xs truncate w-full text-center mt-2 px-1">{team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label || 'ドロップ'}</span>}</div>
+        </div>
+      );
+    }
+    return (
+      <div key={`slot-${pos}`} className={`border-2 ${team ? 'border-[#2c5f4e] bg-white' : 'border-dashed border-gray-300 bg-gray-50'} p-2 rounded w-44 h-14 flex flex-col items-center justify-center relative shadow-sm z-10`}>
+         <div className="text-[10px] text-gray-500 absolute top-1 left-2 font-mono">枠{pos}</div>
+         <div className="font-bold text-xs truncate w-full text-center mt-1 px-1">
+            {team ? getTeamNameWithClub(team.id) : <span className="text-gray-400 font-normal text-xs">{slotInfo.label}</span>}
+         </div>
+      </div>
+    );
+  }
+
+  function renderTournamentTree(cls, isEditable) {
+    return (
+      <div className="p-4 overflow-x-auto">
+        <div className="flex min-w-[900px] font-sans items-center">
+          <div className="flex flex-col justify-around h-[560px]">
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 1, isEditable)}{createBracketSlot(cls, 2, isEditable)}</div>
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 3, isEditable)}{createBracketSlot(cls, 4, isEditable)}</div>
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 5, isEditable)}{createBracketSlot(cls, 6, isEditable)}</div>
+            <div className="flex flex-col gap-2">{createBracketSlot(cls, 7, isEditable)}{createBracketSlot(cls, 8, isEditable)}</div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6 -ml-1 relative z-0">
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[74px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6">
+             <div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] relative z-10">
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">準決勝進出</div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6 -ml-1 py-[35px] relative z-0">
+             <div className="h-[140px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+             <div className="h-[140px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6">
+             <div className="border-b-2 border-gray-400 w-full"></div><div className="border-b-2 border-gray-400 w-full"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] relative z-10">
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">決勝進出</div>
+            <div className="w-28 h-12 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center text-xs text-gray-500">決勝進出</div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6 -ml-1 py-[105px] relative z-0">
+             <div className="h-[280px] border-r-2 border-y-2 border-gray-400 rounded-r-lg"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] w-6">
+             <div className="border-b-2 border-gray-400 w-full"></div>
+          </div>
+          <div className="flex flex-col justify-around h-[560px] relative z-10">
+             <div className="w-32 h-16 bg-yellow-50 border-2 border-yellow-400 rounded-xl shadow-md flex flex-col items-center justify-center text-yellow-800 font-bold">
+               <IconTrophy /> 優勝
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">

@@ -250,13 +250,11 @@ export default function App() {
     });
   };
 
-  // 【改修】クラス別テストデータ生成処理（既存データを完全削除してから新規作成）
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
     const givenNames = ['太郎', '次郎', '健太', '大輔', '直樹', '拓也', '翔太', '花子', '美咲', '彩乃', '葵', '優花', '結衣', '陽菜'];
 
-    // 1. 各クラスの組数入力チェック
     let totalToGen = 0;
     config.classes.forEach(cls => {
       totalToGen += parseInt(testGenCounts[cls]) || 0;
@@ -267,7 +265,6 @@ export default function App() {
       return;
     }
 
-    // 2. 既存の「エントリー」「試合結果」「審判履歴」データを全削除して初期化
     setEntries([]);
     setMatches([]);
     setLastCourtReferees({});
@@ -277,7 +274,6 @@ export default function App() {
       await supabase.from('matches').delete().gt('created_at', '1970-01-01');
     }
 
-    // 3. 新規テストデータの作成（IDは 0001 から順番に再採番）
     const newEntries = [];
     const dbPayloads = [];
     let currentIdCount = 0;
@@ -334,7 +330,6 @@ export default function App() {
       }
     });
 
-    // 4. 新規作成データをセット＆DB保存
     setEntries(newEntries);
 
     if (isSupabaseConfigured && dbPayloads.length > 0) {
@@ -638,6 +633,7 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
+  // 全クラスの予選リーグ対戦カード一括生成
   const generateAllLeagueMatches = async (currentEntriesList) => {
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -736,8 +732,92 @@ export default function App() {
     return totalGenerated;
   };
 
+  // 【改修】選択中のクラスのみの予選リーグ対戦カード生成関数
+  const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {
+    const activeEntries = currentEntriesList || entries;
+    const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+    const clsEntries = activeEntries.filter(e => e.cls === targetCls && e.checkedIn);
+    const groupMatchesMap = {};
+    let maxGroupMatches = 0;
+
+    groups.forEach(groupName => {
+      const groupTeams = clsEntries.filter(e => e.group === groupName);
+      groupMatchesMap[groupName] = [];
+      if (groupTeams.length >= 2) {
+        for (let i = 0; i < groupTeams.length; i++) {
+          for (let j = i + 1; j < groupTeams.length; j++) {
+            groupMatchesMap[groupName].push({
+              cls: targetCls,
+              group_name: groupName,
+              team1_id: groupTeams[i].id,
+              team2_id: groupTeams[j].id
+            });
+          }
+        }
+        if (groupMatchesMap[groupName].length > maxGroupMatches) {
+          maxGroupMatches = groupMatchesMap[groupName].length;
+        }
+      }
+    });
+
+    const newClassMatches = [];
+    let orderCounter = 1;
+    const dbInserts = [];
+    let totalGenerated = 0;
+
+    for (let round = 0; round < maxGroupMatches; round++) {
+      groups.forEach(groupName => {
+        if (groupMatchesMap[groupName] && groupMatchesMap[groupName][round]) {
+          totalGenerated++;
+          const m = groupMatchesMap[groupName][round];
+          const matchObj = {
+            id: `M-${targetCls}-${m.group_name}-${m.team1_id}-${m.team2_id}`,
+            cls: targetCls,
+            group_name: m.group_name,
+            match_type: 'league',
+            court_number: null,
+            team1_id: m.team1_id,
+            team2_id: m.team2_id,
+            team1_score: null,
+            team2_score: null,
+            status: 'waiting',
+            match_order: orderCounter++
+          };
+          dbInserts.push(matchObj);
+          newClassMatches.push({
+            id: matchObj.id,
+            cls: matchObj.cls,
+            group: matchObj.group_name,
+            matchType: matchObj.match_type,
+            courtNumber: matchObj.court_number,
+            team1Id: matchObj.team1_id,
+            team2Id: matchObj.team2_id,
+            team1Score: matchObj.team1_score,
+            team2Score: matchObj.team2_score,
+            status: matchObj.status,
+            matchOrder: matchObj.match_order
+          });
+        }
+      });
+    }
+
+    // 他クラス・他タイプの試合を残し、選択クラスの予選試合のみ更新
+    const otherMatches = matches.filter(m => !(m.cls === targetCls && m.matchType === 'league'));
+    const updatedMatches = [...otherMatches, ...newClassMatches];
+    setMatches(updatedMatches);
+
+    if (isSupabaseConfigured) {
+      await supabase.from('matches').delete().eq('cls', targetCls).eq('match_type', 'league');
+      if (dbInserts.length > 0) {
+        await supabase.from('matches').insert(dbInserts);
+      }
+    }
+    return totalGenerated;
+  };
+
   const generateLeagueMatches = async (targetCls, currentEntriesList) => {
-    return await generateAllLeagueMatches(currentEntriesList);
+    return await generateClassLeagueMatches(targetCls, currentEntriesList);
   };
 
   const handleAutoDrawTournament = async () => {
@@ -2019,9 +2099,9 @@ export default function App() {
                        onClick={async () => {
                          const count = await generateLeagueMatches(drawClass);
                          if (count > 0) {
-                           setDialog({ title: "対戦カード生成完了", message: `全クラスのグループ配置に基づき、対戦カード（全${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
+                           setDialog({ title: "対戦カード生成完了", message: `【${drawClass}】のグループ配置に基づき、対戦カード（全${count}試合）を更新・生成しました！`, onClose: () => setDialog(null) });
                          } else {
-                           setDialog({ title: "対戦カードクリア", message: `グループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。各グループに2組以上配置してください。`, onClose: () => setDialog(null) });
+                           setDialog({ title: "対戦カードクリア", message: `【${drawClass}】のグループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。`, onClose: () => setDialog(null) });
                          }
                        }} 
                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1"

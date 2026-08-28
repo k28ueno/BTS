@@ -106,11 +106,15 @@ export default function App() {
     return null;
   };
 
+  // 【改修】完了試合が存在する場合のみ lastCourtReferees を参照し、それ以外（初戦）はグループ内待機ペアから選出
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
 
     if (m.matchType === 'league') {
-      if (m.courtNumber !== null && lastCourtReferees[m.courtNumber]) {
+      const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');
+
+      // 1. そのコートで実際に完了した直前試合があり、かつ lastCourtReferees に記録がある場合のみ適用
+      if (m.courtNumber !== null && courtCompletedMatches.length > 0 && lastCourtReferees[m.courtNumber]) {
         const lastRef = lastCourtReferees[m.courtNumber];
         
         let mainText = lastRef.main;
@@ -136,6 +140,7 @@ export default function App() {
         return { main: mainText, mainId, line: lineText, lineId };
       }
 
+      // 2. コートで完了した試合がない場合（初戦）：グループ内待機ペアから固定選出
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -171,28 +176,27 @@ export default function App() {
     }
   };
 
-  // 各ペアの現在のステータス（試合進行中／審判予定）をコート番号付きで取得
   const getBusyTeamDetails = () => {
     const busyMap = new Map();
 
     // 1. 各コートで進行中・コール中・受付中の試合に出場している選手
     matches.forEach(m => {
       if (m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
-        if (m.team1Id) busyMap.set(String(m.team1Id), { court: Number(m.courtNumber), role: '試合進行中' });
-        if (m.team2Id) busyMap.set(String(m.team2Id), { court: Number(m.courtNumber), role: '試合進行中' });
+        if (m.team1Id) busyMap.set(String(m.team1Id), { court: m.courtNumber, role: '試合進行中' });
+        if (m.team2Id) busyMap.set(String(m.team2Id), { court: m.courtNumber, role: '試合進行中' });
       }
     });
 
-    // 2. 各コートの次回審判予定ペア（スコア確定直後の待機ペア含む）
+    // 2. 各コートの現在の審判（進行中または完了直後の審判担当ペア）
     for (let c = 1; c <= config.courts; c++) {
       const activeMatch = getActiveMatchForCourt(c);
       if (activeMatch) {
         const ref = getRefereeForMatch(activeMatch);
         if (ref.mainId && !busyMap.has(String(ref.mainId))) {
-          busyMap.set(String(ref.mainId), { court: c, role: '審判予定' });
+          busyMap.set(String(ref.mainId), { court: c, role: '審判担当中' });
         }
         if (ref.lineId && ref.lineId !== ref.mainId && !busyMap.has(String(ref.lineId))) {
-          busyMap.set(String(ref.lineId), { court: c, role: '審判予定' });
+          busyMap.set(String(ref.lineId), { court: c, role: '審判担当中' });
         }
       }
     }
@@ -632,7 +636,6 @@ export default function App() {
     }
   };
 
-  // 【改修】ドロップ制御：他コートでの試合中/審判予定、および自コートの他コート審判予定ブロック
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
@@ -645,7 +648,6 @@ export default function App() {
     const team1Busy = busyMap.get(String(targetMatch.team1Id));
     const team2Busy = busyMap.get(String(targetMatch.team2Id));
 
-    // 審判予定・試合進行中の他コート重複チェック用ヘルパー関数
     const checkTeamBusy = (busyInfo, teamId) => {
       if (!busyInfo) return null;
 
@@ -772,7 +774,9 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
+  // 【改修】全対戦カード再生成時に審判記憶（lastCourtReferees）をクリア
   const generateAllLeagueMatches = async (currentEntriesList) => {
+    setLastCourtReferees({});
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const classes = config.classes || ['1部', '2部', '3部', '4部'];
@@ -870,7 +874,9 @@ export default function App() {
     return totalGenerated;
   };
 
+  // 【改修】クラス別対戦カード再生成時に審判記憶（lastCourtReferees）をクリア
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {
+    setLastCourtReferees({});
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
@@ -1353,7 +1359,7 @@ export default function App() {
         <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-wider relative z-10">{config.title}</h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
-          <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center gap-2"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2"><IconSettings /> 登録内容の修正・取消</button>
         </div>
       </div>

@@ -106,7 +106,7 @@ export default function App() {
     return null;
   };
 
-  // 【改修】完了試合が存在する場合のみ lastCourtReferees を参照し、それ以外（初戦）はグループ内待機ペアから選出
+  // 【改修】他コートで審判確定しているペアを初戦審判候補から自動除外するロジック
   const getRefereeForMatch = (m) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
 
@@ -140,7 +140,25 @@ export default function App() {
         return { main: mainText, mainId, line: lineText, lineId };
       }
 
-      // 2. コートで完了した試合がない場合（初戦）：グループ内待機ペアから固定選出
+      // 2. コートで完了した試合がない場合（初戦）：グループ内待機ペアから選出
+      // ★他コートで次回審判確定しているペアID、または進行中試合に出場中の選手IDを収集して除外する
+      const otherCourtRefIds = new Set();
+
+      Object.keys(lastCourtReferees).forEach(cNum => {
+        if (Number(cNum) !== Number(m.courtNumber)) {
+          const ref = lastCourtReferees[cNum];
+          if (ref.mainId) otherCourtRefIds.add(String(ref.mainId));
+          if (ref.lineId) otherCourtRefIds.add(String(ref.lineId));
+        }
+      });
+
+      matches.forEach(x => {
+        if (x.courtNumber !== null && Number(x.courtNumber) !== Number(m.courtNumber) && (x.status === 'calling' || x.status === 'recepted' || x.status === 'in_progress')) {
+          if (x.team1Id) otherCourtRefIds.add(String(x.team1Id));
+          if (x.team2Id) otherCourtRefIds.add(String(x.team2Id));
+        }
+      });
+
       const groupTeams = entries
         .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -150,7 +168,8 @@ export default function App() {
 
       const waitingTeams = groupTeams.filter(e => 
         String(e.id) !== t1 && 
-        String(e.id) !== t2
+        String(e.id) !== t2 &&
+        !otherCourtRefIds.has(String(e.id))
       );
 
       if (waitingTeams.length >= 2) {
@@ -179,7 +198,6 @@ export default function App() {
   const getBusyTeamDetails = () => {
     const busyMap = new Map();
 
-    // 1. 各コートで進行中・コール中・受付中の試合に出場している選手
     matches.forEach(m => {
       if (m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
         if (m.team1Id) busyMap.set(String(m.team1Id), { court: m.courtNumber, role: '試合進行中' });
@@ -187,7 +205,6 @@ export default function App() {
       }
     });
 
-    // 2. 各コートの現在の審判（進行中または完了直後の審判担当ペア）
     for (let c = 1; c <= config.courts; c++) {
       const activeMatch = getActiveMatchForCourt(c);
       if (activeMatch) {
@@ -656,7 +673,7 @@ export default function App() {
         return `「${teamName}」は現在 第${busyInfo.court}コート で【試合進行中】です。同時に複数コートへ配置することはできません。`;
       }
 
-      if (busyInfo.role === '審判予定') {
+      if (busyInfo.role === '審判担当中') {
         if (Number(busyInfo.court) !== Number(courtNum)) {
           const teamName = getTeamNameWithClub(teamId);
           return `「${teamName}」は 第${busyInfo.court}コート の【審判予定ペア】です。審判を務める前に別のコート（第${courtNum}コート）へ配置することはできません。`;
@@ -1359,7 +1376,7 @@ export default function App() {
         <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-wider relative z-10">{config.title}</h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
-          <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center gap-2"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2"><IconSettings /> 登録内容の修正・取消</button>
         </div>
       </div>

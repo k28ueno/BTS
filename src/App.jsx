@@ -250,15 +250,37 @@ export default function App() {
     });
   };
 
+  // 【改修】クラス別テストデータ生成処理（既存データを削除してから生成）
   const handleGenerateTestData = async () => {
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
     const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
     const givenNames = ['太郎', '次郎', '健太', '大輔', '直樹', '拓也', '翔太', '花子', '美咲', '彩乃', '葵', '優花', '結衣', '陽菜'];
 
+    // 1. 各クラスの組数入力チェック
+    let totalToGen = 0;
+    config.classes.forEach(cls => {
+      totalToGen += parseInt(testGenCounts[cls]) || 0;
+    });
+
+    if (totalToGen === 0) {
+      setDialog({ title: "注意", message: "生成する組数が設定されていません。各クラスの組数を入力してください。", onClose: () => setDialog(null) });
+      return;
+    }
+
+    // 2. 既存の「エントリー」「試合結果」「審判履歴」データを全削除して初期化
+    setEntries([]);
+    setMatches([]);
+    setLastCourtReferees({});
+
+    if (isSupabaseConfigured) {
+      await supabase.from('entries').delete().gt('created_at', '1970-01-01');
+      await supabase.from('matches').delete().gt('created_at', '1970-01-01');
+    }
+
+    // 3. 新規テストデータの作成（IDは 0001 から順番に再採番）
     const newEntries = [];
     const dbPayloads = [];
-
-    let currentIdCount = entries.length;
+    let currentIdCount = 0;
 
     config.classes.forEach(cls => {
       const numPerClass = parseInt(testGenCounts[cls]) || 0;
@@ -312,13 +334,8 @@ export default function App() {
       }
     });
 
-    if (newEntries.length === 0) {
-      setDialog({ title: "注意", message: "生成する組数が設定されていません。各クラスの組数を入力してください。", onClose: () => setDialog(null) });
-      return;
-    }
-
-    const updatedEntries = [...entries, ...newEntries];
-    setEntries(updatedEntries);
+    // 4. 新規作成データをセット＆DB保存
+    setEntries(newEntries);
 
     if (isSupabaseConfigured && dbPayloads.length > 0) {
       await supabase.from('entries').insert(dbPayloads);
@@ -326,7 +343,7 @@ export default function App() {
 
     setDialog({
       title: "テストデータ作成完了",
-      message: `合計 ${newEntries.length} 組のテストエントリーを作成しました。`,
+      message: `既存データをクリアし、新たに合計 ${newEntries.length} 組のテストエントリーを作成しました。`,
       onClose: () => setDialog(null)
     });
   };
@@ -2372,7 +2389,7 @@ export default function App() {
                        ⚙️ テスト用自動エントリー生成 (クラス別)
                     </h4>
                     <p className="text-base text-gray-600 mb-4 font-medium">
-                       各クラスごとに指定した人数のテストエントリーを自動生成してデータベースに登録します。
+                       ※既存のエントリーおよび試合データはすべてクリア（初期化）された上で、各クラスごとに指定した組数のテストエントリーを新たに生成・登録します。
                     </p>
                     <div className="space-y-4 bg-gray-50 p-5 rounded-lg border">
                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

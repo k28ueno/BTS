@@ -1521,6 +1521,12 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
+  // 予選リーグの対戦カードが1件以上生成済み、かつ全試合が完了しているか
+  const isLeagueComplete = (cls) => {
+    const leagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+    return leagueMatches.length > 0 && leagueMatches.every(m => m.status === 'completed');
+  };
+
   // 決勝トーナメントの組数（受付済＋グループ数）に応じたブラケットサイズ（4 or 8）
   const getTournamentSlotCount = (cls) => {
     const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
@@ -1872,9 +1878,15 @@ export default function App() {
         {dashTab === 'tournament' && (
           <div>
             <h3 className="text-xl font-bold mb-4">{selectedClass} - 決勝トーナメント</h3>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-               {renderTournamentTree(selectedClass, false)}
-            </div>
+            {isLeagueComplete(selectedClass) ? (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+                 {renderTournamentTree(selectedClass, false)}
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-400 font-bold">
+                 予選リーグ終了後に表示されます
+              </div>
+            )}
           </div>
         )}
       </div>

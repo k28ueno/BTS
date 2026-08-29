@@ -661,12 +661,17 @@ export default function App() {
   const handleDragStart = (e, entryId) => { e.dataTransfer.setData('text/plain', entryId); };
   const handleMatchDragStart = (e, matchId) => { e.dataTransfer.setData('text/match-id', matchId); };
   const handleDragOver = (e) => { e.preventDefault(); };
-  
-  const handleDrop = async (e, targetGroup) => {
-    e.preventDefault();
-    const entryId = e.dataTransfer.getData('text/plain');
-    if (!entryId) return;
 
+  // ---- タップ操作によるモバイル向け移動（PCのドラッグ&ドロップと並行して利用可能） ----
+  const [tapMoveSelection, setTapMoveSelection] = useState(null); // { kind: 'entry'|'match', id, label }
+
+  const toggleTapSelect = (kind, id, label) => (e) => {
+    e.stopPropagation();
+    setTapMoveSelection(prev => (prev && prev.kind === kind && prev.id === id) ? null : { kind, id, label });
+  };
+
+  const moveEntryToGroup = async (entryId, targetGroup) => {
+    if (!entryId) return;
     const targetEntry = entries.find(ent => ent.id === entryId);
     const updatedEntries = entries.map(ent => ent.id === entryId ? { ...ent, group: targetGroup } : ent);
     setEntries(updatedEntries);
@@ -680,11 +685,21 @@ export default function App() {
     }
   };
 
-  const handleCourtDrop = async (e, courtNum) => {
+  const handleDrop = async (e, targetGroup) => {
     e.preventDefault();
-    const matchId = e.dataTransfer.getData('text/match-id');
-    if (!matchId) return;
+    const entryId = e.dataTransfer.getData('text/plain');
+    if (!entryId) return;
+    await moveEntryToGroup(entryId, targetGroup);
+  };
 
+  const handleGroupZoneTap = (targetGroup) => async () => {
+    if (!tapMoveSelection || tapMoveSelection.kind !== 'entry') return;
+    const entryId = tapMoveSelection.id;
+    setTapMoveSelection(null);
+    await moveEntryToGroup(entryId, targetGroup);
+  };
+
+  const moveMatchToCourt = async (matchId, courtNum) => {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
@@ -749,11 +764,26 @@ export default function App() {
       if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
         await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
       }
-      await supabase.from('matches').update({ 
-        court_number: courtNum, 
+      await supabase.from('matches').update({
+        court_number: courtNum,
         status: courtNum ? ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'calling') : ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'waiting')
       }).eq('id', matchId);
     }
+  };
+
+  const handleCourtDrop = async (e, courtNum) => {
+    e.preventDefault();
+    const matchId = e.dataTransfer.getData('text/match-id');
+    if (!matchId) return;
+    await moveMatchToCourt(matchId, courtNum);
+  };
+
+  // 空きコートのみタップ配置に対応（配置済みコートの入れ替えは従来通りドラッグ操作を使用）
+  const handleCourtZoneTap = (courtNum) => async () => {
+    if (!tapMoveSelection || tapMoveSelection.kind !== 'match') return;
+    const matchId = tapMoveSelection.id;
+    setTapMoveSelection(null);
+    await moveMatchToCourt(matchId, courtNum);
   };
 
   const handleMatchStatusChange = async (matchId, newStatus) => {
@@ -764,9 +794,7 @@ export default function App() {
     }
   };
 
-  const handleTournamentDrop = async (e, position) => {
-    e.preventDefault();
-    const entryId = e.dataTransfer.getData('text/plain');
+  const moveEntryToTournamentSlot = async (entryId, position) => {
     if (!entryId) return;
     setEntries(entries.map(ent => {
       if (ent.id === entryId) return { ...ent, tournamentPosition: position };
@@ -779,14 +807,45 @@ export default function App() {
     }
   };
 
-  const handleRemoveTournamentPosition = async (e) => {
+  const handleTournamentDrop = async (e, position) => {
     e.preventDefault();
     const entryId = e.dataTransfer.getData('text/plain');
+    if (!entryId) return;
+    await moveEntryToTournamentSlot(entryId, position);
+  };
+
+  const clearEntryTournamentPosition = async (entryId) => {
     if (!entryId) return;
     setEntries(entries.map(ent => ent.id === entryId ? { ...ent, tournamentPosition: null } : ent));
     if (isSupabaseConfigured) {
       await supabase.from('entries').update({ tournamentposition: null }).eq('id', entryId);
     }
+  };
+
+  const handleRemoveTournamentPosition = async (e) => {
+    e.preventDefault();
+    const entryId = e.dataTransfer.getData('text/plain');
+    if (!entryId) return;
+    await clearEntryTournamentPosition(entryId);
+  };
+
+  const handleUnassignZoneTap = async () => {
+    if (!tapMoveSelection || tapMoveSelection.kind !== 'entry') return;
+    const entryId = tapMoveSelection.id;
+    setTapMoveSelection(null);
+    await clearEntryTournamentPosition(entryId);
+  };
+
+  // トーナメント枠タップ時：空き枠なら選択中の組を配置、配置済みなら選択トグル（次ラウンドへ進出させる際に再選択して使う）
+  const handleTournamentSlotTap = (slot, occupant) => async (e) => {
+    if (occupant) {
+      toggleTapSelect('entry', occupant.id, getTeamNameWithClub(occupant.id))(e);
+      return;
+    }
+    if (!tapMoveSelection || tapMoveSelection.kind !== 'entry') return;
+    const entryId = tapMoveSelection.id;
+    setTapMoveSelection(null);
+    await moveEntryToTournamentSlot(entryId, slot);
   };
 
   const handleAutoDraw = async () => {
@@ -1535,19 +1594,22 @@ export default function App() {
 
     const renderSlot = (slot) => {
       const ent = getEntryAtSlot(slot);
+      const isSelected = editable && ent && tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
+      const isDropTarget = editable && !ent && tapMoveSelection && tapMoveSelection.kind === 'entry';
       return (
         <div
           key={`slot-${slot}`}
-          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'}`}
+          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'} ${isSelected ? 'ring-2 ring-indigo-500' : ''} ${isDropTarget ? 'bg-indigo-50 border-indigo-400 text-indigo-400' : ''} ${editable ? 'cursor-pointer' : ''}`}
           onDragOver={editable ? handleDragOver : undefined}
           onDrop={editable ? (e) => handleTournamentDrop(e, slot) : undefined}
+          onClick={editable ? handleTournamentSlotTap(slot, ent) : undefined}
         >
           <span
             className="truncate w-full"
             draggable={editable && !!ent}
             onDragStart={editable && ent ? (e) => handleDragStart(e, ent.id) : undefined}
           >
-            {ent ? getTeamNameWithClub(ent.id) : (editable ? 'ドロップで配置' : '未定')}
+            {ent ? getTeamNameWithClub(ent.id) : (editable ? 'タップ/ドロップで配置' : '未定')}
           </span>
         </div>
       );
@@ -2181,6 +2243,12 @@ export default function App() {
                  )}
               </div>
 
+              {tapMoveSelection && (
+                <div className="mb-4 bg-indigo-50 border border-indigo-300 text-indigo-900 px-4 py-2.5 rounded-lg text-sm font-bold flex items-center justify-between gap-3">
+                   <span>「{tapMoveSelection.label}」を選択中 — 配置先をタップしてください</span>
+                   <button onClick={() => setTapMoveSelection(null)} className="text-xs bg-white border border-indigo-300 px-2 py-1 rounded shadow-xs">キャンセル</button>
+                </div>
+              )}
               {drawType === 'league' ? (
                 <div className="flex gap-4 overflow-x-auto pb-6 w-full cursor-grab active:cursor-grabbing">
                    {['未割り当て', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(groupName => {
@@ -2188,21 +2256,37 @@ export default function App() {
                       if (groupName !== '未割り当て' && groupTeams.length === 0 && !['A', 'B', 'C'].includes(groupName)) {
                         return null;
                       }
+                      const isDropTarget = tapMoveSelection && tapMoveSelection.kind === 'entry';
                       return (
-                        <div key={`admin-group-${groupName}`} className="min-w-[260px] max-w-[260px] bg-gray-100 rounded-lg p-3 border-2 border-dashed border-gray-300 flex-shrink-0" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, groupName)}>
+                        <div
+                          key={`admin-group-${groupName}`}
+                          className={`min-w-[260px] max-w-[260px] rounded-lg p-3 border-2 border-dashed flex-shrink-0 ${isDropTarget ? 'bg-indigo-50 border-indigo-400' : 'bg-gray-100 border-gray-300'}`}
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, groupName)}
+                          onClick={handleGroupZoneTap(groupName)}
+                        >
                            <h4 className="font-bold mb-3 border-b-2 pb-2 flex justify-between items-center">
                               <span>{groupName === '未割り当て' ? '未割り当て (受付済)' : `グループ ${groupName}`}</span>
                               <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full font-normal text-gray-600">{groupTeams.length}組</span>
                            </h4>
                            <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
-                              {groupTeams.map(ent => (
-                                 <div key={ent.id} draggable onDragStart={(e) => handleDragStart(e, ent.id)} className="bg-white p-3 rounded shadow-sm border cursor-move text-sm font-bold hover:border-[#2c5f4e] transition-colors">
+                              {groupTeams.map(ent => {
+                                const isSelected = tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
+                                return (
+                                 <div
+                                   key={ent.id}
+                                   draggable
+                                   onDragStart={(e) => handleDragStart(e, ent.id)}
+                                   onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
+                                   className={`bg-white p-3 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-[#2c5f4e] transition-colors ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
+                                 >
                                     <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
                                     <div>{getTeamNameWithClub(ent.id)}</div>
                                  </div>
-                              ))}
+                                );
+                              })}
                               {groupTeams.length === 0 && (
-                                <div className="text-xs text-gray-400 text-center py-8">ここにドロップ</div>
+                                <div className="text-xs text-gray-400 text-center py-8">ここにドロップ、またはタップで配置</div>
                               )}
                            </div>
                         </div>
@@ -2211,15 +2295,29 @@ export default function App() {
                 </div>
               ) : (
                 <div className="flex gap-6">
-                   <div className="w-1/3 bg-gray-100 rounded-lg p-3 border-2 border-dashed border-gray-300" onDragOver={handleDragOver} onDrop={handleRemoveTournamentPosition}>
+                   <div
+                     className={`w-1/3 rounded-lg p-3 border-2 border-dashed ${tapMoveSelection && tapMoveSelection.kind === 'entry' ? 'bg-orange-50 border-orange-400' : 'bg-gray-100 border-gray-300'}`}
+                     onDragOver={handleDragOver}
+                     onDrop={handleRemoveTournamentPosition}
+                     onClick={handleUnassignZoneTap}
+                   >
                       <h4 className="font-bold mb-3 border-b-2 pb-2">未配置 / 予選参加組 (受付済)</h4>
                       <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                         {entries.filter(e => e.cls === drawClass && e.checkedIn && !e.tournamentPosition).map(ent => (
-                            <div key={ent.id} draggable onDragStart={(e) => handleDragStart(e, ent.id)} className="bg-white p-3 rounded shadow-sm border cursor-move text-sm font-bold hover:border-orange-500">
+                         {entries.filter(e => e.cls === drawClass && e.checkedIn && !e.tournamentPosition).map(ent => {
+                           const isSelected = tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
+                           return (
+                            <div
+                              key={ent.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, ent.id)}
+                              onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
+                              className={`bg-white p-3 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-orange-500 ${isSelected ? 'ring-2 ring-orange-500 border-orange-500' : ''}`}
+                            >
                                <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
                                <div>{getTeamNameWithClub(ent.id)}</div>
                             </div>
-                         ))}
+                           );
+                         })}
                       </div>
                    </div>
                    <div className="w-2/3 bg-gray-50 rounded-lg border overflow-x-auto relative p-4">
@@ -2326,8 +2424,15 @@ export default function App() {
                   </button>
                </div>
 
+               {tapMoveSelection && tapMoveSelection.kind === 'match' && (
+                 <div className="mb-4 bg-indigo-50 border border-indigo-300 text-indigo-900 px-4 py-2.5 rounded-lg text-sm font-bold flex items-center justify-between gap-3">
+                    <span>「{tapMoveSelection.label}」を選択中 — 配置先の空きコートをタップしてください</span>
+                    <button onClick={() => setTapMoveSelection(null)} className="text-xs bg-white border border-indigo-300 px-2 py-1 rounded shadow-xs">キャンセル</button>
+                 </div>
+               )}
+
                <div className="mb-8">
-                  <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-[#2c5f4e] pl-2">🏸 コート配置状況 (空きコートにカードをドロップ)</h4>
+                  <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-[#2c5f4e] pl-2">🏸 コート配置状況 (空きコートにカードをドロップ、またはタップで配置)</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                      {Array.from({ length: config.courts }).map((_, i) => {
                         const courtNum = i + 1;
@@ -2353,12 +2458,14 @@ export default function App() {
                            }
                         }
 
+                        const isDropTarget = !activeMatch && tapMoveSelection && tapMoveSelection.kind === 'match';
                         return (
-                           <div 
+                           <div
                               key={`court-card-${courtNum}`}
-                              className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass}`}
+                              className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass} ${isDropTarget ? 'bg-indigo-50 border-indigo-400' : ''}`}
                               onDragOver={handleDragOver}
                               onDrop={(e) => handleCourtDrop(e, courtNum)}
+                              onClick={!activeMatch ? handleCourtZoneTap(courtNum) : undefined}
                            >
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                  <div className="flex items-center gap-2">
@@ -2461,7 +2568,7 @@ export default function App() {
                                  </div>
                               ) : (
                                  <div className="text-center text-xs text-gray-400 py-6 font-medium">
-                                    ここに試合をドロップ
+                                    ここに試合をドロップ、またはタップで配置
                                  </div>
                               )}
                            </div>
@@ -2485,12 +2592,14 @@ export default function App() {
                               if (team1Busy) busyReasonText = `第${team1Busy.court}コートで${team1Busy.role}`;
                               else if (team2Busy) busyReasonText = `第${team2Busy.court}コートで${team2Busy.role}`;
 
+                              const isSelected = tapMoveSelection && tapMoveSelection.kind === 'match' && tapMoveSelection.id === m.id;
                               return (
-                                <div 
+                                <div
                                   key={m.id}
                                   draggable={!isAnyBusy}
                                   onDragStart={(e) => !isAnyBusy && handleMatchDragStart(e, m.id)}
-                                  className={`border p-3 rounded-lg shadow-xs transition-all flex flex-col justify-between ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-move hover:shadow-sm'}`}
+                                  onClick={!isAnyBusy ? toggleTapSelect('match', m.id, `${getTeamNameWithClub(m.team1Id)} vs ${getTeamNameWithClub(m.team2Id)}`) : undefined}
+                                  className={`border p-3 rounded-lg shadow-xs transition-all flex flex-col justify-between ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-pointer sm:cursor-move hover:shadow-sm'} ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                 >
                                    <div>
                                       <div className="flex justify-between items-center mb-1.5">
@@ -2506,7 +2615,7 @@ export default function App() {
                                    </div>
                                    <div className="mt-3 pt-2 border-t text-right">
                                       <span className="text-[10px] text-gray-400">
-                                         {isAnyBusy ? 'ペア稼働終了待ち ⏳' : 'ドラッグしてコートへ配置 ➔'}
+                                         {isAnyBusy ? 'ペア稼働終了待ち ⏳' : 'タップまたはドラッグしてコートへ配置 ➔'}
                                       </span>
                                    </div>
                                 </div>

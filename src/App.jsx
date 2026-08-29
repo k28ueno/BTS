@@ -578,7 +578,8 @@ export default function App() {
                 timeopen: data.config.timeOpen,
                 timereception: data.config.timeReception,
                 timestart: data.config.timeStart,
-                venue: data.deadline,
+                venue: data.config.venue,
+                deadline: data.config.deadline,
                 notes: data.config.notes,
                 classes: data.config.classes,
                 courts: data.config.courts,
@@ -779,7 +780,9 @@ export default function App() {
     }
     const shuffled = [...checkedInEntries].sort(() => Math.random() - 0.5);
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    const groupCount = Math.max(3, Math.ceil(shuffled.length / 4));
+    const desiredGroupCount = Math.max(3, Math.ceil(shuffled.length / 4));
+    // 組数が少ないクラスでは、1グループ2組未満にならないようグループ数を減らす
+    const groupCount = Math.max(1, Math.min(desiredGroupCount, Math.floor(shuffled.length / 2)));
     const activeGroups = groups.slice(0, groupCount);
     
     const newEntries = [...entries];
@@ -1086,12 +1089,11 @@ export default function App() {
 
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
-    const newId = (entries.length + 1).toString().padStart(4, '0');
     const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
     const feeCat = entryForm.feeCategory || '一般';
-    
-    const dbPayload = {
-      id: newId,
+
+    const buildDbPayload = (id) => ({
+      id,
       cls: entryForm.cls,
       contact: entryForm.contact,
       club: entryForm.club,
@@ -1105,15 +1107,38 @@ export default function App() {
       checkedin: false,
       group: '未割り当て',
       tournamentposition: null
-    };
+    });
+
+    let newId;
 
     if (isSupabaseConfigured) {
-      const { error } = await supabase.from('entries').insert([dbPayload]);
-      if (error) {
-        console.error("Entry error:", error);
-        setDialog({ title: "エラー", message: "保存に失敗しました。詳細: " + error.message, onClose: () => setDialog(null) });
+      // ローカルのentries stateだけを根拠に採番すると同時エントリー時にID重複が起こり得るため、
+      // 挿入直前にDBへ最大IDを問い合わせ、一意制約違反（同時衝突）が起きた場合は採番し直す
+      let lastError = null;
+      let succeeded = false;
+      for (let attempt = 0; attempt < 5 && !succeeded; attempt++) {
+        const { data: latest } = await supabase.from('entries').select('id').order('id', { ascending: false }).limit(1);
+        const currentMax = (latest && latest[0]) ? (parseInt(latest[0].id, 10) || 0) : 0;
+        newId = (currentMax + 1).toString().padStart(4, '0');
+
+        const { error } = await supabase.from('entries').insert([buildDbPayload(newId)]);
+        if (!error) {
+          succeeded = true;
+        } else if (error.code === '23505') {
+          lastError = error;
+        } else {
+          lastError = error;
+          break;
+        }
+      }
+      if (!succeeded) {
+        console.error("Entry error:", lastError);
+        setDialog({ title: "エラー", message: "保存に失敗しました。詳細: " + (lastError ? lastError.message : "IDの採番に失敗しました。時間をおいて再度お試しください。"), onClose: () => setDialog(null) });
         return;
       }
+    } else {
+      const maxId = entries.reduce((max, ent) => Math.max(max, parseInt(ent.id, 10) || 0), 0);
+      newId = (maxId + 1).toString().padStart(4, '0');
     }
 
     const newEntryState = {
@@ -1283,7 +1308,8 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       if (courtNum !== null) {
-        await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('court_number', courtNum);
+        // スコア確定済（completed）の試合はDB上でも待機状態に巻き戻さない
+        await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('court_number', courtNum).neq('status', 'completed');
       }
       const isScored = targetMatch && targetMatch.team1Score !== null && targetMatch.team2Score !== null;
       await supabase.from('matches').update({ 

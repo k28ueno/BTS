@@ -30,6 +30,46 @@ const formatHHMM = (str) => {
   return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
 };
 
+// 「令和8年12月6日(日)」「11月27日(金)」形式の和暦表示文字列と<input type="date">の相互変換
+const WEEKDAYS_JP = ['日', '月', '火', '水', '木', '金', '土'];
+const REIWA_OFFSET = 2018; // 令和1年 = 西暦2019年
+
+const parseJapaneseFullDate = (str) => {
+  const m = (str || '').match(/令和(\d+)年(\d+)月(\d+)日/);
+  if (!m) return null;
+  const date = new Date(parseInt(m[1], 10) + REIWA_OFFSET, parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  return isNaN(date.getTime()) ? null : date;
+};
+
+const formatJapaneseFullDate = (date) => {
+  if (!date || isNaN(date.getTime())) return '';
+  return `令和${date.getFullYear() - REIWA_OFFSET}年${date.getMonth() + 1}月${date.getDate()}日(${WEEKDAYS_JP[date.getDay()]})`;
+};
+
+const parseJapaneseMonthDay = (str, fallbackYear) => {
+  const m = (str || '').match(/(\d+)月(\d+)日/);
+  if (!m) return null;
+  const date = new Date(fallbackYear, parseInt(m[1], 10) - 1, parseInt(m[2], 10));
+  return isNaN(date.getTime()) ? null : date;
+};
+
+const formatJapaneseMonthDay = (date) => {
+  if (!date || isNaN(date.getTime())) return '';
+  return `${date.getMonth() + 1}月${date.getDate()}日(${WEEKDAYS_JP[date.getDay()]})`;
+};
+
+const dateToInputValue = (date) => {
+  if (!date || isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+};
+
+const inputValueToDate = (value) => {
+  if (!value) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return isNaN(date.getTime()) ? null : date;
+};
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
   const [dashTab, setDashTab] = useState('matches');
@@ -2026,13 +2066,31 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">大会名</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.title} onChange={e=>setConfig({...config, title: e.target.value})} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">開催日</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.date} onChange={e=>setConfig({...config, date: e.target.value})} /></div>
+                <div>
+                  <label className="block font-bold text-sm mb-1 text-gray-700">開催日</label>
+                  <input
+                    type="date"
+                    className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                    value={dateToInputValue(parseJapaneseFullDate(config.date))}
+                    onChange={e => setConfig({ ...config, date: formatJapaneseFullDate(inputValueToDate(e.target.value)) })}
+                  />
+                  {config.date && <p className="text-xs text-gray-400 mt-1">表示: {config.date}</p>}
+                </div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">会場</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.venue} onChange={e=>setConfig({...config, venue: e.target.value})} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">申込締切</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.deadline} onChange={e=>setConfig({...config, deadline: e.target.value})} /></div>
+                <div>
+                  <label className="block font-bold text-sm mb-1 text-gray-700">申込締切</label>
+                  <input
+                    type="date"
+                    className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                    value={dateToInputValue(parseJapaneseMonthDay(config.deadline, (parseJapaneseFullDate(config.date) || new Date()).getFullYear()))}
+                    onChange={e => setConfig({ ...config, deadline: formatJapaneseMonthDay(inputValueToDate(e.target.value)) })}
+                  />
+                  {config.deadline && <p className="text-xs text-gray-400 mt-1">表示: {config.deadline}</p>}
+                </div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">コート数（面）</label><input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.courts} onChange={e=>setConfig({...config, courts: parseInt(e.target.value) || 1})} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">開館時間</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.timeOpen} onChange={e=>setConfig({...config, timeOpen: e.target.value})} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">受付開始</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.timeReception} onChange={e=>setConfig({...config, timeReception: e.target.value})} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">試合開始</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.timeStart} onChange={e=>setConfig({...config, timeStart: e.target.value})} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">開館時間</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeOpen)} onChange={e=>setConfig({...config, timeOpen: e.target.value})} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">受付開始</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeReception)} onChange={e=>setConfig({...config, timeReception: e.target.value})} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">試合開始</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeStart)} onChange={e=>setConfig({...config, timeStart: e.target.value})} /></div>
                 
                 <div className="md:col-span-2 border-t pt-4">
                   <h4 className="font-bold text-md text-[#2c5f4e] mb-3">トーナメント・シミュレーション設定</h4>

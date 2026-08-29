@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key) => {
@@ -282,25 +282,55 @@ export default function App() {
     });
   };
 
-  // 大会名見出しの幅に合わせてフォントサイズを実測調整する（収まりきらない場合は折り返しに任せる）
+  // 大会名見出しの幅に合わせてフォントサイズを実測調整する（最大2行に収まる範囲でできるだけ大きく表示）
   const titleBoxRef = useRef(null);
   const [titleFontSize, setTitleFontSize] = useState(48);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = titleBoxRef.current;
-    if (!el) return;
+    const text = config.title || '';
+    if (!el || !text) return;
+
     const MAX_SIZE = 48;
     const MIN_SIZE = 20;
+    const MAX_LINES = 2;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const chars = Array.from(text);
+
+    const countLines = (fontPx, maxWidth, fontFamily) => {
+      ctx.font = `800 ${fontPx}px ${fontFamily}`;
+      let lines = 1;
+      let lineWidth = 0;
+      chars.forEach(ch => {
+        const w = ctx.measureText(ch).width;
+        if (lineWidth + w > maxWidth && lineWidth > 0) {
+          lines++;
+          lineWidth = w;
+        } else {
+          lineWidth += w;
+        }
+      });
+      return lines;
+    };
+
     const compute = () => {
       const style = window.getComputedStyle(el);
       const paddingX = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0');
       const availableWidth = el.clientWidth - paddingX;
-      const text = config.title || '';
-      // 全角は1文字分、半角英数記号は0.55文字分として横幅の目安を算出
-      const weightedLen = Array.from(text).reduce((acc, ch) => acc + (/[ -~]/.test(ch) ? 0.55 : 1), 0) || 1;
-      const fitSize = availableWidth / (weightedLen * 0.62);
-      setTitleFontSize(Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.floor(fitSize))));
+      if (availableWidth <= 0) return;
+
+      let chosenSize = MIN_SIZE;
+      for (let size = MAX_SIZE; size >= MIN_SIZE; size--) {
+        if (countLines(size, availableWidth, style.fontFamily) <= MAX_LINES) {
+          chosenSize = size;
+          break;
+        }
+      }
+      setTitleFontSize(chosenSize);
     };
+
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(el);

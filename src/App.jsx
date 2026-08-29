@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key) => {
@@ -242,13 +242,30 @@ export default function App() {
     });
   };
 
-  // タイトル文字数に応じた動的フォントサイズ計算（1行全収まり保証）
-  const getTitleFontSize = (text) => {
-    if (!text) return '2.25rem';
-    // 全角は1換算、半角記号・英数字は0.55換算で文字幅スコアを算出
-    const len = Array.from(text).reduce((acc, char) => acc + (char.match(/[ -~]/) ? 0.55 : 1), 0);
-    return `min(calc(88cqw / ${Math.max(len, 8)}), 2.75rem)`;
-  };
+  // 大会名見出しの幅に合わせてフォントサイズを実測調整する（収まりきらない場合は折り返しに任せる）
+  const titleBoxRef = useRef(null);
+  const [titleFontSize, setTitleFontSize] = useState(48);
+
+  useEffect(() => {
+    const el = titleBoxRef.current;
+    if (!el) return;
+    const MAX_SIZE = 48;
+    const MIN_SIZE = 20;
+    const compute = () => {
+      const style = window.getComputedStyle(el);
+      const paddingX = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0');
+      const availableWidth = el.clientWidth - paddingX;
+      const text = config.title || '';
+      // 全角は1文字分、半角英数記号は0.55文字分として横幅の目安を算出
+      const weightedLen = Array.from(text).reduce((acc, ch) => acc + (/[ -~]/.test(ch) ? 0.55 : 1), 0) || 1;
+      const fitSize = availableWidth / (weightedLen * 0.62);
+      setTitleFontSize(Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.floor(fitSize))));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [config.title, loading]);
 
   // ----------------------------------------------------------------
 
@@ -1572,11 +1589,10 @@ export default function App() {
          <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md flex items-center justify-center gap-2 mx-auto text-lg"><IconSmartphone /> 当日の進行状況・対戦表</button>
       </div>
 
-      {/* 修正: タイトルを1行表示（動的フォントサイズ）、ボタン表記を「修正・取消」に変更 */}
-      <div className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden @container">
-        <h1 
-          className="font-extrabold mb-4 tracking-wider relative z-10 whitespace-nowrap leading-tight transition-all"
-          style={{ fontSize: getTitleFontSize(config.title) }}
+      <div ref={titleBoxRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
+        <h1
+          className="font-extrabold mb-4 tracking-wider relative z-10 leading-tight break-words"
+          style={{ fontSize: `${titleFontSize}px` }}
         >
           {config.title}
         </h1>
@@ -1744,7 +1760,7 @@ export default function App() {
                  return (
                    <div key={`group-${group}`} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
                       <h4 className="font-bold text-lg mb-3 border-l-4 border-[#2c5f4e] pl-2">グループ {group}</h4>
-                      <table className="w-full text-sm text-center border-collapse">
+                      <table className="min-w-full w-max text-sm text-center border-collapse whitespace-nowrap">
                          <thead>
                             <tr>
                                <th className="border p-2 bg-gray-50 text-left min-w-[140px]">ペア (所属)</th>
@@ -1919,14 +1935,14 @@ export default function App() {
          <button onClick={() => setIsAdminLoggedIn(false)} className="text-sm bg-gray-700 px-3 py-1 rounded">ログアウト</button>
       </div>
       <div className="flex flex-col md:flex-row">
-        <div className="w-full md:w-48 bg-gray-50 border-r p-4 flex flex-col gap-2">
-           <button onClick={() => setAdminTab('settings')} className={`p-2 text-left rounded font-bold ${adminTab === 'settings' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マスタ設定</button>
-           <button onClick={() => setAdminTab('entries')} className={`p-2 text-left rounded font-bold ${adminTab === 'entries' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>エントリー管理</button>
-           <button onClick={() => setAdminTab('reception')} className={`p-2 text-left rounded font-bold ${adminTab === 'reception' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>受付処理</button>
-           <button onClick={() => setAdminTab('draw')} className={`p-2 text-left rounded font-bold ${adminTab === 'draw' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>ドロー編成</button>
-           <button onClick={() => setAdminTab('simulation')} className={`p-2 text-left rounded font-bold ${adminTab === 'simulation' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>シミュレーション</button>
-           <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
-           <button onClick={() => setAdminTab('data')} className={`p-2 text-left rounded font-bold ${adminTab === 'data' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>データ管理</button>
+        <div className="w-full md:w-48 bg-gray-50 border-b md:border-b-0 md:border-r p-2 md:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-visible">
+           <button onClick={() => setAdminTab('settings')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'settings' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マスタ設定</button>
+           <button onClick={() => setAdminTab('entries')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'entries' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>エントリー管理</button>
+           <button onClick={() => setAdminTab('reception')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'reception' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>受付処理</button>
+           <button onClick={() => setAdminTab('draw')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'draw' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>ドロー編成</button>
+           <button onClick={() => setAdminTab('simulation')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'simulation' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>シミュレーション</button>
+           <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
+           <button onClick={() => setAdminTab('data')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'data' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>データ管理</button>
         </div>
         <div className="flex-1 p-6 bg-gray-50/50 min-w-0">
           
@@ -1979,7 +1995,7 @@ export default function App() {
             <div>
               <h3 className="text-xl font-bold mb-4">エントリー管理</h3>
               <div className="overflow-x-auto bg-white rounded border">
-                <table className="w-full text-sm text-left">
+                <table className="min-w-full w-max text-sm text-left whitespace-nowrap">
                   <thead className="bg-gray-100 border-b">
                     <tr>
                       <th className="p-3">ID</th>
@@ -2000,7 +2016,7 @@ export default function App() {
                         <td className="p-3 font-bold">({ent.cls}) {getTeamNameWithClub(ent.id)}</td>
                         <td className="p-3 font-bold text-xs">{ent.feeCategory || ent.p1Fee || '一般'}</td>
                         <td className="p-3">{ent.contact}</td>
-                        <td className="p-3 flex gap-2">
+                        <td className="p-3 flex gap-2 whitespace-nowrap">
                            <button onClick={() => { setEntryForm({...ent, feeCategory: ent.feeCategory || ent.p1Fee || '一般'}); setCurrentEditId(ent.id); setEditMode(true); setCurrentTab('entry'); }} className="bg-blue-500 text-white px-3 py-1 rounded">編集</button>
                            <button onClick={() => handleDeleteEntry(ent.id, ent.p1Name)} className="bg-red-500 text-white px-3 py-1 rounded">削除</button>
                         </td>
@@ -2063,8 +2079,8 @@ export default function App() {
                  </div>
               </div>
 
-              <div className="bg-white rounded border overflow-hidden shadow-sm">
-                 <table className="w-full text-sm text-left">
+              <div className="bg-white rounded border shadow-sm overflow-x-auto">
+                 <table className="min-w-full w-max text-sm text-left whitespace-nowrap">
                     <thead className="bg-gray-100 border-b">
                        <tr>
                           <th className="p-3 w-28 text-center">受付状態</th>
@@ -2240,7 +2256,7 @@ export default function App() {
 
                <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-2xl p-6 shadow-xl border border-slate-700">
                  <div className="overflow-x-auto mb-6">
-                    <table className="w-full text-xs text-center border-collapse">
+                    <table className="min-w-full w-max text-xs text-center border-collapse whitespace-nowrap">
                        <thead>
                           <tr className="bg-slate-700/60 text-slate-200">
                              <th className="p-2.5 text-left">クラス</th>

@@ -242,6 +242,14 @@ export default function App() {
     });
   };
 
+  // タイトル文字数に応じた動的フォントサイズ計算（1行全収まり保証）
+  const getTitleFontSize = (text) => {
+    if (!text) return '2.25rem';
+    // 全角は1換算、半角記号・英数字は0.55換算で文字幅スコアを算出
+    const len = Array.from(text).reduce((acc, char) => acc + (char.match(/[ -~]/) ? 0.55 : 1), 0);
+    return `min(calc(88cqw / ${Math.max(len, 8)}), 2.75rem)`;
+  };
+
   // ----------------------------------------------------------------
 
   useEffect(() => {
@@ -570,8 +578,7 @@ export default function App() {
                 timeopen: data.config.timeOpen,
                 timereception: data.config.timeReception,
                 timestart: data.config.timeStart,
-                venue: data.venue,
-                deadline: data.deadline,
+                venue: data.deadline,
                 notes: data.config.notes,
                 classes: data.config.classes,
                 courts: data.config.courts,
@@ -1412,19 +1419,145 @@ export default function App() {
     return stats.sort((a, b) => b.wins - a.wins);
   };
 
+  // 決勝トーナメントの組数（受付済＋グループ数）に応じたブラケットサイズ（4 or 8）
+  const getTournamentSlotCount = (cls) => {
+    const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
+    if (clsEntries.length === 0) return 0;
+    const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
+    return activeGroups.length <= 2 ? 4 : 8;
+  };
+
+  const filteredReceptionEntries = entries.filter(ent => {
+    if (receptionClassFilter !== 'all' && ent.cls !== receptionClassFilter) return false;
+    if (receptionSearchQuery) {
+      const q = receptionSearchQuery.trim().toLowerCase();
+      const haystack = [ent.id, ent.cls, ent.club, ent.p1Name, ent.p2Name].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // 予選リーグの残り試合数から、コート数・1試合平均時間をもとに終了予定時刻を試算する
+  const simResult = (() => {
+    const classes = config.classes || [];
+    const classStats = classes.map(cls => {
+      const count = entries.filter(e => e.cls === cls).length;
+      const leagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
+      const leagueTotal = leagueMatches.length;
+      const leagueRemaining = leagueMatches.filter(m => m.status !== 'completed').length;
+      const completedMatches = leagueTotal - leagueRemaining;
+
+      // 決勝トーナメントの試合結果は現状データ保持していないため、常に未消化として見積もる
+      const tournamentTotal = Math.max(getTournamentSlotCount(cls) - 1, 0);
+      const tournamentRemaining = tournamentTotal;
+
+      return {
+        cls, count, leagueTotal, leagueRemaining, tournamentTotal, tournamentRemaining,
+        completedMatches,
+        remainingMatches: leagueRemaining + tournamentRemaining,
+        totalMatches: leagueTotal + tournamentTotal
+      };
+    });
+
+    const sum = (key) => classStats.reduce((acc, s) => acc + s[key], 0);
+    const totalRemainingMatches = sum('remainingMatches');
+    const courts = Math.max(config.courts || 1, 1);
+    const avgDuration = config.avgMatchDuration || 15;
+    const totalMinutes = Math.ceil((totalRemainingMatches * avgDuration) / courts);
+
+    const [baseH, baseM] = (simCurrentTime || '08:50').split(':').map(n => parseInt(n, 10) || 0);
+    const endTotalMin = baseH * 60 + baseM + totalMinutes;
+    const endTimeStr = `${(Math.floor(endTotalMin / 60) % 24).toString().padStart(2, '0')}:${(endTotalMin % 60).toString().padStart(2, '0')}`;
+
+    return {
+      classStats,
+      totalEntries: sum('count'),
+      totalLeagueMatches: sum('leagueTotal'),
+      totalLeagueRemaining: sum('leagueRemaining'),
+      totalTournamentMatches: sum('tournamentTotal'),
+      totalTournamentRemaining: sum('tournamentRemaining'),
+      totalCompletedMatches: sum('completedMatches'),
+      totalRemainingMatches,
+      totalMatches: sum('totalMatches'),
+      hours: Math.floor(totalMinutes / 60),
+      minutes: totalMinutes % 60,
+      endTimeStr
+    };
+  })();
+
+  // 決勝トーナメント表を描画（editable=trueの場合はドラッグ＆ドロップで組を配置・進出させられる）
+  const renderTournamentTree = (cls, editable) => {
+    const slotCount = getTournamentSlotCount(cls);
+    const getEntryAtSlot = (slot) => entries.find(e => e.cls === cls && e.tournamentPosition === slot);
+
+    const renderSlot = (slot) => {
+      const ent = getEntryAtSlot(slot);
+      return (
+        <div
+          key={`slot-${slot}`}
+          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'}`}
+          onDragOver={editable ? handleDragOver : undefined}
+          onDrop={editable ? (e) => handleTournamentDrop(e, slot) : undefined}
+        >
+          <span
+            className="truncate w-full"
+            draggable={editable && !!ent}
+            onDragStart={editable && ent ? (e) => handleDragStart(e, ent.id) : undefined}
+          >
+            {ent ? getTeamNameWithClub(ent.id) : (editable ? 'ドロップで配置' : '未定')}
+          </span>
+        </div>
+      );
+    };
+
+    const rounds = [];
+    let levelSize = slotCount;
+    let level = 0;
+    while (levelSize >= 2) {
+      rounds.push(Array.from({ length: levelSize }, (_, i) => (level === 0 ? i + 1 : level * 100 + i + 1)));
+      levelSize = levelSize / 2;
+      level++;
+    }
+
+    const roundLabel = (idx) => {
+      const remaining = rounds.length - idx;
+      if (remaining === 1) return '決勝';
+      if (remaining === 2) return '準決勝';
+      if (remaining === 3) return '準々決勝';
+      return `${idx + 1}回戦`;
+    };
+
+    return (
+      <div className="flex gap-8 p-4 min-w-max">
+        {rounds.map((slots, rIdx) => (
+          <div key={`round-${rIdx}`} className="flex flex-col justify-center" style={{ gap: `${24 * Math.pow(2, rIdx)}px` }}>
+            <div className="text-xs font-bold text-gray-500 text-center mb-1">{roundLabel(rIdx)}</div>
+            {slots.map(slot => renderSlot(slot))}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+      {/* 修正: 「当日の進行状況・対戦表はこちら」を削除し、ボタン名を「当日の進行状況・対戦表」に変更 */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-md p-6 text-center border border-blue-200">
-         <h3 className="text-xl font-bold mb-2 text-blue-900">当日の進行状況・対戦表はこちら</h3>
-         <button onClick={() => setCurrentTab('dashboard')} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow flex items-center justify-center gap-2 mx-auto"><IconSmartphone /> 進行状況ダッシュボードを開く</button>
+         <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md flex items-center justify-center gap-2 mx-auto text-lg"><IconSmartphone /> 当日の進行状況・対戦表</button>
       </div>
 
-      <div className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
-        <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-wider relative z-10">{config.title}</h1>
+      {/* 修正: タイトルを1行表示（動的フォントサイズ）、ボタン表記を「修正・取消」に変更 */}
+      <div className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden @container">
+        <h1 
+          className="font-extrabold mb-4 tracking-wider relative z-10 whitespace-nowrap leading-tight transition-all"
+          style={{ fontSize: getTitleFontSize(config.title) }}
+        >
+          {config.title}
+        </h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
-          <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2"><IconUser /> 大会にエントリー</button>
-          <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2"><IconSettings /> 登録内容の修正・取消</button>
+          <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base"><IconSettings /> 修正・取消</button>
         </div>
       </div>
 
@@ -2477,15 +2610,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans bg-gray-50 text-gray-800 pb-20">
+      {/* 修正: 右上の「エントリー」「修正・取消」ボタンを削除し、「管理」ボタンのみ配置 */}
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="font-bold text-[#2c5f4e] text-lg flex items-center gap-2 cursor-pointer" onClick={() => setCurrentTab('home')}>
              <IconTrophy /> 大会運営ポータル
           </div>
           <div className="flex gap-2 md:gap-4">
-             <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="text-xs md:text-sm font-bold text-white bg-orange-500 hover:bg-orange-600 px-3 md:px-4 py-2 rounded-lg flex items-center gap-1"><IconUser /> エントリー</button>
-             <button onClick={() => setCurrentTab('editLogin')} className="text-xs md:text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 md:px-4 py-2 rounded-lg flex items-center gap-1 hidden md:flex">修正・取消</button>
-             <button onClick={() => { if(isAdminLoggedIn) { setCurrentTab('admin'); } else { setCurrentTab('adminLogin'); } }} className="text-xs md:text-sm font-bold text-gray-600 hover:text-gray-900 px-2 py-2 flex items-center gap-1 border-l ml-2 pl-4"><IconSettings /> 管理</button>
+             <button onClick={() => { if(isAdminLoggedIn) { setCurrentTab('admin'); } else { setCurrentTab('adminLogin'); } }} className="text-xs md:text-sm font-bold text-gray-600 hover:text-gray-900 px-3 py-2 flex items-center gap-1"><IconSettings /> 管理</button>
           </div>
         </div>
       </header>

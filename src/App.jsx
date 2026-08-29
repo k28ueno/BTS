@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key) => {
@@ -282,60 +282,49 @@ export default function App() {
     });
   };
 
-  // 大会名見出しの幅に合わせてフォントサイズを実測調整する（最大2行に収まる範囲でできるだけ大きく表示）
-  const titleBoxRef = useRef(null);
+  // 大会名見出しの幅に合わせてフォントサイズを実測調整する（文字数によらず常に1行に収める）
   const [titleFontSize, setTitleFontSize] = useState(48);
+  const titleObserverRef = useRef(null);
 
-  useLayoutEffect(() => {
-    const el = titleBoxRef.current;
-    const text = config.title || '';
-    if (!el || !text) return;
+  // タブ切替による再マウント時にも確実に再計測されるよう、依存配列型のuseEffectではなくref自体をトリガーにする
+  const measureTitleRef = (el) => {
+    if (titleObserverRef.current) {
+      titleObserverRef.current.disconnect();
+      titleObserverRef.current = null;
+    }
+    if (!el) return;
 
     const MAX_SIZE = 48;
-    const MIN_SIZE = 20;
-    const MAX_LINES = 2;
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const chars = Array.from(text);
-
-    const countLines = (fontPx, maxWidth, fontFamily) => {
-      ctx.font = `800 ${fontPx}px ${fontFamily}`;
-      let lines = 1;
-      let lineWidth = 0;
-      chars.forEach(ch => {
-        const w = ctx.measureText(ch).width;
-        if (lineWidth + w > maxWidth && lineWidth > 0) {
-          lines++;
-          lineWidth = w;
-        } else {
-          lineWidth += w;
-        }
-      });
-      return lines;
-    };
+    const MIN_SIZE = 12;
+    const REF_SIZE = 100;
 
     const compute = () => {
       const style = window.getComputedStyle(el);
       const paddingX = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0');
       const availableWidth = el.clientWidth - paddingX;
-      if (availableWidth <= 0) return;
+      const text = config.title || '';
+      if (availableWidth <= 0 || !text) return;
 
-      let chosenSize = MIN_SIZE;
-      for (let size = MAX_SIZE; size >= MIN_SIZE; size--) {
-        if (countLines(size, availableWidth, style.fontFamily) <= MAX_LINES) {
-          chosenSize = size;
-          break;
-        }
-      }
-      setTitleFontSize(chosenSize);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.font = `800 ${REF_SIZE}px ${style.fontFamily}`;
+      const baseWidth = ctx.measureText(text).width;
+      if (baseWidth <= 0) return;
+      // tracking-wider(letter-spacing: 0.05em)はcanvasのmeasureTextに反映されないため加算する
+      const charCount = Array.from(text).length;
+      const trackingWidth = REF_SIZE * 0.05 * Math.max(charCount - 1, 0);
+      const measuredWidth = baseWidth + trackingWidth;
+
+      // ブラウザ間のフォント描画誤差を吸収する安全マージン
+      const fitSize = (availableWidth / measuredWidth) * REF_SIZE * 0.97;
+      setTitleFontSize(Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.floor(fitSize))));
     };
 
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [config.title, loading]);
+    titleObserverRef.current = ro;
+  };
 
   // ----------------------------------------------------------------
 
@@ -1727,7 +1716,7 @@ export default function App() {
          <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md flex items-center justify-center gap-2 mx-auto text-lg"><IconSmartphone /> 当日の進行状況・対戦表</button>
       </div>
 
-      <div ref={titleBoxRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
+      <div ref={measureTitleRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
         <h1
           className="font-extrabold mb-4 tracking-wider relative z-10 leading-tight break-words"
           style={{ fontSize: `${titleFontSize}px` }}

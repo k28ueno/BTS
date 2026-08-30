@@ -342,11 +342,12 @@ export default function App() {
   // 実際の直近の試合結果から復元する。DBに保存されない状態のため、リロードのたびに再構築が必要
   useLayoutEffect(() => {
     if (loading) return;
-    const backfilled = { ...lastCourtReferees };
+    // 「一度セットしたら維持」ではなく、そのコートの本当の最新完了試合から毎回再計算する。
+    // そうしないと、別端末での更新や新たな試合の完了があっても、古い勝者・敗者が審判予定として残り続けてしまう
+    const backfilled = {};
     let changed = false;
 
     for (let c = 1; c <= config.courts; c++) {
-      if (backfilled[c]) continue;
       const activeMatch = getActiveMatchForCourt(c);
       if (!activeMatch || activeMatch.status !== 'completed') continue;
       if (activeMatch.team1Score === null || activeMatch.team2Score === null) continue;
@@ -357,10 +358,14 @@ export default function App() {
         main: getTeamNameWithClub(winnerId), mainId: winnerId,
         line: getTeamNameWithClub(loserId), lineId: loserId
       };
-      changed = true;
+
+      const prev = lastCourtReferees[c];
+      if (!prev || String(prev.mainId) !== String(winnerId) || String(prev.lineId) !== String(loserId)) {
+        changed = true;
+      }
     }
 
-    if (changed) setLastCourtReferees(backfilled);
+    if (changed) setLastCourtReferees(prev => ({ ...prev, ...backfilled }));
 
     // ページ読み込み時など、既にコートに割り当て済みだがロックされていない進行中の試合をコート番号順に確定させる。
     // コート単位で逐次計算し、直前のコートで確定した審判を次のコートの候補から除外することで、

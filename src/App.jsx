@@ -2859,29 +2859,24 @@ export default function App() {
                                   draggable={!isAnyBusy}
                                   onDragStart={(e) => !isAnyBusy && handleMatchDragStart(e, m.id)}
                                   onClick={!isAnyBusy ? toggleTapSelect('match', m.id, `${getTeamNameWithClub(m.team1Id)} vs ${getTeamNameWithClub(m.team2Id)}`) : undefined}
-                                  className={`border p-3 rounded-lg shadow-xs transition-all flex flex-col justify-between ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-pointer sm:cursor-move hover:shadow-sm'} ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
+                                  className={`border p-2.5 rounded-lg shadow-xs transition-all ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-pointer sm:cursor-move hover:shadow-sm'} ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                 >
-                                   <div>
-                                      <div className="flex justify-between items-center mb-1.5">
-                                         <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
-                                         <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
-                                      </div>
-                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${team1Predicted ? 'text-emerald-600' : busyTextClass(team1Busy)}`}>
+                                   <div className="flex justify-between items-center mb-1">
+                                      <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
+                                      <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
+                                   </div>
+                                   <div className="flex items-center gap-2 flex-wrap">
+                                      <div className={`font-bold text-lg truncate flex items-center gap-1 min-w-0 ${team1Predicted ? 'text-emerald-600' : busyTextClass(team1Busy)}`}>
                                          <span className="truncate">{getTeamNameWithClub(m.team1Id)}</span>
                                          {team1Busy && <span className={`text-[9px] no-underline shrink-0 px-1 py-0.5 rounded font-bold ${busyBadgeClass(team1Busy)}`}>{busyShortLabel(team1Busy)}(第{team1Busy.court}C)</span>}
                                          {team1Predicted && <span className="text-[9px] shrink-0 px-1 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700">次審判予定(第{team1Predicted.court}C)</span>}
                                       </div>
-                                      <div className="text-xs text-gray-400 text-center my-1 font-bold">vs</div>
-                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${team2Predicted ? 'text-emerald-600' : busyTextClass(team2Busy)}`}>
+                                      <span className="text-xs text-gray-400 font-bold shrink-0">vs</span>
+                                      <div className={`font-bold text-lg truncate flex items-center gap-1 min-w-0 ${team2Predicted ? 'text-emerald-600' : busyTextClass(team2Busy)}`}>
                                          <span className="truncate">{getTeamNameWithClub(m.team2Id)}</span>
                                          {team2Busy && <span className={`text-[9px] no-underline shrink-0 px-1 py-0.5 rounded font-bold ${busyBadgeClass(team2Busy)}`}>{busyShortLabel(team2Busy)}(第{team2Busy.court}C)</span>}
                                          {team2Predicted && <span className="text-[9px] shrink-0 px-1 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700">次審判予定(第{team2Predicted.court}C)</span>}
                                       </div>
-                                   </div>
-                                   <div className="mt-3 pt-2 border-t text-right">
-                                      <span className="text-[10px] text-gray-400">
-                                         {isAnyBusy ? 'ペア稼働終了待ち ⏳' : 'タップまたはドラッグしてコートへ配置 ➔'}
-                                      </span>
                                    </div>
                                 </div>
                               );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key) => {
@@ -180,8 +180,9 @@ export default function App() {
 
   const STAFF_REFEREE_LABEL = "本部スタッフへ審判を依頼";
 
-  const getRefereeForMatch = (m, extraOccupiedIds) => {
+  const getRefereeForMatch = (m, extraOccupiedIds, lastRefMapOverride) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null, substitutionNotes: [] };
+    const lastRefMap = lastRefMapOverride || lastCourtReferees;
 
     if (m.matchType !== 'league') {
       return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null, substitutionNotes: [] };
@@ -206,8 +207,8 @@ export default function App() {
 
     const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');
 
-    if (m.courtNumber !== null && courtCompletedMatches.length > 0 && lastCourtReferees[m.courtNumber]) {
-      const lastRef = lastCourtReferees[m.courtNumber];
+    if (m.courtNumber !== null && courtCompletedMatches.length > 0 && lastRefMap[m.courtNumber]) {
+      const lastRef = lastRefMap[m.courtNumber];
 
       let mainId = lastRef.mainId;
       let lineId = lastRef.lineId;
@@ -332,11 +333,33 @@ export default function App() {
     });
   };
 
-  // ページ読み込み時など、既にコートに割り当て済みだがロックされていない進行中の試合をコート番号順に確定させる。
-  // コート単位で逐次計算し、直前のコートで確定した審判を次のコートの候補から除外することで、
-  // 同一レンダー内で複数コートに同じペアが重複して審判割り当てされるのを防ぐ
-  useEffect(() => {
+  // ページ読み込み時など、lastCourtReferees（直前コートの勝者・敗者記録）が消えている完了済みコートを、
+  // 実際の直近の試合結果から復元する。DBに保存されない状態のため、リロードのたびに再構築が必要
+  useLayoutEffect(() => {
     if (loading) return;
+    const backfilled = { ...lastCourtReferees };
+    let changed = false;
+
+    for (let c = 1; c <= config.courts; c++) {
+      if (backfilled[c]) continue;
+      const activeMatch = getActiveMatchForCourt(c);
+      if (!activeMatch || activeMatch.status !== 'completed') continue;
+      if (activeMatch.team1Score === null || activeMatch.team2Score === null) continue;
+
+      const winnerId = activeMatch.team1Score >= activeMatch.team2Score ? activeMatch.team1Id : activeMatch.team2Id;
+      const loserId = activeMatch.team1Score >= activeMatch.team2Score ? activeMatch.team2Id : activeMatch.team1Id;
+      backfilled[c] = {
+        main: getTeamNameWithClub(winnerId), mainId: winnerId,
+        line: getTeamNameWithClub(loserId), lineId: loserId
+      };
+      changed = true;
+    }
+
+    if (changed) setLastCourtReferees(backfilled);
+
+    // ページ読み込み時など、既にコートに割り当て済みだがロックされていない進行中の試合をコート番号順に確定させる。
+    // コート単位で逐次計算し、直前のコートで確定した審判を次のコートの候補から除外することで、
+    // 同一レンダー内で複数コートに同じペアが重複して審判割り当てされるのを防ぐ
     const unlockedActiveMatches = matches
       .filter(m => m.matchType === 'league' && m.courtNumber !== null && m.status !== 'completed' && !lockedReferees[m.id])
       .sort((a, b) => Number(a.courtNumber) - Number(b.courtNumber));
@@ -345,7 +368,7 @@ export default function App() {
     const claimed = new Set();
     const newLocks = {};
     unlockedActiveMatches.forEach(m => {
-      const ref = getRefereeForMatch(m, claimed);
+      const ref = getRefereeForMatch(m, claimed, backfilled);
       newLocks[m.id] = ref;
       if (ref.mainId) claimed.add(String(ref.mainId));
       if (ref.lineId) claimed.add(String(ref.lineId));

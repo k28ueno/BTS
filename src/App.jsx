@@ -2823,9 +2823,21 @@ export default function App() {
 
                <div>
                   <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-blue-500 pl-2">📋 優先対戦リスト (待機中の試合)</h4>
-                  <div className="bg-white rounded-xl border p-4 shadow-sm max-h-[500px] overflow-y-auto">
+                  <div
+                    className="bg-white rounded-xl border p-4 shadow-sm max-h-[500px] overflow-y-auto"
+                    onDragOver={(e) => {
+                      const container = e.currentTarget;
+                      const rect = container.getBoundingClientRect();
+                      const edge = 48;
+                      if (e.clientY - rect.top < edge) {
+                        container.scrollTop -= 18;
+                      } else if (rect.bottom - e.clientY < edge) {
+                        container.scrollTop += 18;
+                      }
+                    }}
+                  >
                      {getSortedWaitingMatches().length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 gap-3">
                            {getSortedWaitingMatches().map((m, displayIndex) => {
                               const busyMap = getBusyTeamDetails();
                               const team1Busy = busyMap.get(String(m.team1Id));

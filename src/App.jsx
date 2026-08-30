@@ -1478,10 +1478,112 @@ export default function App() {
     }
 
     if (assignedCount > 0) {
-      setDialog({ title: "順位反映完了", message: `【${drawClass}】の全予選結果に基づき、${assignedCount} 組を結勝トーナメント枠に割り当てました。手動で枠を変更することも可能です。`, onClose: () => setDialog(null) });
+      setDialog({ title: "順位反映完了", message: `【${drawClass}】の全予選結果に基づき、${assignedCount} 組を決勝トーナメント枠に割り当てました。手動で枠を変更することも可能です。`, onClose: () => setDialog(null) });
     } else {
       setDialog({ title: "完了", message: "予選グループ数に応じたトーナメント枠を設定しました。", onClose: () => setDialog(null) });
     }
+  };
+
+  // スロット番号からラウンド情報を求める（renderTournamentTreeの採番方式と対応させる）
+  // レベル0のスロットは1..N、レベルL(L>=1)のスロットは L*100 + インデックス+1
+  const getTournamentSlotInfo = (slot) => {
+    const level = Math.floor(slot / 100);
+    const idx = slot - level * 100 - 1;
+    const pairIndex = Math.floor(idx / 2);
+    const siblingIdx = idx % 2 === 0 ? idx + 1 : idx - 1;
+    return {
+      level,
+      nextSlot: (level + 1) * 100 + pairIndex + 1,
+      siblingSlot: level * 100 + siblingIdx + 1
+    };
+  };
+
+  const tournamentRoundLabel = (level, slotCount) => {
+    const totalLevels = Math.log2(slotCount);
+    const remaining = totalLevels - level;
+    if (remaining <= 1) return '決勝';
+    if (remaining === 2) return '準決勝';
+    if (remaining === 3) return '準々決勝';
+    return `${level + 1}回戦`;
+  };
+
+  // 決勝トーナメントの対戦カードを生成する。両者揃った枠は試合を作成し、
+  // 片方だけ埋まっている枠（不戦勝）はもう一方の枠へ自動的に勝ち上がらせる
+  const generateTournamentMatches = async (cls) => {
+    const slotCount = getTournamentSlotCount(cls);
+    if (slotCount < 2) {
+      setDialog({ title: "生成不可", message: `【${cls}】は決勝トーナメント枠が設定されていません。`, onClose: () => setDialog(null) });
+      return;
+    }
+
+    let workingEntries = entries.map(e => ({ ...e }));
+    const newMatches = [];
+    const advancedUpdates = [];
+    let createdCount = 0;
+
+    let levelSize = slotCount;
+    let level = 0;
+    while (levelSize >= 2) {
+      for (let i = 0; i < levelSize; i += 2) {
+        const slotA = level * 100 + i + 1;
+        const slotB = level * 100 + i + 2;
+        const entA = workingEntries.find(e => e.cls === cls && e.tournamentPosition === slotA);
+        const entB = workingEntries.find(e => e.cls === cls && e.tournamentPosition === slotB);
+        const { nextSlot } = getTournamentSlotInfo(slotA);
+
+        if (entA && entB) {
+          const matchId = `T-${cls}-${slotA}-${slotB}`;
+          if (!matches.some(m => m.id === matchId)) {
+            newMatches.push({
+              id: matchId,
+              cls,
+              group: tournamentRoundLabel(level, slotCount),
+              matchType: 'tournament',
+              courtNumber: null,
+              team1Id: entA.id,
+              team2Id: entB.id,
+              team1Score: null,
+              team2Score: null,
+              status: 'waiting',
+              matchOrder: 10000 + slotA
+            });
+            createdCount++;
+          }
+        } else if (entA && !entB) {
+          workingEntries = workingEntries.map(e => e.id === entA.id ? { ...e, tournamentPosition: nextSlot } : e);
+          advancedUpdates.push({ id: entA.id, tournamentposition: nextSlot });
+        } else if (!entA && entB) {
+          workingEntries = workingEntries.map(e => e.id === entB.id ? { ...e, tournamentPosition: nextSlot } : e);
+          advancedUpdates.push({ id: entB.id, tournamentposition: nextSlot });
+        }
+      }
+      levelSize = levelSize / 2;
+      level++;
+    }
+
+    if (newMatches.length === 0 && advancedUpdates.length === 0) {
+      setDialog({ title: "生成対象なし", message: `【${cls}】には新たに生成できる対戦カードがありません。両者揃っている枠がないか、既に生成済みです。`, onClose: () => setDialog(null) });
+      return;
+    }
+
+    if (advancedUpdates.length > 0) setEntries(workingEntries);
+    if (newMatches.length > 0) setMatches(prev => [...prev, ...newMatches]);
+
+    if (isSupabaseConfigured) {
+      await Promise.all(advancedUpdates.map(u => supabase.from('entries').update({ tournamentposition: u.tournamentposition }).eq('id', u.id)));
+      if (newMatches.length > 0) {
+        await supabase.from('matches').insert(newMatches.map(m => ({
+          id: m.id, cls: m.cls, group_name: m.group, match_type: m.matchType, court_number: m.courtNumber,
+          team1_id: m.team1Id, team2_id: m.team2Id, team1_score: m.team1Score, team2_score: m.team2Score,
+          status: m.status, match_order: m.matchOrder
+        })));
+      }
+    }
+
+    const parts = [];
+    if (createdCount > 0) parts.push(`対戦カード${createdCount}件を生成`);
+    if (advancedUpdates.length > 0) parts.push(`不戦勝${advancedUpdates.length}件を自動で勝ち上がらせ`);
+    setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 
   const handleEntrySubmit = async (e) => {
@@ -1803,6 +1905,23 @@ export default function App() {
           lineId: loserId
         }
       }));
+    }
+
+    // 決勝トーナメントの試合なら、勝ち組を次ラウンドの枠へ自動的に勝ち上がらせる
+    if (targetMatch && targetMatch.matchType === 'tournament') {
+      const winnerId = s1 >= s2 ? targetMatch.team1Id : targetMatch.team2Id;
+      const winnerEntry = entries.find(e => e.id === winnerId);
+      const slotCount = getTournamentSlotCount(targetMatch.cls);
+      const totalLevels = Math.log2(slotCount);
+      if (winnerEntry && winnerEntry.tournamentPosition != null) {
+        const { level, nextSlot } = getTournamentSlotInfo(winnerEntry.tournamentPosition);
+        if (level + 1 < totalLevels) {
+          setEntries(prev => prev.map(e => e.id === winnerId ? { ...e, tournamentPosition: nextSlot } : e));
+          if (isSupabaseConfigured) {
+            await supabase.from('entries').update({ tournamentposition: nextSlot }).eq('id', winnerId);
+          }
+        }
+      }
     }
 
     setScoreModal(null);
@@ -2158,7 +2277,7 @@ export default function App() {
                        {activeMatch ? (
                           <div>
                              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
-                                ({activeMatch.cls}) グループ{activeMatch.group}・{statusLabel}
+                                ({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}・{statusLabel}
                              </span>
                              <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
                              <div className="text-xs text-gray-400 my-1">
@@ -2633,9 +2752,14 @@ export default function App() {
                      </button>
                    </>
                  ) : (
-                   <button onClick={handleAutoDrawTournament} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
-                      予選順位からトーナメント位置を自動初期反映
-                   </button>
+                   <>
+                     <button onClick={handleAutoDrawTournament} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
+                        予選順位からトーナメント位置を自動初期反映
+                     </button>
+                     <button onClick={() => generateTournamentMatches(drawClass)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1">
+                        <IconRefresh /> 決勝トーナメント対戦カードを生成
+                     </button>
+                   </>
                  )}
               </div>
 
@@ -2917,7 +3041,7 @@ export default function App() {
                                    onDragStart={(e) => activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted' && handleMatchDragStart(e, activeMatch.id)}
                                    className={`p-2 rounded border bg-white shadow-xs ${(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') ? 'cursor-not-allowed border-blue-300' : 'cursor-move'}`}
                                  >
-                                    <div className="text-xs font-bold text-gray-500 mb-1">({activeMatch.cls}) グループ{activeMatch.group}</div>
+                                    <div className="text-xs font-bold text-gray-500 mb-1">({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}</div>
                                     <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
 
                                     <div className="text-sm text-center font-bold my-1">
@@ -3030,7 +3154,7 @@ export default function App() {
                                 >
                                    <div className="flex justify-between items-center mb-1">
                                       <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
-                                      <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
+                                      <span className="text-xs font-bold text-blue-800">({m.cls}) {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>
                                    </div>
                                    <div className="grid items-center gap-x-2" style={{ gridTemplateColumns: 'minmax(0,1fr) 5.5rem 1.2rem minmax(0,1fr) 5.5rem' }}>
                                       <div className={`font-bold text-base truncate no-underline-children ${team1Predicted ? 'text-emerald-600' : busyTextClass(team1Busy)}`}>
@@ -3217,7 +3341,7 @@ export default function App() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in">
            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-2 text-gray-800 text-center">試合結果の入力</h3>
-              <p className="text-xs text-gray-500 text-center mb-6">({scoreModal.match.cls}) グループ{scoreModal.match.group}</p>
+              <p className="text-xs text-gray-500 text-center mb-6">({scoreModal.match.cls}) {scoreModal.match.matchType === 'tournament' ? scoreModal.match.group : `グループ${scoreModal.match.group}`}</p>
 
               <div className="grid grid-cols-2 gap-4 items-center mb-6">
                  <div className="text-center p-3 bg-blue-50 rounded-lg border">

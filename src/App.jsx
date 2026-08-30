@@ -877,6 +877,9 @@ export default function App() {
     const updatedEntries = entries.map(ent => ent.id === entryId ? { ...ent, group: targetGroup } : ent);
     setEntries(updatedEntries);
 
+    // タップで選択中のエントリーをドラッグでも移動できてしまうため、移動できたらタップ選択を解除する
+    setTapMoveSelection(prev => (prev && prev.kind === 'entry' && prev.id === entryId) ? null : prev);
+
     if (isSupabaseConfigured) {
       await supabase.from('entries').update({ group: targetGroup }).eq('id', entryId);
     }
@@ -973,6 +976,10 @@ export default function App() {
 
     setMatches(updated);
 
+    // タップで選択中の試合をドラッグでも移動できてしまうため、移動できたらタップ選択を解除する。
+    // 解除し忘れると、実際は配置済みなのに「選択中」バナーが残り続けてドラッグが失敗したように見えてしまう
+    setTapMoveSelection(prev => (prev && prev.kind === 'match' && prev.id === matchId) ? null : prev);
+
     // 実際にコートへ割り当てられた瞬間の審判割り当てを固定する。押し出された試合のロックは解除し、再割当時に再計算させる
     if (courtNum !== null && updatedTargetMatch) {
       const decidedRef = getRefereeForMatch(updatedTargetMatch);
@@ -1027,6 +1034,10 @@ export default function App() {
       if (ent.tournamentPosition === position) return { ...ent, tournamentPosition: null };
       return ent;
     }));
+
+    // タップで選択中のエントリーをドラッグでも移動できてしまうため、移動できたらタップ選択を解除する
+    setTapMoveSelection(prev => (prev && prev.kind === 'entry' && prev.id === entryId) ? null : prev);
+
     if (isSupabaseConfigured) {
       await supabase.from('entries').update({ tournamentposition: null }).eq('tournamentposition', position).eq('cls', drawClass);
       await supabase.from('entries').update({ tournamentposition: position }).eq('id', entryId);

@@ -458,6 +458,17 @@ export default function App() {
     initializeData();
   }, []);
 
+  // 複数端末で別々のコートを操作していても表示がズレないよう、エントリー・試合状況を定期的にバックグラウンド再取得する
+  // （設定はここでは対象外：編集中のマスタ設定フォームを上書きしてしまうため）
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const interval = setInterval(() => {
+      fetchEntries();
+      fetchMatches();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   const fetchSettings = async () => {
     if (isSupabaseConfigured) {
       try {
@@ -2810,7 +2821,7 @@ export default function App() {
                   <div className="bg-white rounded-xl border p-4 shadow-sm max-h-[500px] overflow-y-auto">
                      {getSortedWaitingMatches().length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                           {getSortedWaitingMatches().map(m => {
+                           {getSortedWaitingMatches().map((m, displayIndex) => {
                               const busyMap = getBusyTeamDetails();
                               const team1Busy = busyMap.get(String(m.team1Id));
                               const team2Busy = busyMap.get(String(m.team2Id));
@@ -2835,7 +2846,7 @@ export default function App() {
                                 >
                                    <div>
                                       <div className="flex justify-between items-center mb-1.5">
-                                         <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {m.matchOrder}</span>
+                                         <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
                                          <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
                                       </div>
                                       <div className={`font-bold text-sm truncate flex items-center gap-1 ${team1Predicted ? 'text-blue-600' : busyTextClass(team1Busy)}`}>

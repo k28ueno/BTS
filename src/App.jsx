@@ -1583,18 +1583,9 @@ export default function App() {
     else { setDialog({ title: "エラー", message: "パスワードが間違っています。", onClose: () => setDialog(null) }); }
   };
 
-  // スコア確定済（completed）の試合はコート解除できないようにブロックする
+  // スコア確定済（completed）の試合も、試合実績（スコア・結果）は保持したままコート解除できる
   const handleAssignCourt = async (matchId, courtNum) => {
     const targetMatch = matches.find(m => m.id === matchId);
-    
-    if (courtNum === null && targetMatch && targetMatch.status === 'completed') {
-      setDialog({
-        title: "コート解除不可",
-        message: "この試合はすでにスコアが確定しています。コート解除を行うには、先に「スコア修正」から『スコア解除』ボタンを押してスコアを解除してください。",
-        onClose: () => setDialog(null)
-      });
-      return;
-    }
 
     const updated = matches.map(m => {
       if (m.courtNumber === courtNum && courtNum !== null) {

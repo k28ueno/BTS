@@ -1869,11 +1869,14 @@ export default function App() {
     const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
     const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
-    const qualifiedIds = new Set();
+    const qualified = [];
     activeGroups.forEach(g => {
-      getGroupStandings(cls, g).slice(0, numPerGroup).forEach(s => qualifiedIds.add(s.id));
+      // 予選順位・勝敗を画面表示でも使えるよう、進出組にはグループ内順位(groupRank)を付与しておく
+      getGroupStandings(cls, g).slice(0, numPerGroup).forEach((s, idx) => {
+        qualified.push({ ...s, groupRank: idx + 1 });
+      });
     });
-    return clsEntries.filter(e => qualifiedIds.has(e.id));
+    return qualified;
   };
 
   // 決勝トーナメントの組数（受付済＋グループ数）に応じたブラケットサイズ（4 or 8）
@@ -2706,7 +2709,12 @@ export default function App() {
                               onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
                               className={`bg-white p-3 rounded shadow-sm border text-sm font-bold cursor-pointer sm:cursor-move hover:border-orange-500 ${isSelected ? 'ring-2 ring-orange-500 border-orange-500' : ''}`}
                             >
-                               <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
+                               <div className="flex justify-between items-center mb-1">
+                                  <span className="text-xs text-gray-400 font-mono">{ent.id}</span>
+                                  <span className="text-[11px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">
+                                     グループ{ent.group} {ent.groupRank}位・{ent.wins}勝{ent.losses}敗
+                                  </span>
+                               </div>
                                <div>{getTeamNameWithClub(ent.id)}</div>
                             </div>
                            );

@@ -298,6 +298,26 @@ export default function App() {
     return new Set(busyMap.keys());
   };
 
+  // まだ次の試合が割り当てられていないコートの「予測上の次審判」を情報表示用に返す（ブロックはしない）
+  const getPredictedRefereeDetails = () => {
+    const predictedMap = new Map();
+
+    for (let c = 1; c <= config.courts; c++) {
+      const activeMatch = getActiveMatchForCourt(c);
+      if (activeMatch && activeMatch.status === 'completed') {
+        const ref = getRefereeForMatch(activeMatch);
+        if (ref.mainId && !predictedMap.has(String(ref.mainId))) {
+          predictedMap.set(String(ref.mainId), { court: c });
+        }
+        if (ref.lineId && !predictedMap.has(String(ref.lineId))) {
+          predictedMap.set(String(ref.lineId), { court: c });
+        }
+      }
+    }
+
+    return predictedMap;
+  };
+
   const getSortedWaitingMatches = () => {
     const busyIds = getBusyTeamIds();
     const waitingMatches = matches.filter(m => m.status === 'waiting');
@@ -2771,6 +2791,11 @@ export default function App() {
                               const busyTextClass = (busy) => busy ? (busy.role === '試合進行中' ? 'text-red-500 line-through' : 'text-emerald-600 line-through') : 'text-gray-800';
                               const busyBadgeClass = (busy) => busy && busy.role === '試合進行中' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700';
 
+                              // ブロックはしないが、次審判予定として青色で情報表示する
+                              const predictedMap = getPredictedRefereeDetails();
+                              const team1Predicted = !team1Busy ? predictedMap.get(String(m.team1Id)) : null;
+                              const team2Predicted = !team2Busy ? predictedMap.get(String(m.team2Id)) : null;
+
                               const isSelected = tapMoveSelection && tapMoveSelection.kind === 'match' && tapMoveSelection.id === m.id;
                               return (
                                 <div
@@ -2785,14 +2810,16 @@ export default function App() {
                                          <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {m.matchOrder}</span>
                                          <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
                                       </div>
-                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${busyTextClass(team1Busy)}`}>
+                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${team1Predicted ? 'text-blue-600' : busyTextClass(team1Busy)}`}>
                                          <span className="truncate">{getTeamNameWithClub(m.team1Id)}</span>
                                          {team1Busy && <span className={`text-[9px] no-underline shrink-0 px-1 py-0.5 rounded font-bold ${busyBadgeClass(team1Busy)}`}>{busyShortLabel(team1Busy)}(第{team1Busy.court}C)</span>}
+                                         {team1Predicted && <span className="text-[9px] shrink-0 px-1 py-0.5 rounded font-bold bg-blue-100 text-blue-700">次審判予定(第{team1Predicted.court}C)</span>}
                                       </div>
                                       <div className="text-xs text-gray-400 text-center my-1 font-bold">vs</div>
-                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${busyTextClass(team2Busy)}`}>
+                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${team2Predicted ? 'text-blue-600' : busyTextClass(team2Busy)}`}>
                                          <span className="truncate">{getTeamNameWithClub(m.team2Id)}</span>
                                          {team2Busy && <span className={`text-[9px] no-underline shrink-0 px-1 py-0.5 rounded font-bold ${busyBadgeClass(team2Busy)}`}>{busyShortLabel(team2Busy)}(第{team2Busy.court}C)</span>}
+                                         {team2Predicted && <span className="text-[9px] shrink-0 px-1 py-0.5 rounded font-bold bg-blue-100 text-blue-700">次審判予定(第{team2Predicted.court}C)</span>}
                                       </div>
                                    </div>
                                    <div className="mt-3 pt-2 border-t text-right">

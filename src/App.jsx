@@ -230,7 +230,10 @@ export default function App() {
         if (candidates.length > 0) {
           const sub = candidates[0];
           const newText = label(sub);
-          substitutionNotes.push(`${roleLabel}は本来${roleText}ですが、直後に連戦になるため${newText}に交代しました`);
+          // 同クラス内（他グループ含む）への交代は原則の範囲内として無警告。他クラスへの応援依頼のみ通知する
+          if (sub.cls !== m.cls) {
+            substitutionNotes.push(`${roleLabel}は本来${roleText}ですが、直後に連戦になるため${newText}に交代しました`);
+          }
           return { id: sub.id, text: newText };
         }
         substitutionNotes.push(`${roleLabel}(${roleText})の代役が見つからないため、${STAFF_REFEREE_LABEL}してください`);
@@ -250,9 +253,9 @@ export default function App() {
     const t2 = String(m.team2Id);
     const candidates = findCandidates(new Set([t1, t2]));
 
-    // 同グループ内に空きペアがおらず、他グループ/他クラスから審判を回した場合は原則外として通知する
-    const offPrincipleNote = (e, roleLabel) => e.group !== m.group
-      ? `${roleLabel}は同グループに空きペアがいないため、${label(e)}（${e.cls !== m.cls ? '他クラス' : '同クラス他グループ'}）に依頼しました`
+    // 同クラス内（他グループ含む）への依頼は原則の範囲内として無警告。他クラスへ応援を依頼した場合のみ通知する
+    const offPrincipleNote = (e, roleLabel) => e.cls !== m.cls
+      ? `${roleLabel}は同グループに空きペアがいないため、${label(e)}（他クラス）に依頼しました`
       : null;
 
     if (candidates.length >= 2) {
@@ -964,60 +967,88 @@ export default function App() {
       return;
     }
 
-    const displacedIds = [];
-    const displacedCompleted = [];
-    let updatedTargetMatch = null;
-    const updated = matches.map(m => {
-      if (Number(m.courtNumber) === Number(courtNum) && m.id !== matchId) {
-        // 完了済みの試合がそのコートに残ったままだと、「そのコートの最新完了試合」の判定が
-        // 試合順（matchOrder）頼みになり、実際の完了順と食い違って古い審判予定が復活してしまう。
-        // 新しい試合を配置する時点でコート番号を外し、そのコートの完了履歴を1件に保つ
-        if (m.status === 'completed') {
-          displacedCompleted.push(m.id);
-          return { ...m, courtNumber: null };
-        }
-        displacedIds.push(m.id);
-        return { ...m, courtNumber: null, status: 'waiting' };
+    // 同クラス内の別グループへの依頼は原則の範囲内として無警告で進めるが、
+    // 他クラスへの応援依頼や本部スタッフ対応が必要になる場合は、配置前に管理者へ確認を求める
+    if (courtNum !== null) {
+      const wouldBeRef = getRefereeForMatch({ ...targetMatch, courtNumber: courtNum });
+      if (wouldBeRef.substitutionNotes && wouldBeRef.substitutionNotes.length > 0) {
+        setDialog({
+          title: "審判の割当を確認してください",
+          message: (
+            <div className="text-left space-y-2">
+              <div className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm space-y-1">
+                {wouldBeRef.substitutionNotes.map((note, i) => <div key={i}>⚠️ {note}</div>)}
+              </div>
+              <div className="text-sm text-gray-600">このままコートへ配置してよろしいですか？</div>
+            </div>
+          ),
+          confirmText: "配置する",
+          confirmBg: "bg-orange-500 hover:bg-orange-600",
+          onConfirm: () => { setDialog(null); performMove(); },
+          onClose: () => setDialog(null)
+        });
+        return;
       }
-      if (m.id === matchId) {
-        const isScored = m.team1Score !== null && m.team2Score !== null;
-        updatedTargetMatch = {
-          ...m,
-          courtNumber: courtNum,
-          status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
-        };
-        return updatedTargetMatch;
-      }
-      return m;
-    });
-
-    setMatches(updated);
-
-    // タップで選択中の試合をドラッグでも移動できてしまうため、移動できたらタップ選択を解除する。
-    // 解除し忘れると、実際は配置済みなのに「選択中」バナーが残り続けてドラッグが失敗したように見えてしまう
-    setTapMoveSelection(prev => (prev && prev.kind === 'match' && prev.id === matchId) ? null : prev);
-
-    // 実際にコートへ割り当てられた瞬間の審判割り当てを固定する。押し出された試合のロックは解除し、再割当時に再計算させる
-    if (courtNum !== null && updatedTargetMatch) {
-      const decidedRef = getRefereeForMatch(updatedTargetMatch);
-      setLockedReferees(prev => {
-        const next = { ...prev, [matchId]: decidedRef };
-        displacedIds.forEach(id => delete next[id]);
-        return next;
-      });
     }
 
-    if (isSupabaseConfigured) {
-      if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
-        await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
+    performMove();
+
+    async function performMove() {
+      const displacedIds = [];
+      const displacedCompleted = [];
+      let updatedTargetMatch = null;
+      const updated = matches.map(m => {
+        if (Number(m.courtNumber) === Number(courtNum) && m.id !== matchId) {
+          // 完了済みの試合がそのコートに残ったままだと、「そのコートの最新完了試合」の判定が
+          // 試合順（matchOrder）頼みになり、実際の完了順と食い違って古い審判予定が復活してしまう。
+          // 新しい試合を配置する時点でコート番号を外し、そのコートの完了履歴を1件に保つ
+          if (m.status === 'completed') {
+            displacedCompleted.push(m.id);
+            return { ...m, courtNumber: null };
+          }
+          displacedIds.push(m.id);
+          return { ...m, courtNumber: null, status: 'waiting' };
+        }
+        if (m.id === matchId) {
+          const isScored = m.team1Score !== null && m.team2Score !== null;
+          updatedTargetMatch = {
+            ...m,
+            courtNumber: courtNum,
+            status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
+          };
+          return updatedTargetMatch;
+        }
+        return m;
+      });
+
+      setMatches(updated);
+
+      // タップで選択中の試合をドラッグでも移動できてしまうため、移動できたらタップ選択を解除する。
+      // 解除し忘れると、実際は配置済みなのに「選択中」バナーが残り続けてドラッグが失敗したように見えてしまう
+      setTapMoveSelection(prev => (prev && prev.kind === 'match' && prev.id === matchId) ? null : prev);
+
+      // 実際にコートへ割り当てられた瞬間の審判割り当てを固定する。押し出された試合のロックは解除し、再割当時に再計算させる
+      if (courtNum !== null && updatedTargetMatch) {
+        const decidedRef = getRefereeForMatch(updatedTargetMatch);
+        setLockedReferees(prev => {
+          const next = { ...prev, [matchId]: decidedRef };
+          displacedIds.forEach(id => delete next[id]);
+          return next;
+        });
       }
-      for (const id of displacedCompleted) {
-        await supabase.from('matches').update({ court_number: null }).eq('id', id);
+
+      if (isSupabaseConfigured) {
+        if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
+          await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
+        }
+        for (const id of displacedCompleted) {
+          await supabase.from('matches').update({ court_number: null }).eq('id', id);
+        }
+        await supabase.from('matches').update({
+          court_number: courtNum,
+          status: courtNum ? ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'calling') : ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'waiting')
+        }).eq('id', matchId);
       }
-      await supabase.from('matches').update({
-        court_number: courtNum,
-        status: courtNum ? ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'calling') : ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'waiting')
-      }).eq('id', matchId);
     }
   };
 

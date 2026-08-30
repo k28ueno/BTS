@@ -321,14 +321,19 @@ export default function App() {
 
   const getSortedWaitingMatches = () => {
     const busyIds = getBusyTeamIds();
+    const predictedIds = getPredictedRefereeDetails();
     const waitingMatches = matches.filter(m => m.status === 'waiting');
 
-    return [...waitingMatches].sort((a, b) => {
-      const aBusy = busyIds.has(String(a.team1Id)) || busyIds.has(String(a.team2Id));
-      const bBusy = busyIds.has(String(b.team1Id)) || busyIds.has(String(b.team2Id));
+    // 優先度: ①両チームとも今すぐ完全に空いている ②片方/両方に次審判予定あり（今は空いているがブロックはしていない） ③ブロック中
+    const tierOf = (m) => {
+      if (busyIds.has(String(m.team1Id)) || busyIds.has(String(m.team2Id))) return 2;
+      if (predictedIds.has(String(m.team1Id)) || predictedIds.has(String(m.team2Id))) return 1;
+      return 0;
+    };
 
-      if (!aBusy && bBusy) return -1;
-      if (aBusy && !bBusy) return 1;
+    return [...waitingMatches].sort((a, b) => {
+      const tierDiff = tierOf(a) - tierOf(b);
+      if (tierDiff !== 0) return tierDiff;
       return a.matchOrder - b.matchOrder;
     });
   };

@@ -2865,17 +2865,21 @@ export default function App() {
                                       <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
                                       <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
                                    </div>
-                                   <div className="flex items-center gap-2 flex-wrap">
-                                      <div className={`font-bold text-lg truncate flex items-center gap-1 min-w-0 ${team1Predicted ? 'text-emerald-600' : busyTextClass(team1Busy)}`}>
-                                         <span className="truncate">{getTeamNameWithClub(m.team1Id)}</span>
-                                         {team1Busy && <span className={`text-[9px] no-underline shrink-0 px-1 py-0.5 rounded font-bold ${busyBadgeClass(team1Busy)}`}>{busyShortLabel(team1Busy)}(第{team1Busy.court}C)</span>}
-                                         {team1Predicted && <span className="text-[9px] shrink-0 px-1 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700">次審判予定(第{team1Predicted.court}C)</span>}
+                                   <div className="grid items-center gap-x-2" style={{ gridTemplateColumns: 'minmax(0,1fr) 5.5rem 1.2rem minmax(0,1fr) 5.5rem' }}>
+                                      <div className={`font-bold text-base truncate no-underline-children ${team1Predicted ? 'text-emerald-600' : busyTextClass(team1Busy)}`}>
+                                         {getTeamNameWithClub(m.team1Id)}
                                       </div>
-                                      <span className="text-xs text-gray-400 font-bold shrink-0">vs</span>
-                                      <div className={`font-bold text-lg truncate flex items-center gap-1 min-w-0 ${team2Predicted ? 'text-emerald-600' : busyTextClass(team2Busy)}`}>
-                                         <span className="truncate">{getTeamNameWithClub(m.team2Id)}</span>
-                                         {team2Busy && <span className={`text-[9px] no-underline shrink-0 px-1 py-0.5 rounded font-bold ${busyBadgeClass(team2Busy)}`}>{busyShortLabel(team2Busy)}(第{team2Busy.court}C)</span>}
-                                         {team2Predicted && <span className="text-[9px] shrink-0 px-1 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700">次審判予定(第{team2Predicted.court}C)</span>}
+                                      <div className="flex justify-center">
+                                         {team1Busy && <span className={`text-xs no-underline px-1.5 py-1 rounded font-bold whitespace-nowrap ${busyBadgeClass(team1Busy)}`}>{busyShortLabel(team1Busy)}(第{team1Busy.court}C)</span>}
+                                         {team1Predicted && <span className="text-xs px-1.5 py-1 rounded font-bold whitespace-nowrap bg-emerald-100 text-emerald-700">次審判予定(第{team1Predicted.court}C)</span>}
+                                      </div>
+                                      <span className="text-xs text-gray-400 font-bold text-center">vs</span>
+                                      <div className={`font-bold text-base truncate ${team2Predicted ? 'text-emerald-600' : busyTextClass(team2Busy)}`}>
+                                         {getTeamNameWithClub(m.team2Id)}
+                                      </div>
+                                      <div className="flex justify-center">
+                                         {team2Busy && <span className={`text-xs no-underline px-1.5 py-1 rounded font-bold whitespace-nowrap ${busyBadgeClass(team2Busy)}`}>{busyShortLabel(team2Busy)}(第{team2Busy.court}C)</span>}
+                                         {team2Predicted && <span className="text-xs px-1.5 py-1 rounded font-bold whitespace-nowrap bg-emerald-100 text-emerald-700">次審判予定(第{team2Predicted.court}C)</span>}
                                       </div>
                                    </div>
                                 </div>

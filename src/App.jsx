@@ -148,8 +148,8 @@ export default function App() {
     return null;
   };
 
-  const getAllOccupiedRefereeIds = (currentCourtNum) => {
-    const occupied = new Set();
+  const getAllOccupiedRefereeIds = (currentCourtNum, extraOccupiedIds) => {
+    const occupied = new Set(extraOccupiedIds || []);
 
     Object.keys(lastCourtReferees).forEach(cNum => {
       if (Number(cNum) !== Number(currentCourtNum)) {
@@ -166,12 +166,21 @@ export default function App() {
       }
     });
 
+    // 他コートで進行中の試合に既にロック済みの審判も、二重に割り当てないよう除外する
+    matches.forEach(m => {
+      if (m.courtNumber !== null && Number(m.courtNumber) !== Number(currentCourtNum) && m.status !== 'completed' && lockedReferees[m.id]) {
+        const ref = lockedReferees[m.id];
+        if (ref.mainId) occupied.add(String(ref.mainId));
+        if (ref.lineId) occupied.add(String(ref.lineId));
+      }
+    });
+
     return occupied;
   };
 
   const STAFF_REFEREE_LABEL = "本部スタッフへ審判を依頼";
 
-  const getRefereeForMatch = (m) => {
+  const getRefereeForMatch = (m, extraOccupiedIds) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null, substitutionNotes: [] };
 
     if (m.matchType !== 'league') {
@@ -185,7 +194,7 @@ export default function App() {
     // 候補は「同グループ→同クラスの他グループ→他クラス」の順で、今まさに他で使われていない組を探し、
     // それでも見つからなければ本部スタッフに依頼する
     // （「他に次戦の予定がある」だけでは対象から外さない＝ラウンドロビンでは常にほぼ全員に次戦があるため）
-    const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
+    const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber, extraOccupiedIds);
     const label = (e) => getTeamNameWithClub(e.id) + (e.cls !== m.cls ? `（${e.cls}から応援）` : '');
 
     const findCandidates = (excludeIds) => {
@@ -295,6 +304,28 @@ export default function App() {
       return a.matchOrder - b.matchOrder;
     });
   };
+
+  // ページ読み込み時など、既にコートに割り当て済みだがロックされていない進行中の試合をコート番号順に確定させる。
+  // コート単位で逐次計算し、直前のコートで確定した審判を次のコートの候補から除外することで、
+  // 同一レンダー内で複数コートに同じペアが重複して審判割り当てされるのを防ぐ
+  useEffect(() => {
+    if (loading) return;
+    const unlockedActiveMatches = matches
+      .filter(m => m.matchType === 'league' && m.courtNumber !== null && m.status !== 'completed' && !lockedReferees[m.id])
+      .sort((a, b) => Number(a.courtNumber) - Number(b.courtNumber));
+    if (unlockedActiveMatches.length === 0) return;
+
+    const claimed = new Set();
+    const newLocks = {};
+    unlockedActiveMatches.forEach(m => {
+      const ref = getRefereeForMatch(m, claimed);
+      newLocks[m.id] = ref;
+      if (ref.mainId) claimed.add(String(ref.mainId));
+      if (ref.lineId) claimed.add(String(ref.lineId));
+    });
+
+    setLockedReferees(prev => ({ ...prev, ...newLocks }));
+  }, [loading, matches]);
 
   // 大会名見出しの幅に合わせてフォントサイズを実測調整する（文字数によらず常に1行に収める）
   const [titleFontSize, setTitleFontSize] = useState(48);

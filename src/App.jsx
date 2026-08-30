@@ -192,17 +192,17 @@ export default function App() {
     if (lockedReferees[m.id]) return lockedReferees[m.id];
 
     // 自分自身の次戦と連戦になり審判を続けられないペアがいれば差し替える。
-    // 候補は「同グループ→同クラスの他グループ→他クラス」の順で、今まさに他で使われていない組を探し、
+    // 候補は「同クラス（グループは問わない）→他クラス」の順で、今まさに他で使われていない組を探し、
     // それでも見つからなければ本部スタッフに依頼する
     // （「他に次戦の予定がある」だけでは対象から外さない＝ラウンドロビンでは常にほぼ全員に次戦があるため）
     const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber, extraOccupiedIds);
     const label = (e) => getTeamNameWithClub(e.id) + (e.cls !== m.cls ? `（${e.cls}から応援）` : '');
 
     const findCandidates = (excludeIds) => {
-      const groupRank = (e) => (e.cls !== m.cls ? 2 : (e.group !== m.group ? 1 : 0));
+      const classRank = (e) => (e.cls !== m.cls ? 1 : 0);
       return entries
         .filter(e => e.checkedIn && !excludeIds.has(String(e.id)) && !occupiedRefIds.has(String(e.id)))
-        .sort((a, b) => groupRank(a) - groupRank(b) || String(a.id).localeCompare(String(b.id)));
+        .sort((a, b) => classRank(a) - classRank(b) || String(a.id).localeCompare(String(b.id)));
     };
 
     const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');
@@ -270,9 +270,9 @@ export default function App() {
       }
     }
 
-    // 同クラス内（他グループ含む）への依頼は原則の範囲内として無警告。他クラスへ応援を依頼した場合のみ通知する
+    // 同クラス内（グループは問わない）への依頼は原則の範囲内として無警告。他クラスへ応援を依頼した場合のみ通知する
     const offPrincipleNote = (e, roleLabel) => e.cls !== m.cls
-      ? `${roleLabel}は同グループに空きペアがいないため、${label(e)}（他クラス）に依頼しました`
+      ? `${roleLabel}は同クラスに空きペアがいないため、${label(e)}（他クラス）に依頼しました`
       : null;
 
     if (candidates.length >= 2) {
@@ -2016,7 +2016,7 @@ export default function App() {
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
                  <div className="font-bold text-emerald-800 text-sm">1. 審判の分担</div>
                  <p className="leading-relaxed">直前試合の<strong>【勝者組】が主審・副審</strong>を務め、<strong>【敗者組】が線審</strong>を務めます。</p>
-                 <p className="text-[11px] text-gray-500 pt-0.5">※予選初戦は、同グループの待機ペア（第3試合を行う組）が審判を担当します。</p>
+                 <p className="text-[11px] text-gray-500 pt-0.5">※予選初戦は、同クラスの空いているペアが審判を担当します（グループは問いません）。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
                  <div className="font-bold text-emerald-800 text-sm">2. 試合後の受渡</div>
@@ -2048,7 +2048,7 @@ export default function App() {
          <div>
             <span className="font-bold bg-emerald-700 text-white px-2 py-0.5 rounded text-[10px] mr-2">審判ルール</span>
             <strong>直前試合：勝者組 ➔ 主審・副審 ／ 敗者組 ➔ 線審</strong>
-            <span className="text-[11px] text-emerald-800 ml-2">（※予選初戦はグループ待機組、必要に応じて他クラス応援依頼）</span>
+            <span className="text-[11px] text-emerald-800 ml-2">（※予選初戦は同クラスの空きペア、必要に応じて他クラス応援依頼）</span>
          </div>
          <span className="text-[11px] text-emerald-700">※両ペアでスコア用紙を持って事務局へ提出</span>
       </div>

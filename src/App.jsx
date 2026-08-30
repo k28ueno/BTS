@@ -114,6 +114,8 @@ export default function App() {
   const [simCurrentTime, setSimCurrentTime] = useState('08:50');
 
   const [lastCourtReferees, setLastCourtReferees] = useState({});
+  // 試合が実際にコートへ割り当てられた瞬間の審判割り当てを固定する（{ [matchId]: 審判情報 }）
+  const [lockedReferees, setLockedReferees] = useState({});
 
   // ----------------------------------------------------------------
   // 共通ヘルパー関数群
@@ -175,6 +177,9 @@ export default function App() {
     if (m.matchType !== 'league') {
       return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null, substitutionNotes: [] };
     }
+
+    // 実際にコートへ割り当てられた瞬間に確定した審判は、以後の状態変化で再計算・変動させない
+    if (lockedReferees[m.id]) return lockedReferees[m.id];
 
     // 自分自身の次戦と連戦になり審判を続けられないペアがいれば差し替える。
     // 候補は「同グループ→同クラスの他グループ→他クラス」の順で、今まさに他で使われていない組を探し、
@@ -496,6 +501,7 @@ export default function App() {
         setEntries([]);
         setMatches([]);
         setLastCourtReferees({});
+    setLockedReferees({});
         if (isSupabaseConfigured) {
           await supabase.from('entries').delete().gt('created_at', '1970-01-01');
           await supabase.from('matches').delete().gt('created_at', '1970-01-01');
@@ -524,6 +530,7 @@ export default function App() {
     setEntries([]);
     setMatches([]);
     setLastCourtReferees({});
+    setLockedReferees({});
 
     if (isSupabaseConfigured) {
       await supabase.from('entries').delete().gt('created_at', '1970-01-01');
@@ -811,22 +818,36 @@ export default function App() {
       return;
     }
 
+    const displacedIds = [];
+    let updatedTargetMatch = null;
     const updated = matches.map(m => {
       if (Number(m.courtNumber) === Number(courtNum) && m.id !== matchId && m.status !== 'completed') {
+        displacedIds.push(m.id);
         return { ...m, courtNumber: null, status: 'waiting' };
       }
       if (m.id === matchId) {
         const isScored = m.team1Score !== null && m.team2Score !== null;
-        return { 
-          ...m, 
-          courtNumber: courtNum, 
+        updatedTargetMatch = {
+          ...m,
+          courtNumber: courtNum,
           status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
         };
+        return updatedTargetMatch;
       }
       return m;
     });
 
     setMatches(updated);
+
+    // 実際にコートへ割り当てられた瞬間の審判割り当てを固定する。押し出された試合のロックは解除し、再割当時に再計算させる
+    if (courtNum !== null && updatedTargetMatch) {
+      const decidedRef = getRefereeForMatch(updatedTargetMatch);
+      setLockedReferees(prev => {
+        const next = { ...prev, [matchId]: decidedRef };
+        displacedIds.forEach(id => delete next[id]);
+        return next;
+      });
+    }
 
     if (isSupabaseConfigured) {
       if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
@@ -949,6 +970,7 @@ export default function App() {
 
   const generateAllLeagueMatches = async (currentEntriesList) => {
     setLastCourtReferees({});
+    setLockedReferees({});
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const classes = config.classes || ['1部', '2部', '3部', '4部'];
@@ -1048,6 +1070,7 @@ export default function App() {
 
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {
     setLastCourtReferees({});
+    setLockedReferees({});
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
@@ -1449,6 +1472,15 @@ export default function App() {
     });
 
     setMatches(updated);
+
+    // コート解除時はロックを解除し、次に割り当てられた時点で審判を再計算させる
+    if (courtNum === null) {
+      setLockedReferees(prev => {
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
+    }
 
     if (isSupabaseConfigured) {
       if (courtNum !== null) {

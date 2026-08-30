@@ -176,21 +176,24 @@ export default function App() {
       return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null, substitutionNotes: [] };
     }
 
-    // 次戦がある（または連戦になる）ため審判を続けられないペアがいれば、
-    // 同グループ→同クラスの他グループ→他クラスの順で空きペアに差し替え、それでも見つからなければ本部スタッフに依頼する
+    // 次戦がある（または連戦になる）ため審判を続けられないペアがいれば差し替える。
+    // 候補は「手が空いているか」を最優先、「同グループ→同クラスの他グループ→他クラス」を次点として並べ、
+    // それでも見つからなければ本部スタッフに依頼する
     const isNeededToPlay = (teamId, cls) => !!teamId && matches.some(mm =>
       mm.status === 'waiting' && mm.cls === cls &&
       (String(mm.team1Id) === String(teamId) || String(mm.team2Id) === String(teamId))
     );
 
-    const sortById = (a, b) => String(a.id).localeCompare(String(b.id));
-    const findAvailableSubs = (excludeIds, occupiedRefIds) => {
-      const pools = [
-        entries.filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn).sort(sortById),
-        entries.filter(e => e.cls === m.cls && e.group !== m.group && e.checkedIn).sort(sortById),
-        entries.filter(e => e.cls !== m.cls && e.checkedIn).sort(sortById)
-      ];
-      return pools.flat().filter(e => !excludeIds.has(String(e.id)) && !occupiedRefIds.has(String(e.id)));
+    const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
+    const label = (e) => getTeamNameWithClub(e.id) + (e.cls !== m.cls ? `（${e.cls}から応援）` : '');
+
+    // 代役は「本当に手が空いている（自分の次戦もない）」組に限定する。
+    // 次戦があるだけの組を審判に回すと、詰まりを別の試合に移すだけになるため対象にしない
+    const findCandidates = (excludeIds) => {
+      const groupRank = (e) => (e.cls !== m.cls ? 2 : (e.group !== m.group ? 1 : 0));
+      return entries
+        .filter(e => e.checkedIn && !excludeIds.has(String(e.id)) && !occupiedRefIds.has(String(e.id)) && !isNeededToPlay(e.id, e.cls))
+        .sort((a, b) => groupRank(a) - groupRank(b) || String(a.id).localeCompare(String(b.id)));
     };
 
     const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');
@@ -205,20 +208,19 @@ export default function App() {
 
       const t1 = m.status !== 'completed' ? String(m.team1Id) : null;
       const t2 = m.status !== 'completed' ? String(m.team2Id) : null;
-      const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
       const substitutionNotes = [];
 
-      const resolveRole = (roleId, roleText, roleLabel) => {
+      const resolveRole = (roleId, roleText, roleLabel, otherRoleId) => {
         if (!roleId) return { id: roleId, text: roleText };
         const selfMatch = String(roleId) === t1 || String(roleId) === t2;
         if (!selfMatch && !isNeededToPlay(roleId, m.cls)) {
           return { id: roleId, text: roleText };
         }
-        const excludeIds = new Set([t1, t2, mainId ? String(mainId) : null, lineId ? String(lineId) : null].filter(Boolean));
-        const subs = findAvailableSubs(excludeIds, occupiedRefIds);
-        if (subs.length > 0) {
-          const sub = subs[0];
-          const newText = getTeamNameWithClub(sub.id) + (sub.cls !== m.cls ? `（${sub.cls}から応援）` : '');
+        const excludeIds = new Set([t1, t2, otherRoleId ? String(otherRoleId) : null].filter(Boolean));
+        const candidates = findCandidates(excludeIds);
+        if (candidates.length > 0) {
+          const sub = candidates[0];
+          const newText = label(sub);
           substitutionNotes.push(`${roleLabel}は本来${roleText}ですが、${selfMatch ? '直後に連戦になるため' : '次戦があるため'}${newText}に交代しました`);
           return { id: sub.id, text: newText };
         }
@@ -227,36 +229,24 @@ export default function App() {
       };
 
       // 線審→主審の優先順位で解決する（先に解決した側の交代先を、後に解決する側の候補から除外するため）
-      ({ id: lineId, text: lineText } = resolveRole(lineId, lineText, '線審'));
-      ({ id: mainId, text: mainText } = resolveRole(mainId, mainText, '主審'));
+      const lineResolved = resolveRole(lineId, lineText, '線審', mainId);
+      lineId = lineResolved.id; lineText = lineResolved.text;
+      const mainResolved = resolveRole(mainId, mainText, '主審', lineId);
+      mainId = mainResolved.id; mainText = mainResolved.text;
 
       return { main: mainText, mainId, line: lineText, lineId, substitutionNotes };
     }
 
-    const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
     const t1 = String(m.team1Id);
     const t2 = String(m.team2Id);
-    const excludeIds = new Set([t1, t2]);
-    const availableSubs = findAvailableSubs(excludeIds, occupiedRefIds);
+    const candidates = findCandidates(new Set([t1, t2]));
 
-    if (availableSubs.length >= 2) {
-       return {
-         main: getTeamNameWithClub(availableSubs[0].id) + (availableSubs[0].cls !== m.cls ? `（${availableSubs[0].cls}から応援）` : ''),
-         mainId: availableSubs[0].id,
-         line: getTeamNameWithClub(availableSubs[1].id) + (availableSubs[1].cls !== m.cls ? `（${availableSubs[1].cls}から応援）` : ''),
-         lineId: availableSubs[1].id,
-         substitutionNotes: []
-       };
-    } else if (availableSubs.length === 1) {
-       return {
-         main: getTeamNameWithClub(availableSubs[0].id) + (availableSubs[0].cls !== m.cls ? `（${availableSubs[0].cls}から応援）` : ''),
-         mainId: availableSubs[0].id,
-         line: STAFF_REFEREE_LABEL,
-         lineId: null,
-         substitutionNotes: []
-       };
+    if (candidates.length >= 2) {
+       return { main: label(candidates[0]), mainId: candidates[0].id, line: label(candidates[1]), lineId: candidates[1].id, substitutionNotes: [] };
+    } else if (candidates.length === 1) {
+       return { main: label(candidates[0]), mainId: candidates[0].id, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: [`線審の担当が見つからないため、${STAFF_REFEREE_LABEL}してください`] };
     } else {
-       return { main: STAFF_REFEREE_LABEL, mainId: null, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: [] };
+       return { main: STAFF_REFEREE_LABEL, mainId: null, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: [`主審・線審とも担当が見つからないため、${STAFF_REFEREE_LABEL}してください`] };
     }
   };
 

@@ -2508,7 +2508,10 @@ export default function App() {
             </div>
           )}
 
-          {adminTab === 'draw' && (
+          {adminTab === 'draw' && (() => {
+            const drawClassLeagueMatches = matches.filter(m => m.cls === drawClass && m.matchType === 'league');
+            const isDrawClassLeagueFinished = drawClassLeagueMatches.length > 0 && drawClassLeagueMatches.every(m => m.status === 'completed');
+            return (
             <div className="w-full overflow-hidden">
               <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold flex items-center justify-between">
                  <span>⚠️ ドロー編成は「受付処理」で受付済（済）になった組のみが表示・割り当て対象となります。</span>
@@ -2516,6 +2519,12 @@ export default function App() {
                     {drawClass} 受付済: {entries.filter(e => e.cls === drawClass && e.checkedIn).length} / {entries.filter(e => e.cls === drawClass).length} 組
                  </span>
               </div>
+
+              {drawType === 'tournament' && !isDrawClassLeagueFinished && (
+                <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold">
+                   ⚠️ 【{drawClass}】の予選リーグがまだ終了していません。予選参加組はまだ決勝トーナメントへ配置できません（表示のみ）。
+                </div>
+              )}
 
               <div className="flex gap-4 mb-4">
                  <button onClick={() => setDrawType('league')} className={`px-4 py-2 rounded font-bold ${drawType === 'league' ? 'bg-white shadow text-[#2c5f4e]' : 'bg-gray-200'}`}>予選リーグ</button>
@@ -2617,10 +2626,10 @@ export default function App() {
                            return (
                             <div
                               key={ent.id}
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, ent.id)}
-                              onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
-                              className={`bg-white p-3 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-orange-500 ${isSelected ? 'ring-2 ring-orange-500 border-orange-500' : ''}`}
+                              draggable={isDrawClassLeagueFinished}
+                              onDragStart={isDrawClassLeagueFinished ? (e) => handleDragStart(e, ent.id) : undefined}
+                              onClick={isDrawClassLeagueFinished ? toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id)) : undefined}
+                              className={`bg-white p-3 rounded shadow-sm border text-sm font-bold ${isDrawClassLeagueFinished ? 'cursor-pointer sm:cursor-move hover:border-orange-500' : 'opacity-50 cursor-not-allowed'} ${isSelected ? 'ring-2 ring-orange-500 border-orange-500' : ''}`}
                             >
                                <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
                                <div>{getTeamNameWithClub(ent.id)}</div>
@@ -2635,7 +2644,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {adminTab === 'simulation' && (
             <div className="space-y-6">

@@ -176,23 +176,17 @@ export default function App() {
       return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null, substitutionNotes: [] };
     }
 
-    // 次戦がある（または連戦になる）ため審判を続けられないペアがいれば差し替える。
-    // 候補は「手が空いているか」を最優先、「同グループ→同クラスの他グループ→他クラス」を次点として並べ、
+    // 自分自身の次戦と連戦になり審判を続けられないペアがいれば差し替える。
+    // 候補は「同グループ→同クラスの他グループ→他クラス」の順で、今まさに他で使われていない組を探し、
     // それでも見つからなければ本部スタッフに依頼する
-    const isNeededToPlay = (teamId, cls) => !!teamId && matches.some(mm =>
-      mm.status === 'waiting' && mm.cls === cls &&
-      (String(mm.team1Id) === String(teamId) || String(mm.team2Id) === String(teamId))
-    );
-
+    // （「他に次戦の予定がある」だけでは対象から外さない＝ラウンドロビンでは常にほぼ全員に次戦があるため）
     const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
     const label = (e) => getTeamNameWithClub(e.id) + (e.cls !== m.cls ? `（${e.cls}から応援）` : '');
 
-    // 代役は「本当に手が空いている（自分の次戦もない）」組に限定する。
-    // 次戦があるだけの組を審判に回すと、詰まりを別の試合に移すだけになるため対象にしない
     const findCandidates = (excludeIds) => {
       const groupRank = (e) => (e.cls !== m.cls ? 2 : (e.group !== m.group ? 1 : 0));
       return entries
-        .filter(e => e.checkedIn && !excludeIds.has(String(e.id)) && !occupiedRefIds.has(String(e.id)) && !isNeededToPlay(e.id, e.cls))
+        .filter(e => e.checkedIn && !excludeIds.has(String(e.id)) && !occupiedRefIds.has(String(e.id)))
         .sort((a, b) => groupRank(a) - groupRank(b) || String(a.id).localeCompare(String(b.id)));
     };
 
@@ -213,7 +207,7 @@ export default function App() {
       const resolveRole = (roleId, roleText, roleLabel, otherRoleId) => {
         if (!roleId) return { id: roleId, text: roleText };
         const selfMatch = String(roleId) === t1 || String(roleId) === t2;
-        if (!selfMatch && !isNeededToPlay(roleId, m.cls)) {
+        if (!selfMatch) {
           return { id: roleId, text: roleText };
         }
         const excludeIds = new Set([t1, t2, otherRoleId ? String(otherRoleId) : null].filter(Boolean));
@@ -221,7 +215,7 @@ export default function App() {
         if (candidates.length > 0) {
           const sub = candidates[0];
           const newText = label(sub);
-          substitutionNotes.push(`${roleLabel}は本来${roleText}ですが、${selfMatch ? '直後に連戦になるため' : '次戦があるため'}${newText}に交代しました`);
+          substitutionNotes.push(`${roleLabel}は本来${roleText}ですが、直後に連戦になるため${newText}に交代しました`);
           return { id: sub.id, text: newText };
         }
         substitutionNotes.push(`${roleLabel}(${roleText})の代役が見つからないため、${STAFF_REFEREE_LABEL}してください`);

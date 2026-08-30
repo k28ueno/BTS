@@ -2767,10 +2767,7 @@ export default function App() {
                               const team1Busy = busyMap.get(String(m.team1Id));
                               const team2Busy = busyMap.get(String(m.team2Id));
                               const isAnyBusy = !!(team1Busy || team2Busy);
-
-                              let busyReasonText = '';
-                              if (team1Busy) busyReasonText = `第${team1Busy.court}コートで${team1Busy.role}`;
-                              else if (team2Busy) busyReasonText = `第${team2Busy.court}コートで${team2Busy.role}`;
+                              const busyShortLabel = (busy) => busy ? (busy.role === '試合進行中' ? '試合' : '審判') : null;
 
                               const isSelected = tapMoveSelection && tapMoveSelection.kind === 'match' && tapMoveSelection.id === m.id;
                               return (
@@ -2784,14 +2781,17 @@ export default function App() {
                                    <div>
                                       <div className="flex justify-between items-center mb-1.5">
                                          <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {m.matchOrder}</span>
-                                         <div className="flex items-center gap-1">
-                                            {isAnyBusy && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">{busyReasonText}</span>}
-                                            <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
-                                         </div>
+                                         <span className="text-xs font-bold text-blue-800">({m.cls}) グループ{m.group}</span>
                                       </div>
-                                      <div className={`font-bold text-sm truncate ${team1Busy ? 'text-red-500 line-through' : 'text-gray-800'}`}>{getTeamNameWithClub(m.team1Id)}</div>
+                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${team1Busy ? 'text-red-500 line-through' : 'text-gray-800'}`}>
+                                         <span className="truncate">{getTeamNameWithClub(m.team1Id)}</span>
+                                         {team1Busy && <span className="text-[9px] no-underline shrink-0 bg-red-100 text-red-700 px-1 py-0.5 rounded font-bold">{busyShortLabel(team1Busy)}(第{team1Busy.court}C)</span>}
+                                      </div>
                                       <div className="text-xs text-gray-400 text-center my-1 font-bold">vs</div>
-                                      <div className={`font-bold text-sm truncate ${team2Busy ? 'text-red-500 line-through' : 'text-gray-800'}`}>{getTeamNameWithClub(m.team2Id)}</div>
+                                      <div className={`font-bold text-sm truncate flex items-center gap-1 ${team2Busy ? 'text-red-500 line-through' : 'text-gray-800'}`}>
+                                         <span className="truncate">{getTeamNameWithClub(m.team2Id)}</span>
+                                         {team2Busy && <span className="text-[9px] no-underline shrink-0 bg-red-100 text-red-700 px-1 py-0.5 rounded font-bold">{busyShortLabel(team2Busy)}(第{team2Busy.court}C)</span>}
+                                      </div>
                                    </div>
                                    <div className="mt-3 pt-2 border-t text-right">
                                       <span className="text-[10px] text-gray-400">

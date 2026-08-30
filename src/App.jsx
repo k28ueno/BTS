@@ -305,13 +305,16 @@ export default function App() {
 
     for (let c = 1; c <= config.courts; c++) {
       const activeMatch = getActiveMatchForCourt(c);
-      if (activeMatch && activeMatch.status === 'completed') {
-        const ref = getRefereeForMatch(activeMatch);
-        if (ref.mainId && !predictedMap.has(String(ref.mainId))) {
-          predictedMap.set(String(ref.mainId), { court: c });
+      // 「この完了試合を誰が審判したか」ではなく「この完了試合の勝者・敗者が次に誰を審判するか」を知りたいので、
+      // getRefereeForMatch（＝その試合自身の審判＝1つ前の試合の勝敗）には頼らず、この試合自身の勝敗から直接求める
+      if (activeMatch && activeMatch.status === 'completed' && activeMatch.team1Score !== null && activeMatch.team2Score !== null) {
+        const winnerId = activeMatch.team1Score >= activeMatch.team2Score ? activeMatch.team1Id : activeMatch.team2Id;
+        const loserId = activeMatch.team1Score >= activeMatch.team2Score ? activeMatch.team2Id : activeMatch.team1Id;
+        if (winnerId && !predictedMap.has(String(winnerId))) {
+          predictedMap.set(String(winnerId), { court: c });
         }
-        if (ref.lineId && !predictedMap.has(String(ref.lineId))) {
-          predictedMap.set(String(ref.lineId), { court: c });
+        if (loserId && !predictedMap.has(String(loserId))) {
+          predictedMap.set(String(loserId), { court: c });
         }
       }
     }
@@ -342,6 +345,27 @@ export default function App() {
   // 実際の直近の試合結果から復元する。DBに保存されない状態のため、リロードのたびに再構築が必要
   useLayoutEffect(() => {
     if (loading) return;
+
+    // 完了済みなのに「その試合自身の審判」がまだロックされていないもの（リロード直後・別端末など）を、
+    // 直後の予測用キャッシュ更新より先に確定させる。
+    // 先にキャッシュ（lastCourtReferees）を書き換えてしまうと、そのコートの「直近完了試合」が
+    // 自分自身になってしまい、「自分たちが自分たちの試合を審判した」という辻褄の合わない表示になる
+    const completedNeedingLock = matches
+      .filter(m => m.matchType === 'league' && m.courtNumber !== null && m.status === 'completed' && !lockedReferees[m.id])
+      .sort((a, b) => Number(a.courtNumber) - Number(b.courtNumber));
+
+    if (completedNeedingLock.length > 0) {
+      const claimed = new Set();
+      const historyLocks = {};
+      completedNeedingLock.forEach(m => {
+        const ref = getRefereeForMatch(m, claimed, lastCourtReferees);
+        historyLocks[m.id] = ref;
+        if (ref.mainId) claimed.add(String(ref.mainId));
+        if (ref.lineId) claimed.add(String(ref.lineId));
+      });
+      setLockedReferees(prev => ({ ...prev, ...historyLocks }));
+    }
+
     // 「一度セットしたら維持」ではなく、そのコートの本当の最新完了試合から毎回再計算する。
     // そうしないと、別端末での更新や新たな試合の完了があっても、古い勝者・敗者が審判予定として残り続けてしまう
     const backfilled = {};

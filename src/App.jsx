@@ -498,6 +498,23 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // カードを画面上端/下端付近までドラッグしたら、ページ全体を自動スクロールする。
+  // 優先対戦リスト内だけでなく、コート配置エリアが画面外（スクロール先）にある場合にも
+  // ドラッグ移動できるようにするため、window単位で監視する
+  useEffect(() => {
+    const edge = 80;
+    const speed = 16;
+    const handleWindowDragOver = (e) => {
+      if (e.clientY < edge) {
+        window.scrollBy(0, -speed);
+      } else if (window.innerHeight - e.clientY < edge) {
+        window.scrollBy(0, speed);
+      }
+    };
+    window.addEventListener('dragover', handleWindowDragOver);
+    return () => window.removeEventListener('dragover', handleWindowDragOver);
+  }, []);
+
   const fetchSettings = async () => {
     if (isSupabaseConfigured) {
       try {

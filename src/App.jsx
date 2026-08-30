@@ -2783,7 +2783,7 @@ export default function App() {
 
                <div className="mb-8">
                   <h4 className="font-bold text-sm text-gray-700 mb-3 border-l-4 border-[#2c5f4e] pl-2">🏸 コート配置状況 (空きコートにカードをドロップ、またはタップで配置)</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                      {Array.from({ length: config.courts }).map((_, i) => {
                         const courtNum = i + 1;
                         const activeMatch = getActiveMatchForCourt(courtNum);
@@ -2819,9 +2819,9 @@ export default function App() {
                            >
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                  <div className="flex items-center gap-2">
-                                    <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
+                                    <span className="font-extrabold text-base text-gray-700">第 {courtNum} コート</span>
                                     {activeMatch && activeMatch.status !== 'calling' && (
-                                       <span className="text-red-600 font-bold text-xs">
+                                       <span className="text-red-600 font-bold text-sm">
                                           {activeMatch.status === 'completed' ? '試合済' : (activeMatch.status === 'recepted' ? 'コール済' : '試合中')}
                                        </span>
                                     )}
@@ -2832,7 +2832,7 @@ export default function App() {
                                     const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
                                     return (
                                        <div className="relative group inline-block">
-                                          <span className={`text-[10px] px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs transition-colors ${hasSub ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-[#2c5f4e] text-white hover:bg-[#1f4236]'}`}>
+                                          <span className={`text-xs px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs transition-colors ${hasSub ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-[#2c5f4e] text-white hover:bg-[#1f4236]'}`}>
                                              審判 {hasSub ? '⚠️' : 'ℹ️'}
                                           </span>
                                           <div
@@ -2862,60 +2862,60 @@ export default function App() {
                                    onDragStart={(e) => activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted' && handleMatchDragStart(e, activeMatch.id)}
                                    className={`p-2 rounded border bg-white shadow-xs ${(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') ? 'cursor-not-allowed border-blue-300' : 'cursor-move'}`}
                                  >
-                                    <div className="text-[10px] font-bold text-gray-500 mb-1">({activeMatch.cls}) グループ{activeMatch.group}</div>
-                                    <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
-                                    
-                                    <div className="text-xs text-center font-bold my-1">
+                                    <div className="text-xs font-bold text-gray-500 mb-1">({activeMatch.cls}) グループ{activeMatch.group}</div>
+                                    <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
+
+                                    <div className="text-sm text-center font-bold my-1">
                                        {activeMatch.status === 'completed' ? (
                                           <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded font-extrabold">
                                              {activeMatch.team1Score} - {activeMatch.team2Score}
                                           </span>
                                        ) : (
-                                          <span className="text-gray-400 text-[10px]">vs</span>
+                                          <span className="text-gray-400 text-xs">vs</span>
                                        )}
                                     </div>
 
-                                    <div className="font-bold text-xs truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+                                    <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
                                     
                                     <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
-                                       <button 
-                                         onClick={() => handleAssignCourt(activeMatch.id, null)} 
-                                         className="text-[10px] text-red-500 hover:underline font-bold"
+                                       <button
+                                         onClick={() => handleAssignCourt(activeMatch.id, null)}
+                                         className="text-xs text-red-500 hover:underline font-bold"
                                        >
                                           コート解除
                                        </button>
 
                                        {activeMatch.status === 'calling' && (
-                                          <button 
+                                          <button
                                             onClick={() => handleMatchStatusChange(activeMatch.id, 'recepted')}
-                                            className="text-[10px] bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                            className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              コール
                                           </button>
                                        )}
 
                                        {activeMatch.status === 'recepted' && (
-                                          <button 
+                                          <button
                                             onClick={() => handleMatchStatusChange(activeMatch.id, 'in_progress')}
-                                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              試合受付
                                           </button>
                                        )}
 
                                        {activeMatch.status === 'in_progress' && (
-                                          <button 
-                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })} 
-                                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          <button
+                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })}
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              スコア入力
                                           </button>
                                        )}
 
                                        {activeMatch.status === 'completed' && (
-                                          <button 
-                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })} 
-                                            className="text-[10px] bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          <button
+                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })}
+                                            className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              スコア修正
                                           </button>
@@ -2923,7 +2923,7 @@ export default function App() {
                                     </div>
                                  </div>
                               ) : (
-                                 <div className="text-center text-xs text-gray-400 py-6 font-medium">
+                                 <div className="text-center text-sm text-gray-400 py-6 font-medium">
                                     ここに試合をドロップ、またはタップで配置
                                  </div>
                               )}

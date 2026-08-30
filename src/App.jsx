@@ -921,9 +921,17 @@ export default function App() {
     }
 
     const displacedIds = [];
+    const displacedCompleted = [];
     let updatedTargetMatch = null;
     const updated = matches.map(m => {
-      if (Number(m.courtNumber) === Number(courtNum) && m.id !== matchId && m.status !== 'completed') {
+      if (Number(m.courtNumber) === Number(courtNum) && m.id !== matchId) {
+        // 完了済みの試合がそのコートに残ったままだと、「そのコートの最新完了試合」の判定が
+        // 試合順（matchOrder）頼みになり、実際の完了順と食い違って古い審判予定が復活してしまう。
+        // 新しい試合を配置する時点でコート番号を外し、そのコートの完了履歴を1件に保つ
+        if (m.status === 'completed') {
+          displacedCompleted.push(m.id);
+          return { ...m, courtNumber: null };
+        }
         displacedIds.push(m.id);
         return { ...m, courtNumber: null, status: 'waiting' };
       }
@@ -954,6 +962,9 @@ export default function App() {
     if (isSupabaseConfigured) {
       if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
         await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
+      }
+      for (const id of displacedCompleted) {
+        await supabase.from('matches').update({ court_number: null }).eq('id', id);
       }
       await supabase.from('matches').update({
         court_number: courtNum,

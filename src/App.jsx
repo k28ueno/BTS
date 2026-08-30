@@ -249,10 +249,17 @@ export default function App() {
     const t2 = String(m.team2Id);
     const candidates = findCandidates(new Set([t1, t2]));
 
+    // 同グループ内に空きペアがおらず、他グループ/他クラスから審判を回した場合は原則外として通知する
+    const offPrincipleNote = (e, roleLabel) => e.group !== m.group
+      ? `${roleLabel}は同グループに空きペアがいないため、${label(e)}（${e.cls !== m.cls ? '他クラス' : '同クラス他グループ'}）に依頼しました`
+      : null;
+
     if (candidates.length >= 2) {
-       return { main: label(candidates[0]), mainId: candidates[0].id, line: label(candidates[1]), lineId: candidates[1].id, substitutionNotes: [] };
+       const notes = [offPrincipleNote(candidates[0], '主審'), offPrincipleNote(candidates[1], '線審')].filter(Boolean);
+       return { main: label(candidates[0]), mainId: candidates[0].id, line: label(candidates[1]), lineId: candidates[1].id, substitutionNotes: notes };
     } else if (candidates.length === 1) {
-       return { main: label(candidates[0]), mainId: candidates[0].id, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: [`線審の担当が見つからないため、${STAFF_REFEREE_LABEL}してください`] };
+       const notes = [offPrincipleNote(candidates[0], '主審'), `線審の担当が見つからないため、${STAFF_REFEREE_LABEL}してください`].filter(Boolean);
+       return { main: label(candidates[0]), mainId: candidates[0].id, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: notes };
     } else {
        return { main: STAFF_REFEREE_LABEL, mainId: null, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: [`主審・線審とも担当が見つからないため、${STAFF_REFEREE_LABEL}してください`] };
     }

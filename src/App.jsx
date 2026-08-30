@@ -1821,31 +1821,59 @@ export default function App() {
   };
 
   const getGroupStandings = (cls, groupName) => {
-    const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName);
+    const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName && e.checkedIn);
     const groupMatches = matches.filter(m => m.cls === cls && m.group === groupName && m.status === 'completed');
 
     const stats = groupEntries.map(ent => {
       let wins = 0;
       let losses = 0;
+      let pointsFor = 0;
+      let pointsAgainst = 0;
       groupMatches.forEach(m => {
         if (m.team1Id === ent.id) {
+          pointsFor += m.team1Score || 0;
+          pointsAgainst += m.team2Score || 0;
           if (m.team1Score > m.team2Score) wins++;
           else if (m.team1Score < m.team2Score) losses++;
         } else if (m.team2Id === ent.id) {
+          pointsFor += m.team2Score || 0;
+          pointsAgainst += m.team1Score || 0;
           if (m.team2Score > m.team1Score) wins++;
           else if (m.team2Score < m.team1Score) losses++;
         }
       });
-      return { ...ent, wins, losses };
+      return { ...ent, wins, losses, pointsFor, pointsAgainst, pointDiff: pointsFor - pointsAgainst };
     });
 
-    return stats.sort((a, b) => b.wins - a.wins);
+    // 勝ち数→得失点差→総得点→ID の順で決定的に順位付けする。
+    // 勝ち数だけで比較すると同成績の組が並んだ場合の順序が取得タイミング依存になり、
+    // 読み込むたびに決勝進出組が入れ替わってしまうことがあったため
+    return stats.sort((a, b) =>
+      b.wins - a.wins ||
+      b.pointDiff - a.pointDiff ||
+      b.pointsFor - a.pointsFor ||
+      String(a.id).localeCompare(String(b.id))
+    );
   };
 
   // 予選リーグの対戦カードが1件以上生成済み、かつ全試合が完了しているか
   const isLeagueComplete = (cls) => {
     const leagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
     return leagueMatches.length > 0 && leagueMatches.every(m => m.status === 'completed');
+  };
+
+  // 予選が全試合終了しているクラスについて、グループ順位が進出条件（上位1 or 2）に入っている組だけを返す。
+  // 予選が終わっていない、または進出条件外の組は「決勝進出組」として扱わない
+  const getTournamentQualifiedEntries = (cls) => {
+    if (!isLeagueComplete(cls)) return [];
+    const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
+    const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
+    const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
+    const qualifiedIds = new Set();
+    activeGroups.forEach(g => {
+      getGroupStandings(cls, g).slice(0, numPerGroup).forEach(s => qualifiedIds.add(s.id));
+    });
+    return clsEntries.filter(e => qualifiedIds.has(e.id));
   };
 
   // 決勝トーナメントの組数（受付済＋グループ数）に応じたブラケットサイズ（4 or 8）
@@ -2557,8 +2585,7 @@ export default function App() {
           )}
 
           {adminTab === 'draw' && (() => {
-            const drawClassLeagueMatches = matches.filter(m => m.cls === drawClass && m.matchType === 'league');
-            const isDrawClassLeagueFinished = drawClassLeagueMatches.length > 0 && drawClassLeagueMatches.every(m => m.status === 'completed');
+            const isDrawClassLeagueFinished = isLeagueComplete(drawClass);
             return (
             <div className="w-full overflow-hidden">
               <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold flex items-center justify-between">
@@ -2570,7 +2597,7 @@ export default function App() {
 
               {drawType === 'tournament' && !isDrawClassLeagueFinished && (
                 <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold">
-                   ⚠️ 【{drawClass}】の予選リーグがまだ終了していません。予選参加組はまだ決勝トーナメントへ配置できません（表示のみ）。
+                   ⚠️ 【{drawClass}】の予選リーグがまだ終了していません。全試合終了後、決勝進出組が表示されます。
                 </div>
               )}
 
@@ -2667,23 +2694,26 @@ export default function App() {
                      onDrop={handleRemoveTournamentPosition}
                      onClick={handleUnassignZoneTap}
                    >
-                      <h4 className="font-bold mb-3 border-b-2 pb-2">未配置 / 予選参加組 (受付済)</h4>
+                      <h4 className="font-bold mb-3 border-b-2 pb-2">未配置 / 決勝進出組</h4>
                       <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                         {entries.filter(e => e.cls === drawClass && e.checkedIn && !e.tournamentPosition).map(ent => {
+                         {getTournamentQualifiedEntries(drawClass).filter(e => !e.tournamentPosition).map(ent => {
                            const isSelected = tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
                            return (
                             <div
                               key={ent.id}
-                              draggable={isDrawClassLeagueFinished}
-                              onDragStart={isDrawClassLeagueFinished ? (e) => handleDragStart(e, ent.id) : undefined}
-                              onClick={isDrawClassLeagueFinished ? toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id)) : undefined}
-                              className={`bg-white p-3 rounded shadow-sm border text-sm font-bold ${isDrawClassLeagueFinished ? 'cursor-pointer sm:cursor-move hover:border-orange-500' : 'opacity-50 cursor-not-allowed'} ${isSelected ? 'ring-2 ring-orange-500 border-orange-500' : ''}`}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, ent.id)}
+                              onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
+                              className={`bg-white p-3 rounded shadow-sm border text-sm font-bold cursor-pointer sm:cursor-move hover:border-orange-500 ${isSelected ? 'ring-2 ring-orange-500 border-orange-500' : ''}`}
                             >
                                <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
                                <div>{getTeamNameWithClub(ent.id)}</div>
                             </div>
                            );
                          })}
+                         {isDrawClassLeagueFinished && getTournamentQualifiedEntries(drawClass).filter(e => !e.tournamentPosition).length === 0 && (
+                            <div className="text-xs text-gray-400 text-center py-8">決勝進出組はすべて配置済みです</div>
+                         )}
                       </div>
                    </div>
                    <div className="w-2/3 bg-gray-50 rounded-lg border overflow-x-auto relative p-4">

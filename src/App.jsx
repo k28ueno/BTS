@@ -167,73 +167,96 @@ export default function App() {
     return occupied;
   };
 
+  const STAFF_REFEREE_LABEL = "本部スタッフへ審判を依頼";
+
   const getRefereeForMatch = (m) => {
-    if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null };
+    if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null, substitutionNotes: [] };
 
-    if (m.matchType === 'league') {
-      const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');
+    if (m.matchType !== 'league') {
+      return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null, substitutionNotes: [] };
+    }
 
-      if (m.courtNumber !== null && courtCompletedMatches.length > 0 && lastCourtReferees[m.courtNumber]) {
-        const lastRef = lastCourtReferees[m.courtNumber];
-        
-        let mainText = lastRef.main;
-        let mainId = lastRef.mainId;
-        let lineText = lastRef.line;
-        let lineId = lastRef.lineId;
+    // 次戦がある（または連戦になる）ため審判を続けられないペアがいれば、
+    // 同グループ→同クラスの他グループ→他クラスの順で空きペアに差し替え、それでも見つからなければ本部スタッフに依頼する
+    const isNeededToPlay = (teamId, cls) => !!teamId && matches.some(mm =>
+      mm.status === 'waiting' && mm.cls === cls &&
+      (String(mm.team1Id) === String(teamId) || String(mm.team2Id) === String(teamId))
+    );
 
-        if (m.status !== 'completed') {
-          const t1 = String(m.team1Id);
-          const t2 = String(m.team2Id);
+    const sortById = (a, b) => String(a.id).localeCompare(String(b.id));
+    const findAvailableSubs = (excludeIds, occupiedRefIds) => {
+      const pools = [
+        entries.filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn).sort(sortById),
+        entries.filter(e => e.cls === m.cls && e.group !== m.group && e.checkedIn).sort(sortById),
+        entries.filter(e => e.cls !== m.cls && e.checkedIn).sort(sortById)
+      ];
+      return pools.flat().filter(e => !excludeIds.has(String(e.id)) && !occupiedRefIds.has(String(e.id)));
+    };
 
-          if (mainId && (String(mainId) === t1 || String(mainId) === t2)) {
-            mainText = "他クラス/他ペア応援依頼 (連戦)";
-            mainId = null;
-          }
+    const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');
 
-          if (lineId && (String(lineId) === t1 || String(lineId) === t2)) {
-            lineText = "他クラス/他ペア応援依頼 (連戦)";
-            lineId = null;
-          }
-        }
+    if (m.courtNumber !== null && courtCompletedMatches.length > 0 && lastCourtReferees[m.courtNumber]) {
+      const lastRef = lastCourtReferees[m.courtNumber];
 
-        return { main: mainText, mainId, line: lineText, lineId };
-      }
+      let mainId = lastRef.mainId;
+      let lineId = lastRef.lineId;
+      let mainText = lastRef.main;
+      let lineText = lastRef.line;
 
+      const t1 = m.status !== 'completed' ? String(m.team1Id) : null;
+      const t2 = m.status !== 'completed' ? String(m.team2Id) : null;
       const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
+      const substitutionNotes = [];
 
-      const groupTeams = entries
-        .filter(e => e.cls === m.cls && e.group === m.group && e.checkedIn)
-        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-        
-      const t1 = String(m.team1Id);
-      const t2 = String(m.team2Id);
+      const resolveRole = (roleId, roleText, roleLabel) => {
+        if (!roleId) return { id: roleId, text: roleText };
+        const selfMatch = String(roleId) === t1 || String(roleId) === t2;
+        if (!selfMatch && !isNeededToPlay(roleId, m.cls)) {
+          return { id: roleId, text: roleText };
+        }
+        const excludeIds = new Set([t1, t2, mainId ? String(mainId) : null, lineId ? String(lineId) : null].filter(Boolean));
+        const subs = findAvailableSubs(excludeIds, occupiedRefIds);
+        if (subs.length > 0) {
+          const sub = subs[0];
+          const newText = getTeamNameWithClub(sub.id) + (sub.cls !== m.cls ? `（${sub.cls}から応援）` : '');
+          substitutionNotes.push(`${roleLabel}は本来${roleText}ですが、${selfMatch ? '直後に連戦になるため' : '次戦があるため'}${newText}に交代しました`);
+          return { id: sub.id, text: newText };
+        }
+        substitutionNotes.push(`${roleLabel}(${roleText})の代役が見つからないため、${STAFF_REFEREE_LABEL}してください`);
+        return { id: null, text: STAFF_REFEREE_LABEL };
+      };
 
-      const waitingTeams = groupTeams.filter(e => 
-        String(e.id) !== t1 && 
-        String(e.id) !== t2 &&
-        !occupiedRefIds.has(String(e.id))
-      );
+      // 線審→主審の優先順位で解決する（先に解決した側の交代先を、後に解決する側の候補から除外するため）
+      ({ id: lineId, text: lineText } = resolveRole(lineId, lineText, '線審'));
+      ({ id: mainId, text: mainText } = resolveRole(mainId, mainText, '主審'));
 
-      if (waitingTeams.length >= 2) {
-         return { 
-           main: getTeamNameWithClub(waitingTeams[0].id), 
-           mainId: waitingTeams[0].id,
-           line: getTeamNameWithClub(waitingTeams[1].id),
-           lineId: waitingTeams[1].id
-         };
-      } else if (waitingTeams.length === 1) {
-         const refName = getTeamNameWithClub(waitingTeams[0].id);
-         return { 
-           main: refName, 
-           mainId: waitingTeams[0].id, 
-           line: "他クラス/他ペア応援依頼", 
-           lineId: null 
-         };
-      } else {
-         return { main: "他クラス/他ペア応援依頼", mainId: null, line: "他クラス/他ペア応援依頼", lineId: null };
-      }
+      return { main: mainText, mainId, line: lineText, lineId, substitutionNotes };
+    }
+
+    const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber);
+    const t1 = String(m.team1Id);
+    const t2 = String(m.team2Id);
+    const excludeIds = new Set([t1, t2]);
+    const availableSubs = findAvailableSubs(excludeIds, occupiedRefIds);
+
+    if (availableSubs.length >= 2) {
+       return {
+         main: getTeamNameWithClub(availableSubs[0].id) + (availableSubs[0].cls !== m.cls ? `（${availableSubs[0].cls}から応援）` : ''),
+         mainId: availableSubs[0].id,
+         line: getTeamNameWithClub(availableSubs[1].id) + (availableSubs[1].cls !== m.cls ? `（${availableSubs[1].cls}から応援）` : ''),
+         lineId: availableSubs[1].id,
+         substitutionNotes: []
+       };
+    } else if (availableSubs.length === 1) {
+       return {
+         main: getTeamNameWithClub(availableSubs[0].id) + (availableSubs[0].cls !== m.cls ? `（${availableSubs[0].cls}から応援）` : ''),
+         mainId: availableSubs[0].id,
+         line: STAFF_REFEREE_LABEL,
+         lineId: null,
+         substitutionNotes: []
+       };
     } else {
-      return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null };
+       return { main: STAFF_REFEREE_LABEL, mainId: null, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: [] };
     }
   };
 
@@ -249,7 +272,9 @@ export default function App() {
 
     for (let c = 1; c <= config.courts; c++) {
       const activeMatch = getActiveMatchForCourt(c);
-      if (activeMatch) {
+      // 次の試合が実際にそのコートへ割り当てられるまでは、前試合の勝者・敗者を審判として拘束しない
+      // （そうしないと、次戦が未割当なだけで該当ペアが他コートへの配置対象からブロックされ続けてしまう）
+      if (activeMatch && activeMatch.status !== 'completed') {
         const ref = getRefereeForMatch(activeMatch);
         if (ref.mainId && !busyMap.has(String(ref.mainId))) {
           busyMap.set(String(ref.mainId), { court: c, role: '審判担当中' });
@@ -1834,13 +1859,14 @@ export default function App() {
 
                         {activeMatch && (() => {
                            const ref = getRefereeForMatch(activeMatch);
+                           const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
                            return (
                               <div className="relative group inline-block">
-                                 <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
-                                    審判 ℹ️
+                                 <span className={`text-[10px] px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs transition-colors ${hasSub ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-[#2c5f4e] text-white hover:bg-[#1f4236]'}`}>
+                                    審判 {hasSub ? '⚠️' : 'ℹ️'}
                                  </span>
-                                 <div 
-                                   className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
+                                 <div
+                                   className="absolute right-0 hidden group-hover:block w-64 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
                                    style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
                                  >
                                     <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
@@ -1849,6 +1875,11 @@ export default function App() {
                                     </div>
                                     <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
                                     <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                    {hasSub && (
+                                       <div className="mt-1.5 pt-1.5 border-t border-slate-600 text-amber-300 space-y-0.5">
+                                          {ref.substitutionNotes.map((note, i) => <div key={i} className="leading-snug">⚠️ {note}</div>)}
+                                       </div>
+                                    )}
                                  </div>
                               </div>
                            );
@@ -2568,13 +2599,14 @@ export default function App() {
 
                                  {activeMatch && (() => {
                                     const ref = getRefereeForMatch(activeMatch);
+                                    const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
                                     return (
                                        <div className="relative group inline-block">
-                                          <span className="text-[10px] bg-[#2c5f4e] text-white px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs hover:bg-[#1f4236] transition-colors">
-                                             審判 ℹ️
+                                          <span className={`text-[10px] px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs transition-colors ${hasSub ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-[#2c5f4e] text-white hover:bg-[#1f4236]'}`}>
+                                             審判 {hasSub ? '⚠️' : 'ℹ️'}
                                           </span>
-                                          <div 
-                                            className="absolute right-0 hidden group-hover:block w-60 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
+                                          <div
+                                            className="absolute right-0 hidden group-hover:block w-64 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all"
                                             style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
                                           >
                                              <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
@@ -2583,6 +2615,11 @@ export default function App() {
                                              </div>
                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                             {hasSub && (
+                                                <div className="mt-1.5 pt-1.5 border-t border-slate-600 text-amber-300 space-y-0.5">
+                                                   {ref.substitutionNotes.map((note, i) => <div key={i} className="leading-snug">⚠️ {note}</div>)}
+                                                </div>
+                                             )}
                                           </div>
                                        </div>
                                     );

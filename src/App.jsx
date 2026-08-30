@@ -251,7 +251,24 @@ export default function App() {
 
     const t1 = String(m.team1Id);
     const t2 = String(m.team2Id);
-    const candidates = findCandidates(new Set([t1, t2]));
+    let candidates = findCandidates(new Set([t1, t2]));
+
+    // 選ばれた2組が実は互いの対戦カード（未消化）だった場合、審判に固定すると
+    // その2組自身の試合が進行不能になってしまう。他クラスも含めて2組以上の候補が
+    // 他にいるなら、この組み合わせは避けてそちらを優先する
+    if (candidates.length >= 2) {
+      const pairIds = [String(candidates[0].id), String(candidates[1].id)].sort().join('-');
+      const areMutualOpponents = matches.some(x =>
+        x.matchType === 'league' && x.status !== 'completed' &&
+        [String(x.team1Id), String(x.team2Id)].sort().join('-') === pairIds
+      );
+      if (areMutualOpponents) {
+        const widened = findCandidates(new Set([t1, t2, ...pairIds.split('-')]));
+        if (widened.length >= 2) {
+          candidates = widened;
+        }
+      }
+    }
 
     // 同クラス内（他グループ含む）への依頼は原則の範囲内として無警告。他クラスへ応援を依頼した場合のみ通知する
     const offPrincipleNote = (e, roleLabel) => e.cls !== m.cls

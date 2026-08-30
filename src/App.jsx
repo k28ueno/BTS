@@ -1046,6 +1046,23 @@ export default function App() {
 
   const moveEntryToTournamentSlot = async (entryId, position) => {
     if (!entryId) return;
+
+    // 「予選順位から自動反映」ボタンと同様、予選リーグが全試合終了していない組は
+    // 手動のドラッグ／タップでも決勝トーナメントへ配置できないようにする
+    const targetEntry = entries.find(ent => ent.id === entryId);
+    if (targetEntry) {
+      const classLeagueMatches = matches.filter(m => m.cls === targetEntry.cls && m.matchType === 'league');
+      const isLeagueFinished = classLeagueMatches.length > 0 && classLeagueMatches.every(m => m.status === 'completed');
+      if (!isLeagueFinished) {
+        setDialog({
+          title: "配置不可",
+          message: `【${targetEntry.cls}】の予選リーグがまだ終了していないため、決勝トーナメントへ配置できません。先に予選リーグの全試合のスコア入力を完了させてください。`,
+          onClose: () => setDialog(null)
+        });
+        return;
+      }
+    }
+
     setEntries(entries.map(ent => {
       if (ent.id === entryId) return { ...ent, tournamentPosition: position };
       if (ent.tournamentPosition === position) return { ...ent, tournamentPosition: null };

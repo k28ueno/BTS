@@ -654,25 +654,66 @@ export default function App() {
     }
   };
 
-  const handleDeleteAllEntries = () => {
+  // 削除系の操作は実行前に「ローカルへバックアップしてから削除」を選べるようにする共通ダイアログ
+  const confirmDestructiveAction = (title, warningText, onProceed) => {
     setDialog({
-      title: "全エントリーの削除確認",
-      message: "登録されているすべてのエントリーデータと試合結果データを削除します。本当によろしいですか？",
-      confirmText: "削除する",
-      confirmBg: "bg-red-600 hover:bg-red-700",
-      onConfirm: async () => {
+      title,
+      message: (
+        <div className="text-left space-y-4">
+          <p className="text-red-800 font-bold bg-red-50 border border-red-200 rounded-lg p-3 text-sm">⚠️ {warningText}</p>
+          <p className="text-sm text-gray-600">削除する前に、念のため現在のデータをローカルにバックアップ保存できます。</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => { handleExportBackup(); setDialog(null); onProceed(); }}
+              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg shadow-sm"
+            >
+              📥 バックアップしてから削除
+            </button>
+            <button
+              onClick={() => { setDialog(null); onProceed(); }}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg shadow-sm"
+            >
+              バックアップせず削除
+            </button>
+          </div>
+        </div>
+      ),
+      onClose: () => setDialog(null)
+    });
+  };
+
+  const handleDeleteAllEntries = () => {
+    confirmDestructiveAction(
+      "全エントリーの削除確認",
+      "登録されているすべてのエントリーデータと試合結果データを削除します。本当によろしいですか？",
+      async () => {
         setEntries([]);
         setMatches([]);
         setLastCourtReferees({});
-    setLockedReferees({});
+        setLockedReferees({});
         if (isSupabaseConfigured) {
           await supabase.from('entries').delete().gt('created_at', '1970-01-01');
           await supabase.from('matches').delete().gt('created_at', '1970-01-01');
         }
         setDialog({ title: "削除完了", message: "すべてのエントリーおよび試合データを削除しました。", onClose: () => setDialog(null) });
-      },
-      onClose: () => setDialog(null)
-    });
+      }
+    );
+  };
+
+  const handleDeleteMatchResultsOnly = () => {
+    confirmDestructiveAction(
+      "試合結果の削除確認",
+      "現在のすべての試合結果・コート進行状態を削除します（エントリーデータは保持されます）。本当によろしいですか？",
+      async () => {
+        setMatches([]);
+        setLastCourtReferees({});
+        setLockedReferees({});
+        if (isSupabaseConfigured) {
+          await supabase.from('matches').delete().gt('created_at', '1970-01-01');
+        }
+        setDialog({ title: "削除完了", message: "すべての試合結果・コート進行状態を削除しました。", onClose: () => setDialog(null) });
+      }
+    );
   };
 
   const handleGenerateTestData = async () => {
@@ -3176,7 +3217,26 @@ export default function App() {
                     </div>
                  </div>
 
-                 {/* 3. 全データ初期化（削除） */}
+                 {/* 3. 試合結果のみ削除 */}
+                 <div className="border-t-2 pt-6">
+                    <h4 className="font-extrabold text-xl text-amber-600 mb-2 flex items-center gap-2">
+                       🔄 試合結果のみ初期化（削除）
+                    </h4>
+                    <p className="text-base text-gray-600 mb-4 font-medium">
+                       エントリーデータ（登録組・グループ分け）は残したまま、「全試合結果・コート進行状態」だけを削除します。組み合わせをやり直したい時に使用してください。
+                    </p>
+                    <div className="bg-amber-50 border-2 border-amber-200 p-5 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                       <span className="text-base font-bold text-amber-800">⚠️ 削除実行後はデータを元に戻せません</span>
+                       <button
+                         onClick={handleDeleteMatchResultsOnly}
+                         className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 whitespace-nowrap transition-colors"
+                       >
+                          <IconTrash /> 試合結果のみクリア
+                       </button>
+                    </div>
+                 </div>
+
+                 {/* 4. 全データ初期化（削除） */}
                  <div className="border-t-2 pt-6">
                     <h4 className="font-extrabold text-xl text-red-600 mb-2 flex items-center gap-2">
                        🗑️ 全データ初期化（削除）
@@ -3186,7 +3246,7 @@ export default function App() {
                     </p>
                     <div className="bg-red-50 border-2 border-red-200 p-5 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                        <span className="text-base font-bold text-red-800">⚠️ 削除実行後はデータを元に戻せません</span>
-                       <button 
+                       <button
                          onClick={handleDeleteAllEntries}
                          className="bg-red-600 hover:bg-red-700 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 whitespace-nowrap transition-colors"
                        >

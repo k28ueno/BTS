@@ -1198,106 +1198,6 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  const generateAllLeagueMatches = async (currentEntriesList) => {
-    setLastCourtReferees({});
-    setLockedReferees({});
-    const activeEntries = currentEntriesList || entries;
-    const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    const classes = config.classes || ['1部', '2部', '3部', '4部'];
-
-    const newMatches = [];
-    let orderCounter = 1;
-    const dbInserts = [];
-    let totalGenerated = 0;
-
-    const roundMatchesList = [];
-
-    classes.forEach(cls => {
-      const clsEntries = activeEntries.filter(e => e.cls === cls && e.checkedIn);
-      const groupMatchesMap = {};
-      let maxGroupMatches = 0;
-
-      groups.forEach(groupName => {
-        const groupTeams = clsEntries.filter(e => e.group === groupName);
-        groupMatchesMap[groupName] = [];
-        if (groupTeams.length >= 2) {
-          for (let i = 0; i < groupTeams.length; i++) {
-            for (let j = i + 1; j < groupTeams.length; j++) {
-              groupMatchesMap[groupName].push({
-                cls: cls,
-                group_name: groupName,
-                team1_id: groupTeams[i].id,
-                team2_id: groupTeams[j].id
-              });
-            }
-          }
-          if (groupMatchesMap[groupName].length > maxGroupMatches) {
-            maxGroupMatches = groupMatchesMap[groupName].length;
-          }
-        }
-      });
-
-      for (let round = 0; round < maxGroupMatches; round++) {
-        groups.forEach(groupName => {
-          if (groupMatchesMap[groupName] && groupMatchesMap[groupName][round]) {
-            roundMatchesList.push({
-              cls: cls,
-              round: round,
-              match: groupMatchesMap[groupName][round]
-            });
-          }
-        });
-      }
-    });
-
-    const maxRounds = 10;
-    for (let r = 0; r < maxRounds; r++) {
-      classes.forEach(cls => {
-        const matchesInRound = roundMatchesList.filter(item => item.cls === cls && item.round === r);
-        matchesInRound.forEach(item => {
-          totalGenerated++;
-          const m = item.match;
-          const matchObj = {
-            id: `M-${cls}-${m.group_name}-${m.team1_id}-${m.team2_id}`,
-            cls: cls,
-            group_name: m.group_name,
-            match_type: 'league',
-            court_number: null,
-            team1_id: m.team1_id,
-            team2_id: m.team2_id,
-            team1_score: null,
-            team2_score: null,
-            status: 'waiting',
-            match_order: orderCounter++
-          };
-          dbInserts.push(matchObj);
-          newMatches.push({
-            id: matchObj.id,
-            cls: matchObj.cls,
-            group: matchObj.group_name,
-            matchType: matchObj.match_type,
-            courtNumber: matchObj.court_number,
-            team1Id: matchObj.team1_id,
-            team2Id: matchObj.team2_id,
-            team1Score: matchObj.team1_score,
-            team2Score: matchObj.team2_score,
-            status: matchObj.status,
-            matchOrder: matchObj.match_order
-          });
-        });
-      });
-    }
-
-    setMatches(newMatches);
-    if (isSupabaseConfigured) {
-      await supabase.from('matches').delete().gt('created_at', '1970-01-01');
-      if (dbInserts.length > 0) {
-        await supabase.from('matches').insert(dbInserts);
-      }
-    }
-    return totalGenerated;
-  };
-
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {
     setLastCourtReferees({});
     setLockedReferees({});
@@ -2941,15 +2841,6 @@ export default function App() {
             <div>
                <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
                   <h3 className="text-xl font-bold flex items-center gap-2"><IconMatch /> コート進行・ドラッグ＆ドロップ割当</h3>
-                  <button 
-                    onClick={async () => {
-                      const totalGenerated = await generateAllLeagueMatches();
-                      setDialog({ title: "対戦カード再生成完了", message: `全クラスのグループ編成に基づき、合計 ${totalGenerated} 試合の対戦カードを更新・再生成しました。`, onClose: () => setDialog(null) });
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded font-bold shadow flex items-center gap-1"
-                  >
-                     <IconRefresh /> 全対戦カードを再生成
-                  </button>
                </div>
 
                {tapMoveSelection && tapMoveSelection.kind === 'match' && (

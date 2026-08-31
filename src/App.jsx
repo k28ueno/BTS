@@ -703,15 +703,18 @@ export default function App() {
   const handleDeleteMatchResultsOnly = () => {
     confirmDestructiveAction(
       "試合結果の削除確認",
-      "現在のすべての試合結果・コート進行状態を削除します（エントリーデータは保持されます）。本当によろしいですか？",
+      "現在のすべての試合結果・コート進行状態を削除します（エントリーデータは保持されます）。決勝トーナメントの配置も無効になるためリセットされます。本当によろしいですか？",
       async () => {
         setMatches([]);
         setLastCourtReferees({});
         setLockedReferees({});
+        // 予選結果が消える以上、それに基づく決勝トーナメントのシード配置も古いまま残すと辻褄が合わないためリセットする
+        setEntries(prev => prev.map(e => ({ ...e, tournamentPosition: null })));
         if (isSupabaseConfigured) {
           await supabase.from('matches').delete().gt('created_at', '1970-01-01');
+          await supabase.from('entries').update({ tournamentposition: null }).gt('created_at', '1970-01-01');
         }
-        setDialog({ title: "削除完了", message: "すべての試合結果・コート進行状態を削除しました。", onClose: () => setDialog(null) });
+        setDialog({ title: "削除完了", message: "すべての試合結果・コート進行状態、および決勝トーナメントの配置を削除しました。", onClose: () => setDialog(null) });
       }
     );
   };
@@ -1310,15 +1313,19 @@ export default function App() {
       });
     }
 
-    const otherMatches = matches.filter(m => !(m.cls === targetCls && m.matchType === 'league'));
+    // 予選をやり直す場合、そのクラスの旧・決勝トーナメント対戦カードとシード配置はもう無効なので、
+    // 古い予選結果を引きずって決勝ブラケットに残り続けないよう合わせて破棄する
+    const otherMatches = matches.filter(m => !(m.cls === targetCls && (m.matchType === 'league' || m.matchType === 'tournament')));
     const updatedMatches = [...otherMatches, ...newClassMatches];
     setMatches(updatedMatches);
+    setEntries(prev => prev.map(e => e.cls === targetCls ? { ...e, tournamentPosition: null } : e));
 
     if (isSupabaseConfigured) {
-      await supabase.from('matches').delete().eq('cls', targetCls).eq('match_type', 'league');
+      await supabase.from('matches').delete().eq('cls', targetCls).in('match_type', ['league', 'tournament']);
       if (dbInserts.length > 0) {
         await supabase.from('matches').insert(dbInserts);
       }
+      await supabase.from('entries').update({ tournamentposition: null }).eq('cls', targetCls);
     }
     return totalGenerated;
   };
@@ -3223,7 +3230,7 @@ export default function App() {
                        🔄 試合結果のみ初期化（削除）
                     </h4>
                     <p className="text-base text-gray-600 mb-4 font-medium">
-                       エントリーデータ（登録組・グループ分け）は残したまま、「全試合結果・コート進行状態」だけを削除します。組み合わせをやり直したい時に使用してください。
+                       エントリーデータ（登録組・グループ分け）は残したまま、「全試合結果・コート進行状態」と「決勝トーナメントの配置」を削除します。組み合わせをやり直したい時に使用してください。
                     </p>
                     <div className="bg-amber-50 border-2 border-amber-200 p-5 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                        <span className="text-base font-bold text-amber-800">⚠️ 削除実行後はデータを元に戻せません</span>

@@ -187,7 +187,7 @@ export default function App() {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null, substitutionNotes: [] };
     const lastRefMap = lastRefMapOverride || lastCourtReferees;
 
-    if (m.matchType !== 'league') {
+    if (m.matchType !== 'league' && m.matchType !== 'tournament') {
       return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null, substitutionNotes: [] };
     }
 
@@ -381,7 +381,7 @@ export default function App() {
     // 先にキャッシュ（lastCourtReferees）を書き換えてしまうと、そのコートの「直近完了試合」が
     // 自分自身になってしまい、「自分たちが自分たちの試合を審判した」という辻褄の合わない表示になる
     const completedNeedingLock = matches
-      .filter(m => m.matchType === 'league' && m.courtNumber !== null && m.status === 'completed' && !lockedReferees[m.id])
+      .filter(m => (m.matchType === 'league' || m.matchType === 'tournament') && m.courtNumber !== null && m.status === 'completed' && !lockedReferees[m.id])
       .sort((a, b) => Number(a.courtNumber) - Number(b.courtNumber));
 
     if (completedNeedingLock.length > 0) {
@@ -425,7 +425,7 @@ export default function App() {
     // コート単位で逐次計算し、直前のコートで確定した審判を次のコートの候補から除外することで、
     // 同一レンダー内で複数コートに同じペアが重複して審判割り当てされるのを防ぐ
     const unlockedActiveMatches = matches
-      .filter(m => m.matchType === 'league' && m.courtNumber !== null && m.status !== 'completed' && !lockedReferees[m.id])
+      .filter(m => (m.matchType === 'league' || m.matchType === 'tournament') && m.courtNumber !== null && m.status !== 'completed' && !lockedReferees[m.id])
       .sort((a, b) => Number(a.courtNumber) - Number(b.courtNumber));
     if (unlockedActiveMatches.length === 0) return;
 

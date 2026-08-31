@@ -1123,16 +1123,23 @@ export default function App() {
       }
 
       if (isSupabaseConfigured) {
-        if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
-          await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
-        }
-        for (const id of displacedCompleted) {
-          await supabase.from('matches').update({ court_number: null }).eq('id', id);
-        }
+        // 最優先でこの試合自身の割当を反映する。後片付け（押し出された試合の解除）が
+        // 何らかの理由で失敗しても、肝心の割当だけは反映されない…という事態を避けるため
         await supabase.from('matches').update({
           court_number: courtNum,
           status: courtNum ? ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'calling') : ((targetMatch.team1Score !== null && targetMatch.team2Score !== null) ? 'completed' : 'waiting')
         }).eq('id', matchId);
+
+        try {
+          if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
+            await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
+          }
+          for (const id of displacedCompleted) {
+            await supabase.from('matches').update({ court_number: null }).eq('id', id);
+          }
+        } catch (err) {
+          console.error('コート割当の後片付け処理に失敗しました:', err);
+        }
       }
     }
   };
@@ -1798,18 +1805,25 @@ export default function App() {
     }
 
     if (isSupabaseConfigured) {
-      if (courtNum !== null) {
-        // スコア確定済（completed）の試合はDB上でも待機状態に巻き戻さない
-        await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('court_number', courtNum).neq('status', 'completed');
-      }
-      if (restoredMatchId) {
-        await supabase.from('matches').update({ court_number: releasedCourt }).eq('id', restoredMatchId);
-      }
+      // 最優先でこの試合自身の割当変更を反映する。以降の後片付け（押し出し・復元）が
+      // 何らかの理由で失敗しても、肝心の操作だけは反映されない…という事態を避けるため
       const isScored = targetMatch && targetMatch.team1Score !== null && targetMatch.team2Score !== null;
       await supabase.from('matches').update({
-        court_number: courtNum, 
+        court_number: courtNum,
         status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
       }).eq('id', matchId);
+
+      try {
+        if (courtNum !== null) {
+          // スコア確定済（completed）の試合はDB上でも待機状態に巻き戻さない
+          await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('court_number', courtNum).neq('status', 'completed').neq('id', matchId);
+        }
+        if (restoredMatchId) {
+          await supabase.from('matches').update({ court_number: releasedCourt }).eq('id', restoredMatchId);
+        }
+      } catch (err) {
+        console.error('コート割当の後片付け処理に失敗しました:', err);
+      }
     }
   };
 

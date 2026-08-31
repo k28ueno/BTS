@@ -3323,7 +3323,7 @@ export default function App() {
              <IconTrophy /> 大会運営ポータル
           </div>
           <div className="flex gap-2 md:gap-4">
-             <button onClick={() => { if(isAdminLoggedIn) { setCurrentTab('admin'); } else { setCurrentTab('adminLogin'); } }} className="text-xs md:text-sm font-bold text-gray-600 hover:text-gray-900 px-3 py-2 flex items-center gap-1"><IconSettings /> 管理</button>
+             <button onClick={() => { if(isAdminLoggedIn) { setCurrentTab('admin'); } else { setCurrentTab('adminLogin'); } }} className="text-xs md:text-sm font-bold text-gray-600 hover:text-gray-900 px-3 py-2 flex items-center gap-1"><IconSettings /> 事務局操作</button>
           </div>
         </div>
       </header>

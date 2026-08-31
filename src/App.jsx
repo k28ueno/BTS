@@ -603,7 +603,15 @@ export default function App() {
             group: d.group,
             tournamentPosition: d.tournamentposition
           }));
-          setEntries(formatted);
+          setEntries(prev => {
+            // 通信の一時的な不調等で0件が返ってきた場合に、既存のエントリーデータを全消去してしまわないよう保護する
+            // （意図した全削除は各削除処理側で直接setEntries([])しているため、この定期再取得では反映不要）
+            if (formatted.length === 0 && prev.length > 0) {
+              console.warn('fetchEntries: 0件の応答のため、既存のエントリーデータを保持しました');
+              return prev;
+            }
+            return formatted;
+          });
         }
       } catch (err) {
         console.error("Network error:", err);
@@ -616,7 +624,7 @@ export default function App() {
       try {
         const { data, error } = await supabase.from('matches').select('*').order('match_order', { ascending: true });
         if (!error && data) {
-          setMatches(data.map(m => ({
+          const formatted = data.map(m => ({
             id: m.id,
             cls: m.cls,
             group: m.group_name,
@@ -628,7 +636,16 @@ export default function App() {
             team2Score: m.team2_score,
             status: m.status,
             matchOrder: m.match_order
-          })));
+          }));
+          setMatches(prev => {
+            // 通信の一時的な不調等で0件が返ってきた場合に、既存の試合データを全消去してしまわないよう保護する
+            // （意図した全削除は各削除処理側で直接setMatches([])しているため、この定期再取得では反映不要）
+            if (formatted.length === 0 && prev.length > 0) {
+              console.warn('fetchMatches: 0件の応答のため、既存の試合データを保持しました');
+              return prev;
+            }
+            return formatted;
+          });
         }
       } catch (err) {
         console.error("Matches fetch error:", err);

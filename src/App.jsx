@@ -1280,9 +1280,10 @@ export default function App() {
     }
     const shuffled = [...checkedInEntries].sort(() => Math.random() - 0.5);
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    const desiredGroupCount = Math.max(3, Math.ceil(shuffled.length / 4));
-    // 組数が少ないクラスでは、1グループ2組未満にならないようグループ数を減らす
-    const groupCount = Math.max(1, Math.min(desiredGroupCount, Math.floor(shuffled.length / 2)));
+    // 2グループに均等分割するのが最もシンプルで、各グループ上位2組ずつが決勝トーナメント4枠と
+    // ぴったり一致するため、2グループを組めるだけの組数があれば常に2グループとする
+    // （3組未満は1グループに満たない相手がいなくなるため、1グループにまとめる）
+    const groupCount = shuffled.length >= 4 ? 2 : 1;
     const activeGroups = groups.slice(0, groupCount);
     
     const newEntries = [...entries];

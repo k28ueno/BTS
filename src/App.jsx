@@ -2156,7 +2156,7 @@ export default function App() {
       return (
         <div
           key={`slot-${slot}`}
-          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center gap-2 ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'} ${isLocked ? 'opacity-70' : ''} ${isSelected ? 'ring-2 ring-indigo-500' : ''} ${isDropTarget ? 'bg-indigo-50 border-indigo-400 text-indigo-400' : ''} ${editable && !isLocked ? 'cursor-pointer' : ''}`}
+          className={`border rounded-lg px-3 py-2.5 text-sm font-bold w-52 min-h-[48px] flex items-center gap-2 ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'} ${isLocked ? 'opacity-70' : ''} ${isSelected ? 'ring-2 ring-indigo-500' : ''} ${isDropTarget ? 'bg-indigo-50 border-indigo-400 text-indigo-400' : ''} ${editable && !isLocked ? 'cursor-pointer' : ''}`}
           onDragOver={editable && !isLocked ? handleDragOver : undefined}
           onDrop={editable && !isLocked ? (e) => handleTournamentDrop(e, slot) : undefined}
           onClick={editable && !isLocked ? handleTournamentSlotTap(slot, liveEnt) : undefined}
@@ -2169,7 +2169,7 @@ export default function App() {
             {ent ? getTeamNameWithClub(ent.id) : (editable ? 'タップ/ドロップで配置' : '未定')}
           </span>
           {scoreLabel && (
-            <span className={`shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded ${isWinner ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+            <span className={`shrink-0 font-mono text-xs px-1.5 py-0.5 rounded ${isWinner ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                {scoreLabel}
             </span>
           )}
@@ -2194,14 +2194,33 @@ export default function App() {
       return `${idx + 1}回戦`;
     };
 
+    // 決勝（最終ラウンド）の対戦カードが完了していれば、優勝組を求める
+    let champion = null;
+    if (rounds.length > 0) {
+      const finalSlots = rounds[rounds.length - 1];
+      const [finalLo, finalHi] = [Math.min(...finalSlots), Math.max(...finalSlots)];
+      const finalMatch = matches.find(m => m.id === `T-${cls}-${finalLo}-${finalHi}`);
+      if (finalMatch && finalMatch.status === 'completed') {
+        const winnerId = finalMatch.team1Score > finalMatch.team2Score ? finalMatch.team1Id : finalMatch.team2Id;
+        champion = entries.find(e => e.id === winnerId) || null;
+      }
+    }
+
     return (
-      <div className="flex gap-8 p-4 min-w-max">
-        {rounds.map((slots, rIdx) => (
-          <div key={`round-${rIdx}`} className="flex flex-col justify-center" style={{ gap: `${24 * Math.pow(2, rIdx)}px` }}>
-            <div className="text-xs font-bold text-gray-500 text-center mb-1">{roundLabel(rIdx)}</div>
-            {slots.map(slot => renderSlot(slot))}
+      <div>
+        {champion && (
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-800 font-extrabold text-base px-4 py-3 rounded-lg mb-4">
+             🏆 優勝: {getTeamNameWithClub(champion.id)}
           </div>
-        ))}
+        )}
+        <div className="flex gap-8 p-4 min-w-max">
+          {rounds.map((slots, rIdx) => (
+            <div key={`round-${rIdx}`} className="flex flex-col justify-center" style={{ gap: `${24 * Math.pow(2, rIdx)}px` }}>
+              <div className="text-xs font-bold text-gray-500 text-center mb-1">{roundLabel(rIdx)}</div>
+              {slots.map(slot => renderSlot(slot))}
+            </div>
+          ))}
+        </div>
       </div>
     );
   };

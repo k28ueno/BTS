@@ -2053,6 +2053,27 @@ export default function App() {
     return activeGroups.length <= 2 ? 4 : 8;
   };
 
+  // 決勝（最終ラウンド）の枠番号を求める（renderTournamentTreeの採番方式と対応させる）
+  const getFinalRoundSlots = (cls) => {
+    const slotCount = getTournamentSlotCount(cls);
+    if (slotCount < 2) return null;
+    let levelSize = slotCount;
+    let level = 0;
+    while (levelSize > 2) {
+      levelSize = levelSize / 2;
+      level++;
+    }
+    return [level * 100 + 1, level * 100 + 2];
+  };
+
+  // 決勝の対戦カードが完了し、優勝が決まっているか
+  const isTournamentComplete = (cls) => {
+    const finalSlots = getFinalRoundSlots(cls);
+    if (!finalSlots) return false;
+    const finalMatch = matches.find(m => m.id === `T-${cls}-${finalSlots[0]}-${finalSlots[1]}`);
+    return !!(finalMatch && finalMatch.status === 'completed');
+  };
+
   const filteredReceptionEntries = entries.filter(ent => {
     if (receptionClassFilter !== 'all' && ent.cls !== receptionClassFilter) return false;
     if (receptionSearchQuery) {
@@ -2883,10 +2904,15 @@ export default function App() {
                  
                  {drawType === 'league' ? (
                    <>
-                     <button onClick={handleAutoDraw} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
+                     <button
+                       onClick={handleAutoDraw}
+                       disabled={isLeagueComplete(drawClass)}
+                       title={isLeagueComplete(drawClass) ? `【${drawClass}】の予選リーグは既に終了しています` : undefined}
+                       className={`px-4 py-2 rounded font-bold shadow-sm ${isLeagueComplete(drawClass) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                     >
                         受付済の組を自動ランダム振り分け
                      </button>
-                     <button 
+                     <button
                        onClick={async () => {
                          const count = await generateClassLeagueMatches(drawClass);
                          if (count > 0) {
@@ -2894,20 +2920,38 @@ export default function App() {
                          } else {
                            setDialog({ title: "対戦カードクリア", message: `【${drawClass}】のグループに2組以上配置されている組がないため、対戦カードをクリア（0試合）にしました。`, onClose: () => setDialog(null) });
                          }
-                       }} 
-                       className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1"
+                       }}
+                       disabled={isLeagueComplete(drawClass)}
+                       title={isLeagueComplete(drawClass) ? `【${drawClass}】の予選リーグは既に終了しています` : undefined}
+                       className={`px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1 ${isLeagueComplete(drawClass) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                      >
                         <IconRefresh /> 手動編成から対戦カード生成
                      </button>
+                     {isLeagueComplete(drawClass) && (
+                        <span className="text-xs text-gray-500 font-bold">※ 予選リーグは終了済みのため、誤操作防止のためボタンを無効化しています</span>
+                     )}
                    </>
                  ) : (
                    <>
-                     <button onClick={handleAutoDrawTournament} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-bold shadow-sm">
+                     <button
+                       onClick={handleAutoDrawTournament}
+                       disabled={isTournamentComplete(drawClass)}
+                       title={isTournamentComplete(drawClass) ? `【${drawClass}】の決勝トーナメントは既に終了しています` : undefined}
+                       className={`px-4 py-2 rounded font-bold shadow-sm ${isTournamentComplete(drawClass) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                     >
                         予選順位からトーナメント位置を自動初期反映
                      </button>
-                     <button onClick={() => generateTournamentMatches(drawClass)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1">
+                     <button
+                       onClick={() => generateTournamentMatches(drawClass)}
+                       disabled={isTournamentComplete(drawClass)}
+                       title={isTournamentComplete(drawClass) ? `【${drawClass}】の決勝トーナメントは既に終了しています` : undefined}
+                       className={`px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1 ${isTournamentComplete(drawClass) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                     >
                         <IconRefresh /> 決勝トーナメント対戦カードを生成
                      </button>
+                     {isTournamentComplete(drawClass) && (
+                        <span className="text-xs text-gray-500 font-bold">※ 決勝トーナメントは終了済みのため、誤操作防止のためボタンを無効化しています</span>
+                     )}
                    </>
                  )}
               </div>

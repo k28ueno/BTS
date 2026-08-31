@@ -1186,6 +1186,25 @@ export default function App() {
       }
     }
 
+    // 決勝トーナメントの対戦が既に完了している枠は、配置を変更できないようにする
+    // （移動元・移動先のどちらかが確定済みの試合の枠だと、表示と実際の試合記録が食い違ってしまう）
+    const cls = targetEntry ? targetEntry.cls : drawClass;
+    const isSlotDecided = (slot) => {
+      if (slot == null) return false;
+      const { siblingSlot } = getTournamentSlotInfo(slot);
+      const lo = Math.min(slot, siblingSlot);
+      const hi = Math.max(slot, siblingSlot);
+      return matches.some(m => m.id === `T-${cls}-${lo}-${hi}` && m.status === 'completed');
+    };
+    if (isSlotDecided(position) || (targetEntry && isSlotDecided(targetEntry.tournamentPosition))) {
+      setDialog({
+        title: "配置不可",
+        message: "この枠はすでに対戦結果が確定しているため、配置を変更できません。",
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+
     setEntries(entries.map(ent => {
       if (ent.id === entryId) return { ...ent, tournamentPosition: position };
       if (ent.tournamentPosition === position) return { ...ent, tournamentPosition: null };
@@ -2120,10 +2139,12 @@ export default function App() {
       const { siblingSlot } = getTournamentSlotInfo(slot);
       const [lo, hi] = slot < siblingSlot ? [slot, siblingSlot] : [siblingSlot, slot];
       const pairMatch = matches.find(m => m.id === `T-${cls}-${lo}-${hi}`);
+      const isDecided = !!(pairMatch && pairMatch.status === 'completed');
+      const isLocked = isGhost || isDecided;
       let scoreLabel = null;
       let isWinner = false;
       let isLoser = false;
-      if (ent && pairMatch && pairMatch.status === 'completed') {
+      if (ent && isDecided) {
         const isTeam1 = String(pairMatch.team1Id) === String(ent.id);
         const myScore = isTeam1 ? pairMatch.team1Score : pairMatch.team2Score;
         const oppScore = isTeam1 ? pairMatch.team2Score : pairMatch.team1Score;
@@ -2135,15 +2156,15 @@ export default function App() {
       return (
         <div
           key={`slot-${slot}`}
-          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center gap-2 ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'} ${isGhost ? 'opacity-70' : ''} ${isSelected ? 'ring-2 ring-indigo-500' : ''} ${isDropTarget ? 'bg-indigo-50 border-indigo-400 text-indigo-400' : ''} ${editable && !isGhost ? 'cursor-pointer' : ''}`}
-          onDragOver={editable && !isGhost ? handleDragOver : undefined}
-          onDrop={editable && !isGhost ? (e) => handleTournamentDrop(e, slot) : undefined}
-          onClick={editable && !isGhost ? handleTournamentSlotTap(slot, liveEnt) : undefined}
+          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center gap-2 ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'} ${isLocked ? 'opacity-70' : ''} ${isSelected ? 'ring-2 ring-indigo-500' : ''} ${isDropTarget ? 'bg-indigo-50 border-indigo-400 text-indigo-400' : ''} ${editable && !isLocked ? 'cursor-pointer' : ''}`}
+          onDragOver={editable && !isLocked ? handleDragOver : undefined}
+          onDrop={editable && !isLocked ? (e) => handleTournamentDrop(e, slot) : undefined}
+          onClick={editable && !isLocked ? handleTournamentSlotTap(slot, liveEnt) : undefined}
         >
           <span
             className={`truncate flex-1 ${isWinner ? 'text-emerald-700' : ''} ${isLoser ? 'text-gray-400 line-through' : ''}`}
-            draggable={editable && !!liveEnt}
-            onDragStart={editable && liveEnt ? (e) => handleDragStart(e, liveEnt.id) : undefined}
+            draggable={editable && !!liveEnt && !isDecided}
+            onDragStart={editable && liveEnt && !isDecided ? (e) => handleDragStart(e, liveEnt.id) : undefined}
           >
             {ent ? getTeamNameWithClub(ent.id) : (editable ? 'タップ/ドロップで配置' : '未定')}
           </span>

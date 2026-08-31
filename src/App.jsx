@@ -2308,7 +2308,7 @@ export default function App() {
                {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(group => {
                  const groupEntries = entries.filter(e => e.cls === selectedClass && e.group === group);
                  if (groupEntries.length === 0) return null;
-                 
+
                  const groupMatches = matches.filter(m => m.cls === selectedClass && m.group === group && m.status === 'completed');
 
                  return (
@@ -2335,7 +2335,7 @@ export default function App() {
                                     {groupEntries.map((opp, j) => {
                                        if (i === j) return <td key={`td-${j}`} className="border p-2 bg-gray-100 font-bold">-</td>;
                                        const match = groupMatches.find(m => (m.team1Id === ent.id && m.team2Id === opp.id) || (m.team1Id === opp.id && m.team2Id === ent.id));
-                                       
+
                                        if (!match) return <td key={`td-${j}`} className="border p-2 text-gray-300">-</td>;
 
                                        let scoreText = '';
@@ -2365,8 +2365,53 @@ export default function App() {
           <div>
             <h3 className="text-xl font-bold mb-4">{selectedClass} - 決勝トーナメント</h3>
             {isLeagueComplete(selectedClass) ? (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-                 {renderTournamentTree(selectedClass, false)}
+              <div className="space-y-6">
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(group => {
+                       const groupEntries = entries.filter(e => e.cls === selectedClass && e.group === group);
+                       if (groupEntries.length === 0) return null;
+
+                       const standings = getGroupStandings(selectedClass, group);
+                       const hasTiedWins = standings.some((ent, i) => i > 0 && ent.wins === standings[i - 1].wins);
+
+                       return (
+                          <div key={`standings-${group}`} className="bg-white rounded-xl border border-gray-200 p-4">
+                             <h4 className="font-bold text-lg mb-3 border-l-4 border-[#2c5f4e] pl-2">グループ {group} 順位表</h4>
+                             <table className="w-full text-sm text-center border-collapse">
+                                <thead>
+                                   <tr>
+                                      <th className="border p-2 bg-gray-50">順位</th>
+                                      <th className="border p-2 bg-gray-50 text-left">ペア (所属)</th>
+                                      <th className="border p-2 bg-blue-50">勝敗</th>
+                                      <th className="border p-2 bg-blue-50">得失点差</th>
+                                   </tr>
+                                </thead>
+                                <tbody>
+                                   {standings.map((ent, i) => {
+                                      const isTied = hasTiedWins && standings.some((other, k) => k !== i && other.wins === ent.wins);
+                                      return (
+                                         <tr key={ent.id}>
+                                            <td className="border p-2 font-bold">{i + 1}</td>
+                                            <td className="border p-2 text-left font-bold truncate max-w-[220px]">{getTeamNameWithClub(ent.id)}</td>
+                                            <td className="border p-2 font-bold text-blue-700">{ent.wins}勝{ent.losses}敗</td>
+                                            <td className={`border p-2 font-bold ${isTied ? 'text-orange-600 bg-orange-50' : 'text-gray-600'}`}>
+                                               {ent.pointDiff > 0 ? `+${ent.pointDiff}` : ent.pointDiff}
+                                            </td>
+                                         </tr>
+                                      );
+                                   })}
+                                </tbody>
+                             </table>
+                             {hasTiedWins && (
+                                <p className="text-xs text-orange-600 font-bold mt-2">※ 勝敗数が同じ組は得失点差で順位を決定しています</p>
+                             )}
+                          </div>
+                       );
+                    })}
+                 </div>
+                 <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+                    {renderTournamentTree(selectedClass, false)}
+                 </div>
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-400 font-bold">

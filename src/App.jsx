@@ -253,19 +253,22 @@ export default function App() {
     const t2 = String(m.team2Id);
     let candidates = findCandidates(new Set([t1, t2]));
 
-    // 同クラスの空き候補が「ちょうど2組」で、かつその2組が実は互いの対戦カード（未消化）だった場合、
-    // 審判に固定するとその2組自身の試合がコートが空いていても進行不能になってしまう。
-    // 同クラスに3組以上空きがいる場合は、ラウンドロビン序盤では残り同士がほぼ必ずどこかで対戦予定になり
-    // この判定が常に発動してしまうため、「他に選びようがない（ちょうど2組しかいない）」場合に限定する
+    // 審判候補の同クラス2組が実は互いの対戦カード（未消化）だった場合、審判に固定すると
+    // その2組自身の試合が進行不能になってしまう…と思いきや、これは「クラスの総組数が4組」という
+    // 静的な条件だけでほぼ常に成り立ってしまい、ラウンドロビン序盤（他に消化すべき待機試合が
+    // まだ大量に残っている段階）でも毎回発動して不要に他クラスへ応援を求めてしまっていた。
+    // 本当に問題になるのは「この試合を除くと、クラス内に残る待機試合がこの2組の対戦カードだけ」
+    // という、他に手の打ちようが無い最終局面に限られる
     if (candidates.length >= 2) {
       const sameClassCandidates = candidates.filter(c => c.cls === m.cls);
       if (sameClassCandidates.length === 2) {
         const pairIds = [String(sameClassCandidates[0].id), String(sameClassCandidates[1].id)].sort().join('-');
-        const areMutualOpponents = matches.some(x =>
-          x.matchType === 'league' && x.status !== 'completed' &&
-          [String(x.team1Id), String(x.team2Id)].sort().join('-') === pairIds
+        const otherWaitingClassMatches = matches.filter(x =>
+          x.cls === m.cls && x.matchType === 'league' && x.status === 'waiting' && x.id !== m.id
         );
-        if (areMutualOpponents) {
+        const isOnlyRemainingOption = otherWaitingClassMatches.length === 1 &&
+          [String(otherWaitingClassMatches[0].team1Id), String(otherWaitingClassMatches[0].team2Id)].sort().join('-') === pairIds;
+        if (isOnlyRemainingOption) {
           const widened = findCandidates(new Set([t1, t2, ...pairIds.split('-')]));
           if (widened.length >= 2) {
             candidates = widened;

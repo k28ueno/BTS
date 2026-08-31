@@ -116,6 +116,9 @@ export default function App() {
   const [lastCourtReferees, setLastCourtReferees] = useState({});
   // 試合が実際にコートへ割り当てられた瞬間の審判割り当てを固定する（{ [matchId]: 審判情報 }）
   const [lockedReferees, setLockedReferees] = useState({});
+  // 完了済みの試合が乗っているコートへ新しい試合を配置すると、元の完了済み試合はコートから外れる。
+  // その新しい試合をコート解除した際に元の完了済み試合を復元できるよう、退避元を記録しておく（{ [courtNum]: matchId }）
+  const [displacedCourtMatch, setDisplacedCourtMatch] = useState({});
 
   // ----------------------------------------------------------------
   // 共通ヘルパー関数群
@@ -1091,6 +1094,20 @@ export default function App() {
 
       setMatches(updated);
 
+      // このコートから完了済みの試合を押し出した場合、コート解除で元に戻せるよう記録しておく
+      if (courtNum !== null) {
+        if (displacedCompleted.length > 0) {
+          setDisplacedCourtMatch(prev => ({ ...prev, [courtNum]: displacedCompleted[0] }));
+        } else {
+          setDisplacedCourtMatch(prev => {
+            if (!(courtNum in prev)) return prev;
+            const next = { ...prev };
+            delete next[courtNum];
+            return next;
+          });
+        }
+      }
+
       // タップで選択中の試合をドラッグでも移動できてしまうため、移動できたらタップ選択を解除する。
       // 解除し忘れると、実際は配置済みなのに「選択中」バナーが残り続けてドラッグが失敗したように見えてしまう
       setTapMoveSelection(prev => (prev && prev.kind === 'match' && prev.id === matchId) ? null : prev);
@@ -1737,7 +1754,7 @@ export default function App() {
   const handleAssignCourt = async (matchId, courtNum) => {
     const targetMatch = matches.find(m => m.id === matchId);
 
-    const updated = matches.map(m => {
+    let updated = matches.map(m => {
       if (m.courtNumber === courtNum && courtNum !== null) {
         if (m.id === matchId) return { ...m, courtNumber: courtNum, status: (m.team1Score !== null && m.team2Score !== null) ? 'completed' : 'calling' };
         return { ...m, courtNumber: null, status: (m.team1Score !== null && m.team2Score !== null) ? 'completed' : 'waiting' };
@@ -1749,7 +1766,27 @@ export default function App() {
       return m;
     });
 
+    // コート解除で、以前このコートから押し出されていた完了済み試合が復元できる場合は復元する
+    let restoredMatchId = null;
+    const releasedCourt = targetMatch ? targetMatch.courtNumber : null;
+    if (courtNum === null && releasedCourt !== null) {
+      const candidateId = displacedCourtMatch[releasedCourt];
+      const candidate = candidateId ? updated.find(m => m.id === candidateId) : null;
+      if (candidate && candidate.courtNumber === null && candidate.status === 'completed') {
+        restoredMatchId = candidateId;
+        updated = updated.map(m => m.id === candidateId ? { ...m, courtNumber: releasedCourt } : m);
+      }
+    }
+
     setMatches(updated);
+
+    if (restoredMatchId) {
+      setDisplacedCourtMatch(prev => {
+        const next = { ...prev };
+        delete next[releasedCourt];
+        return next;
+      });
+    }
 
     // コート解除時はロックを解除し、次に割り当てられた時点で審判を再計算させる
     if (courtNum === null) {
@@ -1765,8 +1802,11 @@ export default function App() {
         // スコア確定済（completed）の試合はDB上でも待機状態に巻き戻さない
         await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('court_number', courtNum).neq('status', 'completed');
       }
+      if (restoredMatchId) {
+        await supabase.from('matches').update({ court_number: releasedCourt }).eq('id', restoredMatchId);
+      }
       const isScored = targetMatch && targetMatch.team1Score !== null && targetMatch.team2Score !== null;
-      await supabase.from('matches').update({ 
+      await supabase.from('matches').update({
         court_number: courtNum, 
         status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
       }).eq('id', matchId);

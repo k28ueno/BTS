@@ -2499,7 +2499,12 @@ export default function App() {
           
           {adminTab === 'settings' && (
             <div className="space-y-6">
-              <h3 className="text-xl font-bold border-b pb-2 flex items-center gap-2"><IconSettings /> 大会マスタ設定</h3>
+              <h3 className="text-xl font-bold border-b pb-2 flex items-center justify-between gap-2">
+                 <span className="flex items-center gap-2"><IconSettings /> 大会マスタ設定</span>
+                 <button onClick={handleSaveSettings} className="px-5 py-2 bg-[#2c5f4e] hover:bg-[#1f4236] text-white font-bold rounded shadow flex items-center gap-2 text-sm">
+                    <IconCheckCircle /> 設定を保存
+                 </button>
+              </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">大会名</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.title} onChange={e=>setConfig({...config, title: e.target.value})} /></div>
@@ -2550,12 +2555,6 @@ export default function App() {
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
-              </div>
-
-              <div className="border-t pt-4">
-                 <button onClick={handleSaveSettings} className="w-full md:w-auto px-8 py-3 bg-[#2c5f4e] hover:bg-[#1f4236] text-white font-bold rounded shadow flex items-center justify-center gap-2">
-                    <IconCheckCircle /> 設定を保存して公開する
-                 </button>
               </div>
             </div>
           )}

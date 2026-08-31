@@ -1540,13 +1540,28 @@ export default function App() {
       level++;
     }
 
-    if (newMatches.length === 0 && advancedUpdates.length === 0) {
+    // 決勝トーナメントの対戦カードを生成したら、予選で使っていたコートは解放し、
+    // 決勝の試合をすぐ空きコートへ配置できるようにする（試合結果自体は保持したまま）
+    const clsCompletedLeagueOnCourt = matches.filter(m =>
+      m.cls === cls && m.matchType === 'league' && m.status === 'completed' && m.courtNumber !== null
+    );
+
+    if (newMatches.length === 0 && advancedUpdates.length === 0 && clsCompletedLeagueOnCourt.length === 0) {
       setDialog({ title: "生成対象なし", message: `【${cls}】には新たに生成できる対戦カードがありません。両者揃っている枠がないか、既に生成済みです。`, onClose: () => setDialog(null) });
       return;
     }
 
     if (advancedUpdates.length > 0) setEntries(workingEntries);
-    if (newMatches.length > 0) setMatches(prev => [...prev, ...newMatches]);
+    if (newMatches.length > 0 || clsCompletedLeagueOnCourt.length > 0) {
+      setMatches(prev => {
+        const cleared = prev.map(m =>
+          m.cls === cls && m.matchType === 'league' && m.status === 'completed' && m.courtNumber !== null
+            ? { ...m, courtNumber: null }
+            : m
+        );
+        return newMatches.length > 0 ? [...cleared, ...newMatches] : cleared;
+      });
+    }
 
     if (isSupabaseConfigured) {
       await Promise.all(advancedUpdates.map(u => supabase.from('entries').update({ tournamentposition: u.tournamentposition }).eq('id', u.id)));
@@ -1557,11 +1572,15 @@ export default function App() {
           status: m.status, match_order: m.matchOrder
         })));
       }
+      if (clsCompletedLeagueOnCourt.length > 0) {
+        await Promise.all(clsCompletedLeagueOnCourt.map(m => supabase.from('matches').update({ court_number: null }).eq('id', m.id)));
+      }
     }
 
     const parts = [];
     if (createdCount > 0) parts.push(`対戦カード${createdCount}件を生成`);
     if (advancedUpdates.length > 0) parts.push(`不戦勝${advancedUpdates.length}件を自動で勝ち上がらせ`);
+    if (clsCompletedLeagueOnCourt.length > 0) parts.push(`予選で使用中だったコート${clsCompletedLeagueOnCourt.length}面を解放`);
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 

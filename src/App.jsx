@@ -3272,12 +3272,18 @@ export default function App() {
                                     <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
                                     
                                     <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
-                                       <button
-                                         onClick={() => handleAssignCourt(activeMatch.id, null)}
-                                         className="text-xs text-red-500 hover:underline font-bold"
-                                       >
-                                          コート解除
-                                       </button>
+                                       {activeMatch.status === 'completed' ? (
+                                          <span className="text-xs text-gray-300 font-bold" title="スコア入力済の試合はコート解除できません。次の試合をこのコートへ配置すると自動的に解除されます">
+                                             コート解除
+                                          </span>
+                                       ) : (
+                                          <button
+                                            onClick={() => handleAssignCourt(activeMatch.id, null)}
+                                            className="text-xs text-red-500 hover:underline font-bold"
+                                          >
+                                             コート解除
+                                          </button>
+                                       )}
 
                                        {activeMatch.status === 'calling' && (
                                           <button

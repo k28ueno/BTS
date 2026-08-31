@@ -1433,13 +1433,17 @@ export default function App() {
     const numPerGroup = advCondition === 'top1' ? 1 : 2;
 
     let slotMapping = [];
-    if (groupCount <= 1) {
+    if (numPerGroup === 1) {
+      // 各グループ1位のみ進出する場合は、進出組数がそのままグループ数になるため、
+      // グループの並び順どおりに直列でスロットへ割り当てる（余った枠は不戦勝として自動処理される）
+      slotMapping = activeGroups.map((g, i) => ({ group: g, rank: 0, slot: i + 1 }));
+    } else if (groupCount <= 1) {
       // グループが1つだけの場合は決勝のみの2枠ブラケット（getTournamentSlotCountと対応）
       slotMapping = [
         { group: activeGroups[0], rank: 0, slot: 1 },
         { group: activeGroups[0], rank: 1, slot: 2 },
       ];
-    } else if (groupCount === 3 && numPerGroup === 2) {
+    } else if (groupCount === 3) {
       slotMapping = [
         { group: 'A', rank: 0, slot: 1 },
         { group: 'C', rank: 1, slot: 3 },
@@ -1448,7 +1452,7 @@ export default function App() {
         { group: 'A', rank: 1, slot: 7 },
         { group: 'C', rank: 0, slot: 8 },
       ];
-    } else if (groupCount === 2 && numPerGroup === 2) {
+    } else if (groupCount === 2) {
       slotMapping = [
         { group: 'A', rank: 0, slot: 1 },
         { group: 'B', rank: 1, slot: 2 },
@@ -2063,14 +2067,19 @@ export default function App() {
     return qualified;
   };
 
-  // 決勝トーナメントの組数（受付済＋グループ数）に応じたブラケットサイズ（2 or 4 or 8）
-  // グループが1つしかない場合は準決勝が空き枠だけの無駄な段になるため、決勝のみの2枠とする
+  // 決勝トーナメントの実際の進出組数（グループ数×進出条件）に応じたブラケットサイズ。
+  // グループ数だけで判定すると、進出条件を「各グループ1位のみ」にした場合などに
+  // 空き枠だらけのブラケットになってしまうため、実際の進出組数から2の累乗枠数を求める
   const getTournamentSlotCount = (cls) => {
     const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
     if (clsEntries.length === 0) return 0;
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
-    if (activeGroups.length <= 1) return 2;
-    return activeGroups.length <= 2 ? 4 : 8;
+    const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
+    const qualifierCount = activeGroups.length * numPerGroup;
+    if (qualifierCount <= 2) return 2;
+    if (qualifierCount <= 4) return 4;
+    if (qualifierCount <= 8) return 8;
+    return 16;
   };
 
   // 決勝（最終ラウンド）の枠番号を求める（renderTournamentTreeの採番方式と対応させる）

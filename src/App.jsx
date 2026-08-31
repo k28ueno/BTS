@@ -2358,6 +2358,7 @@ export default function App() {
           onChange={e => setEditLogin({...editLogin, password: e.target.value.replace(/\D/g, '')})} 
         />
         <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow mt-4">ログイン</button>
+        <button type="button" onClick={() => setCurrentTab('home')} className="w-full text-gray-500 hover:text-gray-800 font-bold py-2">キャンセル</button>
       </form>
     </div>
   );

@@ -965,6 +965,17 @@ export default function App() {
   const moveEntryToGroup = async (entryId, targetGroup) => {
     if (!entryId) return;
     const targetEntry = entries.find(ent => ent.id === entryId);
+    if (targetEntry && targetEntry.group === targetGroup) return;
+    // 予選リーグが終了済みのクラスでグループ編成を変更すると、対戦カードが再生成されて
+    // 既に完了している予選・決勝の結果が失われてしまうため、変更自体を禁止する
+    if (targetEntry && isLeagueComplete(targetEntry.cls)) {
+      setDialog({
+        title: "グループ変更不可",
+        message: `【${targetEntry.cls}】は予選リーグが終了済みのため、グループ編成を変更できません。変更すると対戦カードが再生成され、既存の結果が失われます。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
     const updatedEntries = entries.map(ent => ent.id === entryId ? { ...ent, group: targetGroup } : ent);
     setEntries(updatedEntries);
 
@@ -1421,7 +1432,13 @@ export default function App() {
     const numPerGroup = advCondition === 'top1' ? 1 : 2;
 
     let slotMapping = [];
-    if (groupCount === 3 && numPerGroup === 2) {
+    if (groupCount <= 1) {
+      // グループが1つだけの場合は決勝のみの2枠ブラケット（getTournamentSlotCountと対応）
+      slotMapping = [
+        { group: activeGroups[0], rank: 0, slot: 1 },
+        { group: activeGroups[0], rank: 1, slot: 2 },
+      ];
+    } else if (groupCount === 3 && numPerGroup === 2) {
       slotMapping = [
         { group: 'A', rank: 0, slot: 1 },
         { group: 'C', rank: 1, slot: 3 },
@@ -2045,11 +2062,13 @@ export default function App() {
     return qualified;
   };
 
-  // 決勝トーナメントの組数（受付済＋グループ数）に応じたブラケットサイズ（4 or 8）
+  // 決勝トーナメントの組数（受付済＋グループ数）に応じたブラケットサイズ（2 or 4 or 8）
+  // グループが1つしかない場合は準決勝が空き枠だけの無駄な段になるため、決勝のみの2枠とする
   const getTournamentSlotCount = (cls) => {
     const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
     if (clsEntries.length === 0) return 0;
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
+    if (activeGroups.length <= 1) return 2;
     return activeGroups.length <= 2 ? 4 : 8;
   };
 

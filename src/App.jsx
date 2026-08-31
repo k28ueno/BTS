@@ -2095,27 +2095,63 @@ export default function App() {
   // 決勝トーナメント表を描画（editable=trueの場合はドラッグ＆ドロップで組を配置・進出させられる）
   const renderTournamentTree = (cls, editable) => {
     const slotCount = getTournamentSlotCount(cls);
-    const getEntryAtSlot = (slot) => entries.find(e => e.cls === cls && e.tournamentPosition === slot);
+
+    // 勝者が次の枠へ進出済みで、この枠に今は誰もいなくなっている場合でも、
+    // ペアの対戦カードの記録から元の参加者を復元し、結果を表示できるようにする
+    const getEntryAtSlot = (slot) => {
+      const bySlot = entries.find(e => e.cls === cls && e.tournamentPosition === slot);
+      if (bySlot) return bySlot;
+      const { siblingSlot } = getTournamentSlotInfo(slot);
+      const lo = Math.min(slot, siblingSlot);
+      const pairMatch = matches.find(m => m.id === `T-${cls}-${lo}-${Math.max(slot, siblingSlot)}`);
+      if (!pairMatch) return null;
+      const idAtThisSlot = slot === lo ? pairMatch.team1Id : pairMatch.team2Id;
+      return entries.find(e => e.id === idAtThisSlot) || null;
+    };
 
     const renderSlot = (slot) => {
+      const liveEnt = entries.find(e => e.cls === cls && e.tournamentPosition === slot);
       const ent = getEntryAtSlot(slot);
-      const isSelected = editable && ent && tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
+      const isGhost = !liveEnt && !!ent;
+      const isSelected = editable && liveEnt && tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === liveEnt.id;
       const isDropTarget = editable && !ent && tapMoveSelection && tapMoveSelection.kind === 'entry';
+
+      // この枠の対戦相手（ペア枠）との試合結果が確定していれば、スコアと勝敗を表示する
+      const { siblingSlot } = getTournamentSlotInfo(slot);
+      const [lo, hi] = slot < siblingSlot ? [slot, siblingSlot] : [siblingSlot, slot];
+      const pairMatch = matches.find(m => m.id === `T-${cls}-${lo}-${hi}`);
+      let scoreLabel = null;
+      let isWinner = false;
+      let isLoser = false;
+      if (ent && pairMatch && pairMatch.status === 'completed') {
+        const isTeam1 = String(pairMatch.team1Id) === String(ent.id);
+        const myScore = isTeam1 ? pairMatch.team1Score : pairMatch.team2Score;
+        const oppScore = isTeam1 ? pairMatch.team2Score : pairMatch.team1Score;
+        scoreLabel = `${myScore} - ${oppScore}`;
+        isWinner = myScore > oppScore;
+        isLoser = myScore < oppScore;
+      }
+
       return (
         <div
           key={`slot-${slot}`}
-          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'} ${isSelected ? 'ring-2 ring-indigo-500' : ''} ${isDropTarget ? 'bg-indigo-50 border-indigo-400 text-indigo-400' : ''} ${editable ? 'cursor-pointer' : ''}`}
-          onDragOver={editable ? handleDragOver : undefined}
-          onDrop={editable ? (e) => handleTournamentDrop(e, slot) : undefined}
-          onClick={editable ? handleTournamentSlotTap(slot, ent) : undefined}
+          className={`border rounded-lg px-3 py-2 text-xs font-bold w-44 min-h-[44px] flex items-center gap-2 ${ent ? 'bg-white border-[#2c5f4e] shadow-xs' : 'bg-gray-50 text-gray-300 border-dashed'} ${isGhost ? 'opacity-70' : ''} ${isSelected ? 'ring-2 ring-indigo-500' : ''} ${isDropTarget ? 'bg-indigo-50 border-indigo-400 text-indigo-400' : ''} ${editable && !isGhost ? 'cursor-pointer' : ''}`}
+          onDragOver={editable && !isGhost ? handleDragOver : undefined}
+          onDrop={editable && !isGhost ? (e) => handleTournamentDrop(e, slot) : undefined}
+          onClick={editable && !isGhost ? handleTournamentSlotTap(slot, liveEnt) : undefined}
         >
           <span
-            className="truncate w-full"
-            draggable={editable && !!ent}
-            onDragStart={editable && ent ? (e) => handleDragStart(e, ent.id) : undefined}
+            className={`truncate flex-1 ${isWinner ? 'text-emerald-700' : ''} ${isLoser ? 'text-gray-400 line-through' : ''}`}
+            draggable={editable && !!liveEnt}
+            onDragStart={editable && liveEnt ? (e) => handleDragStart(e, liveEnt.id) : undefined}
           >
             {ent ? getTeamNameWithClub(ent.id) : (editable ? 'タップ/ドロップで配置' : '未定')}
           </span>
+          {scoreLabel && (
+            <span className={`shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded ${isWinner ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+               {scoreLabel}
+            </span>
+          )}
         </div>
       );
     };

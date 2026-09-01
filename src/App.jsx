@@ -1866,7 +1866,7 @@ export default function App() {
         const { data } = await supabase.from('admin_session').select('*').eq('id', 1).maybeSingle();
         const heldByOther = data && data.token && (Date.now() - new Date(data.updated_at).getTime() < ADMIN_SESSION_STALE_MS);
         if (heldByOther) {
-          setDialog({ title: "ログイン不可", message: "既に他の端末で管理者ログイン中です。その端末でログオフしてから再度お試しください。", onClose: () => setDialog(null) });
+          setDialog({ title: "ログイン不可", message: "既に他の端末で管理者ログイン中です。暫くしてから再度お試しください。", onClose: () => setDialog(null) });
           return;
         }
         const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;

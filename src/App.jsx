@@ -3215,23 +3215,23 @@ export default function App() {
                        </thead>
                        <tbody className="divide-y divide-slate-700/50">
                           {simResult.classStats.map(s => (
-                             <tr key={s.cls} className="hover:bg-slate-700/30">
+                             <tr key={s.cls} className="hover:bg-slate-700/30 text-sm">
                                 <td className="p-2.5 text-left font-bold text-emerald-400">{s.cls}</td>
                                 <td className="p-2.5">{s.count} 組</td>
                                 <td className="p-2.5"><span className="text-orange-300 font-bold">{s.leagueRemaining}</span> / {s.leagueTotal}</td>
                                 <td className="p-2.5"><span className="text-orange-300 font-bold">{s.tournamentRemaining}</span> / {s.tournamentTotal}</td>
                                 <td className="p-2.5 text-emerald-400 font-mono font-bold">{s.completedMatches} 試合</td>
-                                <td className="p-2.5 font-bold text-orange-400 text-sm font-mono">{s.remainingMatches} 試合</td>
+                                <td className="p-2.5 font-bold text-orange-400 font-mono">{s.remainingMatches} 試合</td>
                                 <td className="p-2.5 text-slate-400 font-mono">{s.totalMatches} 試合</td>
                              </tr>
                           ))}
-                          <tr className="bg-slate-800/90 font-bold border-t-2 border-slate-600 text-sm">
+                          <tr className="bg-slate-800/90 font-bold border-t-2 border-slate-600 text-base">
                              <td className="p-3 text-left text-white">全体合計</td>
                              <td className="p-3 text-white">{simResult.totalEntries} 組</td>
                              <td className="p-3 text-white"><span className="text-orange-400">{simResult.totalLeagueRemaining}</span> / {simResult.totalLeagueMatches}</td>
                              <td className="p-3 text-white"><span className="text-orange-400">{simResult.totalTournamentRemaining}</span> / {simResult.totalTournamentMatches}</td>
                              <td className="p-3 text-emerald-400 font-mono">{simResult.totalCompletedMatches} 試合</td>
-                             <td className="p-3 text-orange-400 text-base font-mono">{simResult.totalRemainingMatches} 試合</td>
+                             <td className="p-3 text-orange-400 text-lg font-mono">{simResult.totalRemainingMatches} 試合</td>
                              <td className="p-3 text-slate-300 font-mono">{simResult.totalMatches} 試合</td>
                           </tr>
                        </tbody>

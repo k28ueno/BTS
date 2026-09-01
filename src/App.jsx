@@ -2857,6 +2857,7 @@ export default function App() {
            <button onClick={() => setAdminTab('simulation')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'simulation' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>シミュレーション</button>
            <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
            <button onClick={() => setAdminTab('data')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'data' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>データ管理</button>
+           <button onClick={() => setAdminTab('manual')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'manual' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マニュアル</button>
         </div>
         <div className="flex-1 p-6 bg-gray-50/50 min-w-0">
           
@@ -3690,6 +3691,145 @@ export default function App() {
                           <IconTrash /> 全エントリー・全試合結果クリア
                        </button>
                     </div>
+                 </div>
+              </div>
+            </div>
+          )}
+
+          {adminTab === 'manual' && (
+            <div className="space-y-10">
+              <h3 className="text-3xl font-extrabold border-b pb-3 flex items-center gap-2 text-slate-800">
+                 📖 操作マニュアル
+              </h3>
+
+              {/* 1. 全体の流れ */}
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm">
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">① 大会運営の全体の流れ</h4>
+                 <div className="flex flex-wrap items-stretch gap-2">
+                    {[
+                      { label: '大会前', desc: 'マスタ設定・エントリー受付', tab: 'settings', color: 'bg-slate-600' },
+                      { label: '当日受付', desc: '来場した組を受付処理', tab: 'reception', color: 'bg-blue-600' },
+                      { label: '予選グループ分け', desc: 'ドロー編成でグループ編成', tab: 'draw', color: 'bg-emerald-600' },
+                      { label: '予選リーグ進行', desc: 'コート進行・スコア入力', tab: 'matches', color: 'bg-emerald-700' },
+                      { label: '決勝トーナメント', desc: 'ドロー編成→コート進行', tab: 'draw', color: 'bg-amber-600' },
+                      { label: '大会終了', desc: '結果確認・データ退避', tab: 'data', color: 'bg-gray-700' },
+                    ].map((step, i, arr) => (
+                      <React.Fragment key={step.label}>
+                         <button
+                           onClick={() => setAdminTab(step.tab)}
+                           className={`${step.color} text-white rounded-lg px-4 py-3 shadow-sm text-left flex-1 min-w-[130px] hover:opacity-90 transition-opacity`}
+                         >
+                            <div className="text-[10px] font-bold opacity-80 mb-0.5">STEP {i + 1}</div>
+                            <div className="font-extrabold text-sm mb-0.5">{step.label}</div>
+                            <div className="text-[11px] opacity-90">{step.desc}</div>
+                         </button>
+                         {i < arr.length - 1 && (
+                            <div className="flex items-center justify-center text-gray-300 font-black text-xl px-0.5">➔</div>
+                         )}
+                      </React.Fragment>
+                    ))}
+                 </div>
+                 <p className="text-xs text-gray-500 mt-3">※各ステップをクリックすると、該当のメニュー画面に移動します。</p>
+              </div>
+
+              {/* 2. メニューの役割 */}
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm">
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">② 左メニュー各画面の役割</h4>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      ['マスタ設定', '大会名・日程・コート数・決勝進出条件など、大会全体の基本設定を行います。'],
+                      ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。'],
+                      ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成の対象になるのは受付済の組だけです。'],
+                      ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。'],
+                      ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。'],
+                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、スコア入力を行います。'],
+                      ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。'],
+                    ].map(([title, desc]) => (
+                      <div key={title} className="bg-gray-50 border rounded-lg p-3">
+                         <div className="font-bold text-[#2c5f4e] text-sm mb-1">{title}</div>
+                         <div className="text-xs text-gray-600 leading-relaxed">{desc}</div>
+                      </div>
+                    ))}
+                 </div>
+              </div>
+
+              {/* 3. コートの状態遷移 */}
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm">
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">③ 1試合のコート進行の流れ</h4>
+                 <div className="flex flex-wrap items-center gap-1.5">
+                    {[
+                      { label: '空き', sub: '対戦カードを配置', badge: 'bg-gray-100 text-gray-500 border-gray-300' },
+                      { label: '要コール', sub: '「コール」ボタンを押す', badge: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
+                      { label: '試合受付', sub: '「試合受付」ボタンを押す', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
+                      { label: '試合中', sub: '試合終了後スコアを入力', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
+                      { label: '試合済', sub: '次の試合を配置すると自動解除', badge: 'bg-green-100 text-green-700 border-green-300' },
+                    ].map((s, i, arr) => (
+                      <React.Fragment key={s.label}>
+                         <div className={`border rounded-lg px-3 py-2 text-center min-w-[110px] ${s.badge}`}>
+                            <div className="font-extrabold text-sm">{s.label}</div>
+                            <div className="text-[10px] mt-0.5 opacity-80">{s.sub}</div>
+                         </div>
+                         {i < arr.length - 1 && <span className="text-gray-300 font-black">➔</span>}
+                      </React.Fragment>
+                    ))}
+                 </div>
+                 <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 space-y-1">
+                    <div>⚠️ <strong>試合済（スコア入力済）の試合はコート解除できません。</strong>そのコートへ次の試合を配置すると、自動的に解除されます。</div>
+                    <div>💡 コートへの割り当ては、優先対戦リストからのドラッグ＆ドロップ、またはタップでの選択→配置に対応しています（スマホ等タッチ操作可）。</div>
+                 </div>
+              </div>
+
+              {/* 4. 審判割り当てルール */}
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm">
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">④ 審判の自動割り当てルール</h4>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 border rounded-lg p-4">
+                       <div className="font-bold text-sm text-gray-700 mb-2">予選初戦（そのコートで初めての試合）</div>
+                       <div className="flex items-center gap-2 text-xs">
+                          <span className="bg-white border px-2 py-1 rounded font-bold">同クラスの空いているペア</span>
+                          <span className="text-gray-300 font-black">➔</span>
+                          <span className="bg-white border px-2 py-1 rounded font-bold">他クラスの空きペア</span>
+                          <span className="text-gray-300 font-black">➔</span>
+                          <span className="bg-white border px-2 py-1 rounded font-bold">本部スタッフ</span>
+                       </div>
+                    </div>
+                    <div className="bg-gray-50 border rounded-lg p-4">
+                       <div className="font-bold text-sm text-gray-700 mb-2">2試合目以降（直前試合がある場合）</div>
+                       <div className="text-xs space-y-1.5">
+                          <div className="flex items-center gap-2">
+                             <span className="bg-green-100 text-green-700 border border-green-300 px-2 py-1 rounded font-bold">勝者組</span>
+                             <span className="text-gray-300 font-black">➔</span>
+                             <span className="bg-white border px-2 py-1 rounded">主審・副審</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <span className="bg-red-50 text-red-700 border border-red-200 px-2 py-1 rounded font-bold">敗者組</span>
+                             <span className="text-gray-300 font-black">➔</span>
+                             <span className="bg-white border px-2 py-1 rounded">線審</span>
+                          </div>
+                          <div className="text-[11px] text-gray-500 mt-1">※同クラスで出せない場合は他クラス応援→本部スタッフの順で自動的に代役を割り当てます。</div>
+                       </div>
+                    </div>
+                 </div>
+                 <p className="text-xs text-gray-500 mt-3">コート画面の「審判 ℹ️」バッジをクリック（タップ）すると、割り当て内容の詳細を確認できます。⚠️マークが付いている場合は代役が発生していることを示します。</p>
+              </div>
+
+              {/* 5. よくある操作・トラブル対応 */}
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm">
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">⑤ よくある操作・困ったときは</h4>
+                 <div className="space-y-3">
+                    {[
+                      ['スコアを間違えて入力してしまった', '該当試合の「スコア修正」ボタンからいつでも修正できます。'],
+                      ['グループ分けをやり直したい', '予選リーグが「終了済」になる前であれば、組をドラッグ／タップで別グループへ移動すると対戦カードが自動的に再生成されます。終了済クラスは結果保護のため変更できません。'],
+                      ['対戦カードを全部作り直したい', 'データ管理の「試合結果のみ初期化」で、エントリー情報を残したまま試合結果とコート進行状態だけをリセットできます。'],
+                      ['決勝トーナメントの枠数がおかしい', '決勝の枠数（2/4/8枠）は「グループ数×決勝進出条件」から自動計算されます。進出条件はマスタ設定の「決勝トーナメント進出条件」で変更できます。'],
+                      ['作業前にバックアップを取りたい', 'データ管理の「①データをローカルに退避」からJSONファイルとして保存できます。テストデータ生成前には自動でバックアップの要否を確認するダイアログが出ます。'],
+                      ['管理者ログインができない（既に他の端末でログイン中）', '同時にログインできるのは1台のみです。使い終わったら必ず「ログアウト」してください。10分間操作がない場合は自動的にログオフされます。'],
+                    ].map(([q, a]) => (
+                      <div key={q} className="border-l-4 border-[#2c5f4e] bg-gray-50 rounded-r-lg p-3">
+                         <div className="font-bold text-sm text-gray-800">Q. {q}</div>
+                         <div className="text-xs text-gray-600 mt-1">A. {a}</div>
+                      </div>
+                    ))}
                  </div>
               </div>
             </div>

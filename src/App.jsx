@@ -2496,12 +2496,11 @@ export default function App() {
                 const courtNum = i + 1;
                 const activeMatch = getActiveMatchForCourt(courtNum);
                 
-                let statusLabel = '空き';
                 let badgeClass = 'bg-gray-100 text-gray-500';
                 if (activeMatch) {
-                  if (activeMatch.status === 'calling') { statusLabel = '要コール'; badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
-                  else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { statusLabel = '試合受付'; badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
-                  else if (activeMatch.status === 'completed') { statusLabel = 'スコア済'; badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
+                  if (activeMatch.status === 'calling') { badgeClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300'; }
+                  else if (activeMatch.status === 'recepted' || activeMatch.status === 'in_progress') { badgeClass = 'bg-blue-100 text-blue-800 border border-blue-300'; }
+                  else if (activeMatch.status === 'completed') { badgeClass = 'bg-green-100 text-green-700 border border-green-300'; }
                 }
 
                 return (
@@ -2548,14 +2547,14 @@ export default function App() {
                      <div className="p-4 flex flex-col min-h-32 justify-between text-center">
                        {activeMatch ? (
                           <div>
-                             <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
-                                ({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}・{statusLabel}
+                             <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
+                                ({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}
                              </span>
-                             <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
-                             <div className="text-xs text-gray-400 my-1">
+                             <div className="text-sm font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
+                             <div className="text-sm text-gray-400 my-1">
                                 {activeMatch.status === 'completed' ? `${activeMatch.team1Score} - ${activeMatch.team2Score}` : 'vs'}
                              </div>
-                             <div className="text-xs font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+                             <div className="text-sm font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
                           </div>
                        ) : (<span className="text-gray-300 font-bold text-lg my-auto">空き</span>)}
                      </div>

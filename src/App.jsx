@@ -2545,8 +2545,8 @@ export default function App() {
                 }
 
                 return (
-                  <div key={`court-${i}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                     <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b">
+                  <div key={`court-${i}`} className="bg-white rounded-xl shadow-sm border border-gray-200">
+                     <div className="bg-gray-100 px-3 py-2 flex justify-between items-center border-b rounded-t-xl">
                         <div className="flex items-center gap-2">
                            <span className="font-extrabold text-sm text-gray-700">第 {courtNum} コート</span>
                            {activeMatch && activeMatch.status !== 'calling' && (

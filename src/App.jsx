@@ -10,6 +10,11 @@ const isSupabaseConfigured = supabaseUrl !== 'YOUR_SUPABASE_URL';
 
 const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) : null;
 
+// 管理者ログインの排他制御・自動ログオフに関する定数
+const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確認間隔
+const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
+const ADMIN_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 無操作で自動ログオフするまでの時間（10分）
+
 function IconUser() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function IconTrophy() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>; }
 function IconSettings() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>; }
@@ -98,6 +103,8 @@ export default function App() {
   const [matches, setMatches] = useState([]);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
+  const adminSessionTokenRef = useRef(null); // このタブが保持している管理者セッションのロックトークン
+  const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league'); 
   const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '' });
@@ -1828,11 +1835,91 @@ export default function App() {
     }
   };
 
-  const handleAdminLogin = (e) => {
-    e.preventDefault();
-    if (adminPassword === 'admin2026') { setIsAdminLoggedIn(true); setAdminPassword(''); setCurrentTab('admin'); } 
-    else { setDialog({ title: "エラー", message: "パスワードが間違っています。", onClose: () => setDialog(null) }); }
+  // ロックを保持していれば解放する（ログアウト・自動ログオフ時に呼ぶ）。
+  // 自分が保持しているトークンと一致する場合のみ解放し、既に他端末に奪われたロックは誤って消さない
+  const releaseAdminSession = async () => {
+    const token = adminSessionTokenRef.current;
+    adminSessionTokenRef.current = null;
+    if (isSupabaseConfigured && token) {
+      try {
+        await supabase.from('admin_session').update({ token: null }).eq('id', 1).eq('token', token);
+      } catch (err) {
+        console.error('管理者セッションの解放に失敗しました:', err);
+      }
+    }
   };
+
+  const handleAdminLogout = () => {
+    releaseAdminSession();
+    setIsAdminLoggedIn(false);
+  };
+
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    if (adminPassword !== 'admin2026') {
+      setDialog({ title: "エラー", message: "パスワードが間違っています。", onClose: () => setDialog(null) });
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.from('admin_session').select('*').eq('id', 1).maybeSingle();
+        const heldByOther = data && data.token && (Date.now() - new Date(data.updated_at).getTime() < ADMIN_SESSION_STALE_MS);
+        if (heldByOther) {
+          setDialog({ title: "ログイン不可", message: "既に他の端末で管理者ログイン中です。その端末でログオフしてから再度お試しください。", onClose: () => setDialog(null) });
+          return;
+        }
+        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        await supabase.from('admin_session').update({ token, updated_at: new Date().toISOString() }).eq('id', 1);
+        adminSessionTokenRef.current = token;
+      } catch (err) {
+        // ロック確認自体が通信エラーで失敗した場合、締め出しを避けるためログインは許可する
+        console.error('管理者セッションの確認に失敗しました:', err);
+      }
+    }
+
+    adminLastActivityRef.current = Date.now();
+    setIsAdminLoggedIn(true);
+    setAdminPassword('');
+    setCurrentTab('admin');
+  };
+
+  // ログイン中は定期的にハートビートを送ってロックを維持し、
+  // ページを離れる/タブを閉じるなどでハートビートが途絶えた場合はADMIN_SESSION_STALE_MS後に他端末がログイン可能になる
+  useEffect(() => {
+    if (!isAdminLoggedIn || !isSupabaseConfigured) return;
+    const beat = () => {
+      if (adminSessionTokenRef.current) {
+        supabase.from('admin_session').update({ updated_at: new Date().toISOString() }).eq('id', 1).eq('token', adminSessionTokenRef.current);
+      }
+    };
+    beat();
+    const interval = setInterval(beat, ADMIN_HEARTBEAT_MS);
+    return () => clearInterval(interval);
+  }, [isAdminLoggedIn]);
+
+  // 10分間操作がなければ自動的にログオフする
+  useEffect(() => {
+    if (!isAdminLoggedIn) return;
+    adminLastActivityRef.current = Date.now();
+    const markActivity = () => { adminLastActivityRef.current = Date.now(); };
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(ev => window.addEventListener(ev, markActivity));
+
+    const checkInterval = setInterval(() => {
+      if (Date.now() - adminLastActivityRef.current >= ADMIN_IDLE_TIMEOUT_MS) {
+        releaseAdminSession();
+        setIsAdminLoggedIn(false);
+        setCurrentTab('home');
+        setDialog({ title: "自動ログオフ", message: "10分間操作がなかったため、自動的にログオフしました。", onClose: () => setDialog(null) });
+      }
+    }, 10000);
+
+    return () => {
+      events.forEach(ev => window.removeEventListener(ev, markActivity));
+      clearInterval(checkInterval);
+    };
+  }, [isAdminLoggedIn]);
 
   // スコア確定済（completed）の試合も、試合実績（スコア・結果）は保持したままコート解除できる
   const handleAssignCourt = async (matchId, courtNum) => {
@@ -2700,7 +2787,7 @@ export default function App() {
     <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-md border overflow-hidden">
       <div className="flex bg-gray-800 text-white p-4 justify-between">
          <h2 className="text-xl font-bold flex items-center gap-2"><IconSettings /> 管理システム</h2>
-         <button onClick={() => setIsAdminLoggedIn(false)} className="text-sm bg-gray-700 px-3 py-1 rounded">ログアウト</button>
+         <button onClick={handleAdminLogout} className="text-sm bg-gray-700 px-3 py-1 rounded">ログアウト</button>
       </div>
       <div className="flex flex-col md:flex-row">
         <div className="w-full md:w-48 bg-gray-50 border-b md:border-b-0 md:border-r p-2 md:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-visible">

@@ -1922,6 +1922,37 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isAdminLoggedIn]);
 
+  // タブを閉じる・ページを離れる（リロード含む）際に、ハートビート切れを待たず即座にロックを解放する。
+  // 通常のfetchは画面遷移中に中断されがちなため、keepalive付きfetchで送信を試みる
+  // （pagehideの方がbeforeunloadよりモバイル含め広く確実に発火するため両方登録する）
+  useEffect(() => {
+    if (!isAdminLoggedIn || !isSupabaseConfigured) return;
+    const releaseOnUnload = () => {
+      const token = adminSessionTokenRef.current;
+      if (!token) return;
+      try {
+        fetch(`${supabaseUrl}/rest/v1/admin_session?id=eq.1&token=eq.${encodeURIComponent(token)}`, {
+          method: 'PATCH',
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ token: null }),
+          keepalive: true
+        });
+      } catch (err) {
+        console.error('ページ終了時の管理者セッション解放に失敗しました:', err);
+      }
+    };
+    window.addEventListener('pagehide', releaseOnUnload);
+    window.addEventListener('beforeunload', releaseOnUnload);
+    return () => {
+      window.removeEventListener('pagehide', releaseOnUnload);
+      window.removeEventListener('beforeunload', releaseOnUnload);
+    };
+  }, [isAdminLoggedIn]);
+
   // 10分間操作がなければ自動的にログオフする
   useEffect(() => {
     if (!isAdminLoggedIn) return;

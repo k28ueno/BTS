@@ -3518,8 +3518,49 @@ export default function App() {
               </h3>
 
               <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-8">
-                 {/* 1. クラス別テスト自動エントリー生成 */}
+                 {/* 1. データの退避・復元 (ローカル) */}
                  <div>
+                    <h4 className="font-extrabold text-xl text-gray-800 mb-2 flex items-center gap-2">
+                       💾 データの退避・復元 (ローカルバックアップ)
+                    </h4>
+                    <p className="text-base text-gray-600 mb-4 font-medium">
+                       現在の設定・エントリー・試合結果・審判割り当てデータをJSONファイルとしてパソコンに保存（退避）したり、保存したファイルから復元できます。
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 bg-gray-50 p-5 rounded-lg border">
+                       <div className="bg-white p-5 rounded-lg border shadow-xs space-y-3 flex flex-col justify-between">
+                          <div>
+                             <span className="font-extrabold text-base text-gray-800 block mb-1">① データをローカルに退避 (ダウンロード)</span>
+                             <p className="text-sm text-gray-600 font-medium">現在の全状態をファイル（.json）として保存します。</p>
+                          </div>
+                          <button
+                            onClick={handleExportBackup}
+                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-base py-3 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 transition-colors"
+                          >
+                             📥 バックアップファイルを保存（退避）
+                          </button>
+                       </div>
+
+                       <div className="bg-white p-5 rounded-lg border shadow-xs space-y-3 flex flex-col justify-between">
+                          <div>
+                             <span className="font-extrabold text-base text-gray-800 block mb-1">② 保存ファイルから復元 (アップロード)</span>
+                             <p className="text-sm text-gray-600 font-medium">退避したJSONファイルを読み込み、データを全上書き復元します。</p>
+                          </div>
+                          <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors">
+                             📤 バックアップファイルを選択して復元
+                             <input
+                               type="file"
+                               accept=".json"
+                               onChange={handleImportBackup}
+                               className="hidden"
+                             />
+                          </label>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* 2. クラス別テスト自動エントリー生成 */}
+                 <div className="border-t-2 pt-6">
                     <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">
                        ⚙️ テスト用自動エントリー生成 (クラス別)
                     </h4>
@@ -3535,9 +3576,9 @@ export default function App() {
                              <div key={`test-gen-${cls}`} className="bg-white p-3.5 rounded-lg border flex flex-col items-center shadow-xs">
                                 <span className="font-bold text-base text-[#2c5f4e] mb-1.5">{cls}</span>
                                 <div className="flex items-center gap-1.5">
-                                   <input 
-                                     type="number" 
-                                     min="0" 
+                                   <input
+                                     type="number"
+                                     min="0"
                                      max="50"
                                      className="w-20 p-2 border-2 border-gray-300 rounded text-center text-xl font-extrabold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
                                      value={testGenCounts[cls] !== undefined ? testGenCounts[cls] : 12}
@@ -3549,53 +3590,16 @@ export default function App() {
                           ))}
                        </div>
                        <div className="flex justify-end pt-2">
-                          <button 
-                            onClick={handleGenerateTestData}
+                          <button
+                            onClick={() => confirmDestructiveAction(
+                              "テストデータ生成の確認",
+                              "テストデータを生成すると、現在のエントリーおよび試合結果データは一度すべて自動的にクリア（初期化）されます。",
+                              handleGenerateTestData
+                            )}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 transition-colors"
                           >
                              <IconPlus /> テストデータ生成実行
                           </button>
-                       </div>
-                    </div>
-                 </div>
-
-                 {/* 2. データの退避・復元 (ローカル) */}
-                 <div className="border-t-2 pt-6">
-                    <h4 className="font-extrabold text-xl text-gray-800 mb-2 flex items-center gap-2">
-                       💾 データの退避・復元 (ローカルバックアップ)
-                    </h4>
-                    <p className="text-base text-gray-600 mb-4 font-medium">
-                       現在の設定・エントリー・試合結果・審判割り当てデータをJSONファイルとしてパソコンに保存（退避）したり、保存したファイルから復元できます。
-                    </p>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 bg-gray-50 p-5 rounded-lg border">
-                       <div className="bg-white p-5 rounded-lg border shadow-xs space-y-3 flex flex-col justify-between">
-                          <div>
-                             <span className="font-extrabold text-base text-gray-800 block mb-1">① データをローカルに退避 (ダウンロード)</span>
-                             <p className="text-sm text-gray-600 font-medium">現在の全状態をファイル（.json）として保存します。</p>
-                          </div>
-                          <button 
-                            onClick={handleExportBackup}
-                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-base py-3 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 transition-colors"
-                          >
-                             📥 バックアップファイルを保存（退避）
-                          </button>
-                       </div>
-
-                       <div className="bg-white p-5 rounded-lg border shadow-xs space-y-3 flex flex-col justify-between">
-                          <div>
-                             <span className="font-extrabold text-base text-gray-800 block mb-1">② 保存ファイルから復元 (アップロード)</span>
-                             <p className="text-sm text-gray-600 font-medium">退避したJSONファイルを読み込み、データを全上書き復元します。</p>
-                          </div>
-                          <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors">
-                             📤 バックアップファイルを選択して復元
-                             <input 
-                               type="file" 
-                               accept=".json" 
-                               onChange={handleImportBackup} 
-                               className="hidden" 
-                             />
-                          </label>
                        </div>
                     </div>
                  </div>

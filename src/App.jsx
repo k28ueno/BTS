@@ -506,12 +506,25 @@ export default function App() {
     }
   }, [config.classes]);
 
-  const setSimToNow = () => {
+  // 基準時間は初期値として試合開始時刻をセットするが、その時刻を実際の現在時刻が過ぎたら
+  // 自動的に現在時刻へ更新する（手動で未来の時刻に変更している間は、その時刻を過ぎるまで上書きしない）
+  const advanceSimTimeIfPast = () => {
     const now = new Date();
-    const h = String(now.getHours()).padStart(2, '0');
-    const m = String(now.getMinutes()).padStart(2, '0');
-    setSimCurrentTime(`${h}:${m}`);
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    setSimCurrentTime(prev => {
+      const [ph, pm] = (prev || '00:00').split(':').map(n => parseInt(n, 10) || 0);
+      const prevMinutes = ph * 60 + pm;
+      if (nowMinutes <= prevMinutes) return prev;
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      return `${h}:${m}`;
+    });
   };
+
+  useEffect(() => {
+    const interval = setInterval(advanceSimTimeIfPast, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -575,6 +588,7 @@ export default function App() {
           setConfig(loadedConfig);
           const defaultTime = formatHHMM(loadedConfig.timeStart);
           setSimCurrentTime(defaultTime);
+          advanceSimTimeIfPast();
 
           if(loadedConfig.classes && loadedConfig.classes.length > 0) {
              setSelectedClass(loadedConfig.classes[0]);
@@ -3176,19 +3190,12 @@ export default function App() {
                   </h3>
                   <div className="flex items-center gap-3 bg-amber-50 border border-amber-300 px-4 py-2 rounded-xl shadow-sm">
                      <span className="text-sm font-bold text-amber-900">基準時間（変更可）:</span>
-                     <input 
-                       type="time" 
+                     <input
+                       type="time"
                        className="p-1.5 border-2 border-amber-400 rounded-lg bg-white font-mono font-extrabold text-xl text-amber-900 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
                        value={simCurrentTime}
                        onChange={e => setSimCurrentTime(e.target.value)}
                      />
-                     <button
-                       type="button"
-                       onClick={setSimToNow}
-                       className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg shadow-sm transition-colors"
-                     >
-                       現時刻
-                     </button>
                   </div>
                </div>
 

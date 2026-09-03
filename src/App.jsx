@@ -3046,9 +3046,9 @@ export default function App() {
                                             {isDecided ? (
                                                <span className="text-sm">{scoreText}</span>
                                             ) : typeof match.matchNo === 'number' ? (
-                                               <span className="text-red-600 font-bold whitespace-nowrap">
+                                               <span className="font-bold whitespace-nowrap">
                                                   <span className="text-[9px]">第</span>
-                                                  <span className="text-sm">{match.matchNo}</span>
+                                                  <span className="text-sm text-red-600">{match.matchNo}</span>
                                                   <span className="text-[9px]">試合</span>
                                                </span>
                                             ) : (

@@ -2960,7 +2960,7 @@ export default function App() {
                                  <tr key={ent.id}>
                                     <td className="border p-2 text-left font-bold max-w-[130px]">
                                        <div className="truncate"><span className="text-gray-400 text-xs mr-1">{i+1}</span>{ent.p1Name}・{ent.p2Name}</div>
-                                       {ent.club && <div className="text-[10px] text-gray-400 font-normal truncate">({ent.club})</div>}
+                                       {ent.club && <div className="text-xs text-gray-500 font-normal truncate">({ent.club})</div>}
                                     </td>
                                     {groupEntries.map((opp, j) => {
                                        if (i === j) return <td key={`td-${j}`} className="border p-2 bg-gray-100 font-bold">-</td>;

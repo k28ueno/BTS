@@ -395,15 +395,39 @@ export default function App() {
       return 0;
     };
 
-    // 同じ優先度（tier）内では、クラスごとにリセットされるmatchOrderではなく、
-    // 大会全体を通した試合番号（matchNo）の若い順に並べる。番号未採番の試合は末尾に回す
+    // 試合番号はクラスごとに1からリセットされるため、複数クラスの待ち行列を一本化する際は
+    // 単純な試合番号昇順では並べられない。そこで「参加組数（待ち試合数）の多いクラスほど
+    // 高頻度で列に現れる」重み付け交互（加重ラウンドロビン）で織り交ぜる：
+    // クラス内の試合番号順位を、そのクラスの待ち試合数で割った比率（0〜1）を仮想キーとし、
+    // 全クラスをこの比率の昇順で並べることで、クラスの規模に比例した交互配置になる
+    const waitingCountByCls = new Map();
+    waitingMatches.forEach(m => waitingCountByCls.set(m.cls, (waitingCountByCls.get(m.cls) || 0) + 1));
+
+    const rankByMatchId = new Map();
+    const byCls = new Map();
+    waitingMatches.forEach(m => {
+      if (!byCls.has(m.cls)) byCls.set(m.cls, []);
+      byCls.get(m.cls).push(m);
+    });
+    byCls.forEach(list => {
+      list.sort((a, b) => (typeof a.matchNo === 'number' ? a.matchNo : Infinity) - (typeof b.matchNo === 'number' ? b.matchNo : Infinity));
+      list.forEach((m, idx) => rankByMatchId.set(m.id, idx + 1));
+    });
+
+    const virtualKey = (m) => rankByMatchId.get(m.id) / (waitingCountByCls.get(m.cls) || 1);
+
     return [...waitingMatches].sort((a, b) => {
       const tierDiff = tierOf(a) - tierOf(b);
       if (tierDiff !== 0) return tierDiff;
+      const keyDiff = virtualKey(a) - virtualKey(b);
+      if (keyDiff !== 0) return keyDiff;
+      // 按分比率が同点の場合は、参加組数（待ち試合数）の多いクラスを優先する
+      const totalA = waitingCountByCls.get(a.cls) || 1;
+      const totalB = waitingCountByCls.get(b.cls) || 1;
+      if (totalA !== totalB) return totalB - totalA;
       const noA = typeof a.matchNo === 'number' ? a.matchNo : Infinity;
       const noB = typeof b.matchNo === 'number' ? b.matchNo : Infinity;
-      if (noA !== noB) return noA - noB;
-      return a.matchOrder - b.matchOrder;
+      return noA - noB;
     });
   };
 
@@ -1487,7 +1511,9 @@ export default function App() {
 
     const newClassMatches = [];
     let orderCounter = 1;
-    let nextMatchNo = getNextMatchNo(otherMatches);
+    // 試合番号はクラス内で1から連番にする（大会全体を通した番号ではない）。
+    // このクラスの予選・決勝の対戦カードは全て作り直すため、常に1から採番し直す
+    let nextMatchNo = 1;
     const dbInserts = [];
     let totalGenerated = 0;
 
@@ -1691,7 +1717,8 @@ export default function App() {
     const newMatches = [];
     const advancedUpdates = [];
     let createdCount = 0;
-    let nextMatchNo = getNextMatchNo(matches);
+    // 試合番号はクラス内で連番（予選から続く番号）にするため、このクラスの既存試合の中から次の番号を求める
+    let nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls));
 
     let levelSize = slotCount;
     let level = 0;
@@ -1778,36 +1805,42 @@ export default function App() {
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 
-  // 試合番号機能の導入前に生成された試合には番号が無いため、未採番の試合にだけ通し番号を振る。
-  // 既に番号が付いている試合や試合結果には一切手を加えない
+  // 試合番号はクラスごとに1から連番にする。既存の番号（未採番・旧方式の大会通し番号を問わず）を
+  // 対象に、クラス内では予選→決勝の順で1から振り直す。試合結果や進行状態には一切手を加えない
   const handleAssignMissingMatchNumbers = async () => {
-    const unnumbered = matches.filter(m => typeof m.matchNo !== 'number');
-    if (unnumbered.length === 0) {
-      setDialog({ title: "対象なし", message: "すべての試合に試合番号が採番済みです。", onClose: () => setDialog(null) });
+    const target = matches.filter(m => m.matchType === 'league' || m.matchType === 'tournament');
+    if (target.length === 0) {
+      setDialog({ title: "対象なし", message: "採番対象の試合がありません。", onClose: () => setDialog(null) });
       return;
     }
 
-    const classOrder = config.classes;
-    const sorted = [...unnumbered].sort((a, b) => {
+    const sorted = [...target].sort((a, b) => {
       const typeDiff = (a.matchType === 'tournament' ? 1 : 0) - (b.matchType === 'tournament' ? 1 : 0);
       if (typeDiff !== 0) return typeDiff;
-      const clsDiff = classOrder.indexOf(a.cls) - classOrder.indexOf(b.cls);
-      if (clsDiff !== 0) return clsDiff;
-      if (a.group !== b.group) return String(a.group).localeCompare(String(b.group));
       return (a.matchOrder || 0) - (b.matchOrder || 0);
     });
 
-    let nextMatchNo = getNextMatchNo(matches);
-    const updates = sorted.map(m => ({ id: m.id, matchNo: nextMatchNo++ }));
-    const updateMap = new Map(updates.map(u => [u.id, u.matchNo]));
+    const counters = new Map();
+    const updates = [];
+    sorted.forEach(m => {
+      const next = (counters.get(m.cls) || 0) + 1;
+      counters.set(m.cls, next);
+      if (m.matchNo !== next) updates.push({ id: m.id, matchNo: next });
+    });
 
+    if (updates.length === 0) {
+      setDialog({ title: "対象なし", message: "すべての試合番号は既にクラス内連番になっています。", onClose: () => setDialog(null) });
+      return;
+    }
+
+    const updateMap = new Map(updates.map(u => [u.id, u.matchNo]));
     setMatches(prev => prev.map(m => updateMap.has(m.id) ? { ...m, matchNo: updateMap.get(m.id) } : m));
 
     if (isSupabaseConfigured) {
       await Promise.all(updates.map(u => supabase.from('matches').update({ match_no: u.matchNo }).eq('id', u.id)));
     }
 
-    setDialog({ title: "採番完了", message: `未採番だった${updates.length}件の試合に試合番号を振りました。`, onClose: () => setDialog(null) });
+    setDialog({ title: "採番完了", message: `${updates.length}件の試合番号を、クラスごとの連番に振り直しました。`, onClose: () => setDialog(null) });
   };
 
   const handleEntrySubmit = async (e) => {
@@ -2862,7 +2895,8 @@ export default function App() {
                  const groupEntries = entries.filter(e => e.cls === selectedClass && e.group === group);
                  if (groupEntries.length === 0) return null;
 
-                 const groupMatches = matches.filter(m => m.cls === selectedClass && m.group === group && m.status === 'completed');
+                 // 未消化の試合も含めて全試合を対象にし、対戦マスに試合番号を表示できるようにする
+                 const groupMatches = matches.filter(m => m.cls === selectedClass && m.group === group);
 
                  return (
                    <div key={`group-${group}`} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
@@ -2891,20 +2925,30 @@ export default function App() {
 
                                        if (!match) return <td key={`td-${j}`} className="border p-2 text-gray-300">-</td>;
 
+                                       const isDecided = match.status === 'completed';
                                        let scoreText = '';
-                                       if (match.forfeitWinnerId) {
-                                         const won = String(match.forfeitWinnerId) === String(ent.id);
-                                         scoreText = won ? '不戦勝' : '不戦敗';
-                                         if (won) wins++; else losses++;
-                                       } else if (match.team1Id === ent.id) {
-                                         scoreText = `${match.team1Score} - ${match.team2Score}`;
-                                         if (match.team1Score > match.team2Score) wins++; else if (match.team1Score < match.team2Score) losses++;
-                                       } else {
-                                         scoreText = `${match.team2Score} - ${match.team1Score}`;
-                                         if (match.team2Score > match.team1Score) wins++; else if (match.team2Score < match.team1Score) losses++;
+                                       if (isDecided) {
+                                         if (match.forfeitWinnerId) {
+                                           const won = String(match.forfeitWinnerId) === String(ent.id);
+                                           scoreText = won ? '不戦勝' : '不戦敗';
+                                           if (won) wins++; else losses++;
+                                         } else if (match.team1Id === ent.id) {
+                                           scoreText = `${match.team1Score} - ${match.team2Score}`;
+                                           if (match.team1Score > match.team2Score) wins++; else if (match.team1Score < match.team2Score) losses++;
+                                         } else {
+                                           scoreText = `${match.team2Score} - ${match.team1Score}`;
+                                           if (match.team2Score > match.team1Score) wins++; else if (match.team2Score < match.team1Score) losses++;
+                                         }
                                        }
 
-                                       return <td key={`td-${j}`} className="border p-2 text-xs font-bold">{scoreText}</td>;
+                                       return (
+                                         <td key={`td-${j}`} className="border p-2 text-xs font-bold">
+                                            {typeof match.matchNo === 'number' && (
+                                               <div className="text-[9px] text-gray-400 font-mono leading-none mb-0.5">第{match.matchNo}試合</div>
+                                            )}
+                                            {isDecided ? scoreText : <span className="text-gray-300 font-normal">-</span>}
+                                         </td>
+                                       );
                                     })}
                                     <td className="border p-2 font-bold text-blue-700">{wins}勝{losses}敗</td>
                                  </tr>
@@ -3900,13 +3944,13 @@ export default function App() {
                        🔢 試合番号の採番
                     </h4>
                     <p className="text-base text-gray-600 font-medium mb-4">
-                       試合番号機能の導入前に生成された試合には番号がありません。未採番の試合にだけ通し番号を振ります（既に番号のある試合や試合結果には影響しません）。以後、新しく生成する対戦カードには自動で番号が付きます。
+                       試合番号は「クラスごとに1から」の連番です。番号が付いていない試合や、古い方式（大会全体の通し番号）のままの試合をまとめて、クラス内連番へ振り直します（試合結果や進行状態には影響しません）。以後、新しく生成する対戦カードには自動で番号が付きます。
                     </p>
                     <button
                       onClick={handleAssignMissingMatchNumbers}
                       className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 transition-colors"
                     >
-                       🔢 未採番の試合に番号を振る
+                       🔢 試合番号をクラス内連番に振り直す
                     </button>
                  </div>
 

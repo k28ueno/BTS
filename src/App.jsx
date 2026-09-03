@@ -3855,7 +3855,9 @@ export default function App() {
                                       <div className="flex items-center gap-1.5">
                                          <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
                                          {typeof m.matchNo === 'number' && (
-                                            <span className="text-[10px] font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded">第{m.matchNo}試合</span>
+                                            <span className="text-[10px] font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded">
+                                               第<span className="text-sm text-amber-300">{m.matchNo}</span>試合
+                                            </span>
                                          )}
                                       </div>
                                       <span className="text-xs font-bold text-blue-800">({m.cls}) {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>

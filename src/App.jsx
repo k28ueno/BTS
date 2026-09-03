@@ -1845,46 +1845,6 @@ export default function App() {
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 
-  // 試合番号は、予選リーグは「グループ内で1から連番」、決勝トーナメントは「クラス単位で1から
-  // 独立して連番」にする。既存の番号（未採番・旧方式を問わず）を対象に振り直す。
-  // 試合結果や進行状態には一切手を加えない
-  const handleAssignMissingMatchNumbers = async () => {
-    const target = matches.filter(m => m.matchType === 'league' || m.matchType === 'tournament');
-    if (target.length === 0) {
-      setDialog({ title: "対象なし", message: "採番対象の試合がありません。", onClose: () => setDialog(null) });
-      return;
-    }
-
-    const sorted = [...target].sort((a, b) => {
-      const typeDiff = (a.matchType === 'tournament' ? 1 : 0) - (b.matchType === 'tournament' ? 1 : 0);
-      if (typeDiff !== 0) return typeDiff;
-      return (a.matchOrder || 0) - (b.matchOrder || 0);
-    });
-
-    const counters = new Map();
-    const updates = [];
-    sorted.forEach(m => {
-      const counterKey = m.matchType === 'tournament' ? `${m.cls}__T` : `${m.cls}__${m.group}`;
-      const next = (counters.get(counterKey) || 0) + 1;
-      counters.set(counterKey, next);
-      if (m.matchNo !== next) updates.push({ id: m.id, matchNo: next });
-    });
-
-    if (updates.length === 0) {
-      setDialog({ title: "対象なし", message: "すべての試合番号は既に正しい連番になっています。", onClose: () => setDialog(null) });
-      return;
-    }
-
-    const updateMap = new Map(updates.map(u => [u.id, u.matchNo]));
-    setMatches(prev => prev.map(m => updateMap.has(m.id) ? { ...m, matchNo: updateMap.get(m.id) } : m));
-
-    if (isSupabaseConfigured) {
-      await Promise.all(updates.map(u => supabase.from('matches').update({ match_no: u.matchNo }).eq('id', u.id)));
-    }
-
-    setDialog({ title: "採番完了", message: `${updates.length}件の試合番号を振り直しました（予選はグループ内連番、決勝トーナメントはクラス単位の連番）。`, onClose: () => setDialog(null) });
-  };
-
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
     const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
@@ -3986,22 +3946,6 @@ export default function App() {
                           </label>
                        </div>
                     </div>
-                 </div>
-
-                 {/* 1.5 試合番号の後追い採番 */}
-                 <div className="border-t-2 pt-6">
-                    <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">
-                       🔢 試合番号の採番
-                    </h4>
-                    <p className="text-base text-gray-600 font-medium mb-4">
-                       予選リーグの試合番号は「グループ内で1から」、決勝トーナメントの試合番号は「クラス単位で1から」の連番です。番号が付いていない試合や、古い方式（大会通し番号／クラス内連番）のままの試合をまとめて、この方式へ振り直します（試合結果や進行状態には影響しません）。以後、新しく生成する対戦カードには自動で番号が付きます。
-                    </p>
-                    <button
-                      onClick={handleAssignMissingMatchNumbers}
-                      className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 transition-colors"
-                    >
-                       🔢 試合番号を振り直す
-                    </button>
                  </div>
 
                  {/* 2. クラス別テスト自動エントリー生成 */}

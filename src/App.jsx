@@ -2375,6 +2375,7 @@ export default function App() {
     // 決勝トーナメントの試合なら、勝ち組を次ラウンドの枠へ自動的に勝ち上がらせる
     if (targetMatch && targetMatch.matchType === 'tournament') {
       const winnerId = s1 >= s2 ? targetMatch.team1Id : targetMatch.team2Id;
+      const loserId = s1 >= s2 ? targetMatch.team2Id : targetMatch.team1Id;
       const winnerEntry = entries.find(e => e.id === winnerId);
       const slotCount = getTournamentSlotCount(targetMatch.cls);
       const totalLevels = Math.log2(slotCount);
@@ -2386,6 +2387,13 @@ export default function App() {
             await supabase.from('entries').update({ tournamentposition: nextSlot }).eq('id', winnerId);
           }
         }
+      }
+      // 敗者の枠情報を残したままにすると、次ラウンドの対戦カード生成時に「まだこの枠に
+      // 選手がいる」と誤認され、敗者同士が組まれてしまうため、必ずクリアする
+      // （表示上は対戦カードの記録から敗者を復元する仕組みが別途あるため、消しても影響しない）
+      setEntries(prev => prev.map(e => e.id === loserId ? { ...e, tournamentPosition: null } : e));
+      if (isSupabaseConfigured) {
+        await supabase.from('entries').update({ tournamentposition: null }).eq('id', loserId);
       }
     }
 
@@ -2454,6 +2462,12 @@ export default function App() {
             await supabase.from('entries').update({ tournamentposition: nextSlot }).eq('id', winnerId);
           }
         }
+      }
+      // 敗者（棄権側）の枠情報を残したままにすると、次ラウンドの対戦カード生成時に
+      // 誤って敗者同士が組まれてしまうため、必ずクリアする
+      setEntries(prev => prev.map(e => e.id === loserId ? { ...e, tournamentPosition: null } : e));
+      if (isSupabaseConfigured) {
+        await supabase.from('entries').update({ tournamentposition: null }).eq('id', loserId);
       }
     }
 
@@ -2584,6 +2598,20 @@ export default function App() {
     if (!finalSlots) return false;
     const finalMatch = matches.find(m => m.id === `T-${cls}-${finalSlots[0]}-${finalSlots[1]}`);
     return !!(finalMatch && finalMatch.status === 'completed');
+  };
+
+  // 決勝が終了しているクラスの優勝・準優勝ペアを求める（新聞掲載用PDFで使用）。未終了ならnull
+  const getClassFinalResult = (cls) => {
+    const finalSlots = getFinalRoundSlots(cls);
+    if (!finalSlots) return null;
+    const finalMatch = matches.find(m => m.id === `T-${cls}-${finalSlots[0]}-${finalSlots[1]}`);
+    if (!finalMatch || finalMatch.status !== 'completed') return null;
+    const result = getMatchResult(finalMatch);
+    if (!result) return null;
+    const champion = entries.find(e => e.id === result.winnerId) || null;
+    const runnerUp = entries.find(e => e.id === result.loserId) || null;
+    if (!champion || !runnerUp) return null;
+    return { champion, runnerUp };
   };
 
   const filteredReceptionEntries = entries.filter(ent => {
@@ -3228,6 +3256,7 @@ export default function App() {
            <button onClick={() => setAdminTab('simulation')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'simulation' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>シミュレーション</button>
            <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
            <button onClick={() => setAdminTab('results')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'results' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>試合結果明細</button>
+           <button onClick={() => setAdminTab('resultsPdf')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'resultsPdf' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>結果PDF</button>
            <button onClick={() => setAdminTab('data')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'data' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>データ管理</button>
            <button onClick={() => setAdminTab('manual')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'manual' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マニュアル</button>
         </div>
@@ -4067,6 +4096,55 @@ export default function App() {
             );
           })()}
 
+          {adminTab === 'resultsPdf' && (() => {
+            const results = config.classes
+              .map(cls => ({ cls, result: getClassFinalResult(cls) }))
+              .filter(r => r.result);
+
+            return (
+              <div>
+                <h3 className="text-xl font-bold mb-4">結果PDF（新聞掲載用）</h3>
+
+                <div className="mb-6 flex items-center gap-4">
+                  <button
+                    onClick={() => window.print()}
+                    disabled={results.length === 0}
+                    className={`font-bold px-5 py-2.5 rounded shadow-sm ${results.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
+                  >
+                    🖨️ 印刷 / PDF保存
+                  </button>
+                  {results.length === 0 && (
+                    <p className="text-sm text-gray-500">まだ決勝が終了しているクラスがありません。決勝トーナメントの優勝が決まると、ここに表示されます。</p>
+                  )}
+                </div>
+
+                <div className="print-area bg-white border rounded-lg p-10 max-w-2xl mx-auto shadow-sm">
+                  <div className="text-center mb-8">
+                    <div className="text-xl font-bold">{config.title}</div>
+                    <div className="text-sm mt-1">{config.date}　{config.venue}</div>
+                  </div>
+                  <div className="text-center text-lg font-bold border-b-2 border-gray-800 pb-2 mb-6">試合結果</div>
+
+                  {results.length === 0 ? (
+                    <p className="text-center text-gray-500">結果が確定しているクラスはまだありません。</p>
+                  ) : (
+                    <div className="space-y-6">
+                      {results.map(({ cls, result }) => (
+                        <div key={cls}>
+                          <div className="font-bold text-base border-b border-gray-400 pb-1 mb-2">{cls}</div>
+                          <div className="pl-4 space-y-1">
+                            <div>優勝　{result.champion.p1Name}・{result.champion.p2Name}（{result.champion.club}）</div>
+                            <div>準優勝　{result.runnerUp.p1Name}・{result.runnerUp.p2Name}（{result.runnerUp.club}）</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {adminTab === 'data' && (
             <div className="space-y-8">
               <h3 className="text-3xl font-extrabold border-b pb-3 flex items-center gap-2 text-slate-800">
@@ -4249,6 +4327,7 @@ export default function App() {
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、スコア入力を行います。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。'],
+                      ['結果PDF', '各クラスの優勝・準優勝を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">

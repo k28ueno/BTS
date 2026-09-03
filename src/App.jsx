@@ -13,7 +13,7 @@ const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) :
 // 管理者ログインの排他制御・自動ログオフに関する定数
 const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確認間隔
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
-const ADMIN_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 無操作で自動ログオフするまでの時間（10分）
+const DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES = 10; // 無操作で自動ログオフするまでの時間の既定値（分）。マスタ設定で変更可能
 
 function IconUser() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function IconTrophy() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>; }
@@ -96,7 +96,8 @@ export default function App() {
     courts: 8,
     fees: { '一般': 4000, '高校生まで': 2000 },
     advancementCondition: 'top2',
-    avgMatchDuration: 15
+    avgMatchDuration: 15,
+    adminIdleTimeoutMinutes: DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES
   });
 
   const [entries, setEntries] = useState([]);
@@ -610,7 +611,8 @@ export default function App() {
             courts: data.courts || 8,
             fees: data.fees || { '一般': 4000, '高校生まで': 2000 },
             advancementCondition: data.advancementcondition || 'top2',
-            avgMatchDuration: data.avgmatchduration || 15
+            avgMatchDuration: data.avgmatchduration || 15,
+            adminIdleTimeoutMinutes: data.adminidletimeoutminutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES
           };
           setConfig(loadedConfig);
           const defaultTime = formatHHMM(loadedConfig.timeStart);
@@ -720,7 +722,8 @@ export default function App() {
         courts: config.courts,
         fees: config.fees,
         advancementcondition: config.advancementCondition,
-        avgmatchduration: config.avgMatchDuration
+        avgmatchduration: config.avgMatchDuration,
+        adminidletimeoutminutes: config.adminIdleTimeoutMinutes
       };
 
       const { error } = await supabase.from('settings').upsert(payload);
@@ -978,7 +981,8 @@ export default function App() {
                 courts: data.config.courts,
                 fees: data.config.fees,
                 advancementcondition: data.config.advancementCondition,
-                avgmatchduration: data.config.avgMatchDuration
+                avgmatchduration: data.config.avgMatchDuration,
+                adminidletimeoutminutes: data.config.adminIdleTimeoutMinutes
               };
               await supabase.from('settings').upsert(payloadSettings);
 
@@ -2092,20 +2096,22 @@ export default function App() {
     };
   }, [isAdminLoggedIn]);
 
-  // 10分間操作がなければ自動的にログオフする
+  // マスタ設定で指定した時間、操作がなければ自動的にログオフする
   useEffect(() => {
     if (!isAdminLoggedIn) return;
+    const timeoutMinutes = config.adminIdleTimeoutMinutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES;
+    const timeoutMs = timeoutMinutes * 60 * 1000;
     adminLastActivityRef.current = Date.now();
     const markActivity = () => { adminLastActivityRef.current = Date.now(); };
     const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
     events.forEach(ev => window.addEventListener(ev, markActivity));
 
     const checkInterval = setInterval(() => {
-      if (Date.now() - adminLastActivityRef.current >= ADMIN_IDLE_TIMEOUT_MS) {
+      if (Date.now() - adminLastActivityRef.current >= timeoutMs) {
         releaseAdminSession();
         setIsAdminLoggedIn(false);
         setCurrentTab('home');
-        setDialog({ title: "自動ログオフ", message: "10分間操作がなかったため、自動的にログオフしました。", onClose: () => setDialog(null) });
+        setDialog({ title: "自動ログオフ", message: `${timeoutMinutes}分間操作がなかったため、自動的にログオフしました。`, onClose: () => setDialog(null) });
       }
     }, 10000);
 
@@ -2113,7 +2119,7 @@ export default function App() {
       events.forEach(ev => window.removeEventListener(ev, markActivity));
       clearInterval(checkInterval);
     };
-  }, [isAdminLoggedIn]);
+  }, [isAdminLoggedIn, config.adminIdleTimeoutMinutes]);
 
   // スコア確定済（completed）の試合も、試合実績（スコア・結果）は保持したままコート解除できる
   const handleAssignCourt = async (matchId, courtNum) => {
@@ -3169,6 +3175,16 @@ export default function App() {
                 <div>
                   <label className="block font-bold text-sm mb-1 text-gray-700">1試合の平均所要時間 (分)</label>
                   <input type="number" min="5" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgMatchDuration} onChange={e=>setConfig({...config, avgMatchDuration: parseInt(e.target.value) || 15})} placeholder="例: 15" />
+                </div>
+
+                <div className="md:col-span-2 border-t pt-4">
+                  <h4 className="font-bold text-md text-[#2c5f4e] mb-3">管理者ログイン設定</h4>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-sm mb-1 text-gray-700">無操作時の自動ログオフまでの時間 (分)</label>
+                  <input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.adminIdleTimeoutMinutes} onChange={e=>setConfig({...config, adminIdleTimeoutMinutes: parseInt(e.target.value) || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES})} placeholder="例: 10" />
+                  <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。</p>
                 </div>
 
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.classes.join(',')} onChange={e=>setConfig({...config, classes: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="例: 1部,2部,3部" /></div>

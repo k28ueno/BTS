@@ -4041,9 +4041,9 @@ export default function App() {
                         return (
                           <tr key={m.id} className="border-b align-top">
                             <td className="p-3 font-bold text-gray-700 break-words">{m.cls}</td>
-                            <td className="p-3 font-mono break-words">
-                              {typeof m.matchNo === 'number' ? `第${m.matchNo}試合` : '-'}
-                              <span className="text-gray-400">({m.matchType === 'tournament' ? m.group : `グループ${m.group}`})</span>
+                            <td className="p-3 font-mono">
+                              <div className="truncate">{typeof m.matchNo === 'number' ? `第${m.matchNo}試合` : '-'}</div>
+                              <div className="text-xs text-gray-500 truncate">({m.matchType === 'tournament' ? m.group : `グループ${m.group}`})</div>
                             </td>
                             <td className="p-3">
                               {renderTeamBlock(m.team1Id)}

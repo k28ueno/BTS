@@ -2979,7 +2979,7 @@ export default function App() {
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">クラブ内順位（同一所属から複数ペアが出場する場合のみ）</label>
+            <label className="block text-sm font-bold text-gray-700 mb-2">クラブ内順位（同一所属から同一クラスに複数ペアが出場する場合のみ）</label>
             <input
               type="number"
               min="1"

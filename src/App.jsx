@@ -3976,6 +3976,17 @@ export default function App() {
             const avg = durations.length > 0 ? (durations.reduce((s, d) => s + d, 0) / durations.length) : null;
             const statusLabelMap = { waiting: '未実施', calling: 'コール済', recepted: 'コール済', in_progress: '試合中', completed: '完了' };
             const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '-';
+            // 選手名と所属を2段で表示する（所属は常に2行目に固定し、名前の途中で折り返さない）
+            const renderTeamBlock = (teamId) => {
+              const ent = entries.find(e => String(e.id) === String(teamId));
+              if (!ent) return <div className="truncate">未定</div>;
+              return (
+                <div>
+                  <div className="truncate">{ent.p1Name}・{ent.p2Name}</div>
+                  {ent.club && <div className="text-xs text-gray-500 truncate">({ent.club})</div>}
+                </div>
+              );
+            };
 
             return (
               <div>
@@ -4034,12 +4045,16 @@ export default function App() {
                               {typeof m.matchNo === 'number' ? `第${m.matchNo}試合` : '-'}
                               <span className="text-gray-400">({m.matchType === 'tournament' ? m.group : `グループ${m.group}`})</span>
                             </td>
-                            <td className="p-3 break-words">{getTeamNameWithClub(m.team1Id)} <span className="text-gray-400">vs</span> {getTeamNameWithClub(m.team2Id)}</td>
+                            <td className="p-3">
+                              {renderTeamBlock(m.team1Id)}
+                              <div className="text-gray-400 text-xs my-0.5">vs</div>
+                              {renderTeamBlock(m.team2Id)}
+                            </td>
                             <td className="p-3 font-bold break-words">{resultText}</td>
                             <td className="p-3 text-xs text-gray-500 break-words">{statusLabelMap[m.status] || m.status}</td>
-                            <td className="p-3 text-right font-mono text-xs">{fmtTime(m.inProgressAt)}</td>
-                            <td className="p-3 text-right font-mono text-xs">{fmtTime(m.completedAt)}</td>
-                            <td className="p-3 text-right font-mono text-xs">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
+                            <td className="p-3 text-right font-mono">{fmtTime(m.inProgressAt)}</td>
+                            <td className="p-3 text-right font-mono">{fmtTime(m.completedAt)}</td>
+                            <td className="p-3 text-right font-mono">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
                           </tr>
                         );
                       })}

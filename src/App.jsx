@@ -2946,7 +2946,7 @@ export default function App() {
                       <table className="min-w-full w-max text-sm text-center border-collapse whitespace-nowrap">
                          <thead>
                             <tr>
-                               <th className="border p-2 bg-gray-50 text-left min-w-[140px]">ペア (所属)</th>
+                               <th className="border p-2 bg-gray-50 text-left min-w-[110px]">ペア (所属)</th>
                                {groupEntries.map((_, i) => <th key={`th-${i}`} className="border p-2 bg-gray-50">{i+1}</th>)}
                                <th className="border p-2 bg-blue-50">勝敗</th>
                             </tr>
@@ -2958,8 +2958,9 @@ export default function App() {
 
                                return (
                                  <tr key={ent.id}>
-                                    <td className="border p-2 text-left font-bold truncate max-w-[180px]">
-                                       <span className="text-gray-400 text-xs mr-1">{i+1}</span>{getTeamNameWithClub(ent.id)}
+                                    <td className="border p-2 text-left font-bold max-w-[130px]">
+                                       <div className="truncate"><span className="text-gray-400 text-xs mr-1">{i+1}</span>{ent.p1Name}・{ent.p2Name}</div>
+                                       {ent.club && <div className="text-[10px] text-gray-400 font-normal truncate">({ent.club})</div>}
                                     </td>
                                     {groupEntries.map((opp, j) => {
                                        if (i === j) return <td key={`td-${j}`} className="border p-2 bg-gray-100 font-bold">-</td>;
@@ -2988,7 +2989,11 @@ export default function App() {
                                             {isDecided ? (
                                                <span className="text-sm">{scoreText}</span>
                                             ) : typeof match.matchNo === 'number' ? (
-                                               <span className="text-sm text-red-600 font-bold">第{match.matchNo}試合</span>
+                                               <span className="text-red-600 font-bold whitespace-nowrap">
+                                                  <span className="text-[9px]">第</span>
+                                                  <span className="text-sm">{match.matchNo}</span>
+                                                  <span className="text-[9px]">試合</span>
+                                               </span>
                                             ) : (
                                                <span className="text-gray-300 font-normal">-</span>
                                             )}

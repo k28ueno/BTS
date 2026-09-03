@@ -3961,17 +3961,21 @@ export default function App() {
           )}
 
           {adminTab === 'results' && (() => {
-            const relevantMatches = matches.filter(m => m.matchType === 'league' || m.matchType === 'tournament');
-            const sorted = [...relevantMatches].sort((a, b) => {
+            const allTargetMatches = matches.filter(m => m.matchType === 'league' || m.matchType === 'tournament');
+            // 「未実施（コート未配置・コール待ち）」の試合は結果として意味を持たず、件数も多く
+            // 一覧が埋もれてしまうため、実際に試合が始まった（受付済以降の）ものだけを表示する
+            const startedMatches = allTargetMatches.filter(m => m.status !== 'waiting' && m.status !== 'calling');
+            const sorted = [...startedMatches].sort((a, b) => {
               const clsDiff = config.classes.indexOf(a.cls) - config.classes.indexOf(b.cls);
               if (clsDiff !== 0) return clsDiff;
               const typeDiff = (a.matchType === 'tournament' ? 1 : 0) - (b.matchType === 'tournament' ? 1 : 0);
               if (typeDiff !== 0) return typeDiff;
               return (a.matchNo || 0) - (b.matchNo || 0);
             });
-            const durations = relevantMatches.map(getMatchDurationMinutes).filter(d => d !== null);
+            const durations = allTargetMatches.map(getMatchDurationMinutes).filter(d => d !== null);
             const avg = durations.length > 0 ? (durations.reduce((s, d) => s + d, 0) / durations.length) : null;
             const statusLabelMap = { waiting: '未実施', calling: 'コール済', recepted: 'コール済', in_progress: '試合中', completed: '完了' };
+            const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '-';
 
             return (
               <div>
@@ -4005,12 +4009,14 @@ export default function App() {
                         <th className="p-3">対戦カード</th>
                         <th className="p-3">結果</th>
                         <th className="p-3">状態</th>
+                        <th className="p-3 text-right">開始時刻</th>
+                        <th className="p-3 text-right">終了時刻</th>
                         <th className="p-3 text-right">所要時間</th>
                       </tr>
                     </thead>
                     <tbody>
                       {sorted.length === 0 ? (
-                        <tr><td colSpan={6} className="p-6 text-center text-gray-400">対戦カードがまだ生成されていません。</td></tr>
+                        <tr><td colSpan={8} className="p-6 text-center text-gray-400">まだ開始された試合がありません。</td></tr>
                       ) : sorted.map(m => {
                         const duration = getMatchDurationMinutes(m);
                         let resultText = '-';
@@ -4031,6 +4037,8 @@ export default function App() {
                             <td className="p-3">{getTeamNameWithClub(m.team1Id)} <span className="text-gray-400">vs</span> {getTeamNameWithClub(m.team2Id)}</td>
                             <td className="p-3 font-bold">{resultText}</td>
                             <td className="p-3 text-xs text-gray-500">{statusLabelMap[m.status] || m.status}</td>
+                            <td className="p-3 text-right font-mono">{fmtTime(m.inProgressAt)}</td>
+                            <td className="p-3 text-right font-mono">{fmtTime(m.completedAt)}</td>
                             <td className="p-3 text-right font-mono">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
                           </tr>
                         );

@@ -107,7 +107,7 @@ export default function App() {
   const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league'); 
-  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '' });
+  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', clubRank: '' });
   const [editLogin, setEditLogin] = useState({ id: '', password: '' });
   const [editMode, setEditMode] = useState(false);
   const [currentEditId, setCurrentEditId] = useState(null);
@@ -649,7 +649,8 @@ export default function App() {
             password: d.password,
             checkedIn: d.checkedin,
             group: d.group,
-            tournamentPosition: d.tournamentposition
+            tournamentPosition: d.tournamentposition,
+            clubRank: d.club_rank
           }));
           setEntries(prev => {
             // 通信の一時的な不調等で0件が返ってきた場合に、既存のエントリーデータを全消去してしまわないよう保護する
@@ -980,7 +981,8 @@ export default function App() {
                   password: ent.password,
                   checkedin: ent.checkedIn,
                   group: ent.group,
-                  tournamentposition: ent.tournamentPosition
+                  tournamentposition: ent.tournamentPosition,
+                  club_rank: ent.clubRank ?? null
                 }));
                 await supabase.from('entries').insert(dbEntries);
               }
@@ -1351,24 +1353,70 @@ export default function App() {
     await moveEntryToTournamentSlot(entryId, slot);
   };
 
+  // 同一クラブから複数ペアが出場する場合、申請された「クラブ内順位」をもとに
+  // できるだけ別グループへ分散させつつ、各グループの人数バランスを優先して割り当てる。
+  // クラブ名が未入力／クラブ内で1組のみの場合は分散の対象にならず、通常どおりバランス配分される
+  const assignGroupsAvoidingSameClub = (entriesList, activeGroups) => {
+    const byClub = new Map();
+    entriesList.forEach(ent => {
+      const key = ent.club ? ent.club.trim() : `__単独_${ent.id}`;
+      if (!byClub.has(key)) byClub.set(key, []);
+      byClub.get(key).push(ent);
+    });
+
+    // クラブ内は申請順位（若い番号ほど上位）で並べる。順位未入力は下位として扱う
+    byClub.forEach(list => {
+      list.sort((a, b) => {
+        const ra = typeof a.clubRank === 'number' ? a.clubRank : Infinity;
+        const rb = typeof b.clubRank === 'number' ? b.clubRank : Infinity;
+        return ra - rb;
+      });
+    });
+
+    // クラブの処理順をランダム化し、特定のクラブの組が毎回同じ側のグループへ偏らないようにする
+    const clubKeys = [...byClub.keys()].sort(() => Math.random() - 0.5);
+
+    const assignment = new Map();
+    const sizes = activeGroups.map(() => 0);
+
+    clubKeys.forEach(key => {
+      const list = byClub.get(key);
+      // このクラブの1番手は、現時点で人数の少ないグループへ配置し、全体の人数バランスを優先する。
+      // 2番手以降はグループを順に切り替えるため、同一クラブの組が同じグループへ集中しにくい
+      let startIdx = 0;
+      for (let i = 1; i < sizes.length; i++) {
+        if (sizes[i] < sizes[startIdx]) startIdx = i;
+      }
+      list.forEach((ent, i) => {
+        const groupIdx = (startIdx + i) % activeGroups.length;
+        assignment.set(ent.id, activeGroups[groupIdx]);
+        sizes[groupIdx]++;
+      });
+    });
+
+    return assignment;
+  };
+
   const handleAutoDraw = async () => {
     const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
     if (checkedInEntries.length === 0) {
       setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。先に「受付処理」タブで受付を完了させてください。`, onClose: () => setDialog(null) });
       return;
     }
-    const shuffled = [...checkedInEntries].sort(() => Math.random() - 0.5);
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     // 2グループに均等分割するのが最もシンプルで、各グループ上位2組ずつが決勝トーナメント4枠と
     // ぴったり一致するため、2グループを組めるだけの組数があれば常に2グループとする
     // （3組未満は1グループに満たない相手がいなくなるため、1グループにまとめる）
-    const groupCount = shuffled.length >= 4 ? 2 : 1;
+    const groupCount = checkedInEntries.length >= 4 ? 2 : 1;
     const activeGroups = groups.slice(0, groupCount);
-    
+    const assignment = groupCount >= 2
+      ? assignGroupsAvoidingSameClub(checkedInEntries, activeGroups)
+      : new Map(checkedInEntries.map(ent => [ent.id, activeGroups[0]]));
+
     const newEntries = [...entries];
     const updates = [];
-    shuffled.forEach((ent, idx) => {
-      const group = activeGroups[idx % activeGroups.length];
+    checkedInEntries.forEach(ent => {
+      const group = assignment.get(ent.id);
       const globalIdx = newEntries.findIndex(e => e.id === ent.id);
       if (globalIdx !== -1) {
         newEntries[globalIdx].group = group;
@@ -1747,6 +1795,8 @@ export default function App() {
     const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
     const feeCat = entryForm.feeCategory || '一般';
 
+    const clubRankValue = entryForm.clubRank !== '' && entryForm.clubRank != null ? parseInt(entryForm.clubRank, 10) : null;
+
     const buildDbPayload = (id) => ({
       id,
       cls: entryForm.cls,
@@ -1761,7 +1811,8 @@ export default function App() {
       password: generatedPassword,
       checkedin: false,
       group: '未割り当て',
-      tournamentposition: null
+      tournamentposition: null,
+      club_rank: clubRankValue
     });
 
     let newId;
@@ -1805,7 +1856,8 @@ export default function App() {
       password: generatedPassword,
       checkedIn: false,
       group: '未割り当て',
-      tournamentPosition: null
+      tournamentPosition: null,
+      clubRank: clubRankValue
     };
 
     setEntries([...entries, newEntryState]);
@@ -1831,7 +1883,7 @@ export default function App() {
       ),
       onClose: () => { setDialog(null); setCurrentTab('home'); }
     });
-    setEntryForm({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '' });
+    setEntryForm({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '', clubRank: '' });
   };
 
   const handleEditLogin = (e) => {
@@ -1854,6 +1906,7 @@ export default function App() {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     const feeCat = entryForm.feeCategory || '一般';
+    const clubRankValue = entryForm.clubRank !== '' && entryForm.clubRank != null ? parseInt(entryForm.clubRank, 10) : null;
     const dbPayload = {
       cls: entryForm.cls,
       contact: entryForm.contact,
@@ -1863,7 +1916,8 @@ export default function App() {
       p1fee: feeCat,
       p2name: entryForm.p2Name,
       p2club: entryForm.p2Club,
-      p2fee: feeCat
+      p2fee: feeCat,
+      club_rank: clubRankValue
     };
 
     if (isSupabaseConfigured) {
@@ -1874,7 +1928,7 @@ export default function App() {
       }
     }
 
-    setEntries(entries.map(ent => ent.id === currentEditId ? { ...entryForm, p1Fee: feeCat, p2Fee: feeCat, feeCategory: feeCat, id: currentEditId, password: ent.password, checkedIn: ent.checkedIn, group: ent.group, tournamentPosition: ent.tournamentPosition } : ent));
+    setEntries(entries.map(ent => ent.id === currentEditId ? { ...entryForm, p1Fee: feeCat, p2Fee: feeCat, feeCategory: feeCat, clubRank: clubRankValue, id: currentEditId, password: ent.password, checkedIn: ent.checkedIn, group: ent.group, tournamentPosition: ent.tournamentPosition } : ent));
     setDialog({ title: "更新完了", message: "登録内容を更新しました。", onClose: () => { setDialog(null); setCurrentTab(isAdminLoggedIn ? 'admin' : 'home'); } });
     setEditMode(false);
     setCurrentEditId(null);
@@ -2925,6 +2979,19 @@ export default function App() {
           </div>
 
           <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">クラブ内順位（同一所属から複数ペアが出場する場合のみ）</label>
+            <input
+              type="number"
+              min="1"
+              placeholder="例: 1（1番手）、2（2番手）..."
+              className="w-full p-3 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+              value={entryForm.clubRank ?? ''}
+              onChange={(e) => setEntryForm({...entryForm, clubRank: e.target.value})}
+            />
+            <p className="text-xs text-gray-500 mt-1">※同じ出場クラスに同じ所属から複数ペアが参加する場合のみ、そのクラス内での強さ順（1番手、2番手…）を入力してください。予選リーグのグループ分けの際に、同じ所属同士が同じグループにならないよう配慮します。</p>
+          </div>
+
+          <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">参加区分 (1組あたりの料金) <span className="text-red-500">*</span></label>
             <div className="flex flex-wrap gap-6 p-3 border rounded bg-white">
               {Object.keys(config.fees).map(feeType => (
@@ -3106,6 +3173,7 @@ export default function App() {
                       <th className="p-3">ID</th>
                       <th className="p-3">パスワード</th>
                       <th className="p-3">所属クラブ</th>
+                      <th className="p-3">クラブ内順位</th>
                       <th className="p-3">ペア</th>
                       <th className="p-3">区分</th>
                       <th className="p-3">連絡先</th>
@@ -3118,6 +3186,7 @@ export default function App() {
                         <td className="p-3 font-mono font-bold text-[#2c5f4e]">{ent.id}</td>
                         <td className="p-3 font-mono font-bold text-orange-600">{ent.password}</td>
                         <td className="p-3">{ent.club || '-'}</td>
+                        <td className="p-3 text-center">{typeof ent.clubRank === 'number' ? `${ent.clubRank}番手` : '-'}</td>
                         <td className="p-3 font-bold">({ent.cls}) {getTeamNameWithClub(ent.id)}</td>
                         <td className="p-3 font-bold text-xs">{ent.feeCategory || ent.p1Fee || '一般'}</td>
                         <td className="p-3">{ent.contact}</td>

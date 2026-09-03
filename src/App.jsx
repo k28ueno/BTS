@@ -2931,10 +2931,7 @@ export default function App() {
         )}
         {dashTab === 'league' && (
           <div>
-             <h3 className="text-xl font-bold mb-4 flex items-baseline gap-2 flex-wrap">
-                <span>{selectedClass} - 予選リーグ</span>
-                <span className="text-xs font-normal text-gray-500">※表中の<span className="text-red-600 font-bold">(数字)</span>はグループ内の試合番号です</span>
-             </h3>
+             <h3 className="text-xl font-bold mb-4">{selectedClass} - 予選リーグ</h3>
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(group => {
                  const groupEntries = entries.filter(e => e.cls === selectedClass && e.group === group);
@@ -2991,7 +2988,7 @@ export default function App() {
                                             {isDecided ? (
                                                <span className="text-sm">{scoreText}</span>
                                             ) : typeof match.matchNo === 'number' ? (
-                                               <span className="text-sm text-red-600 font-bold">({match.matchNo})</span>
+                                               <span className="text-sm text-red-600 font-bold">第{match.matchNo}試合</span>
                                             ) : (
                                                <span className="text-gray-300 font-normal">-</span>
                                             )}

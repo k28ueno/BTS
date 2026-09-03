@@ -3979,9 +3979,9 @@ export default function App() {
             // 選手名と所属を2段で表示する（所属は常に2行目に固定し、名前の途中で折り返さない）
             const renderTeamBlock = (teamId) => {
               const ent = entries.find(e => String(e.id) === String(teamId));
-              if (!ent) return <div className="truncate">未定</div>;
+              if (!ent) return <div className="truncate text-center">未定</div>;
               return (
-                <div>
+                <div className="text-center">
                   <div className="truncate">{ent.p1Name}・{ent.p2Name}</div>
                   {ent.club && <div className="text-xs text-gray-500 truncate">({ent.club})</div>}
                 </div>
@@ -4015,9 +4015,9 @@ export default function App() {
                   <table className="w-full text-sm text-left table-fixed">
                     <thead className="bg-gray-100 border-b">
                       <tr>
-                        <th className="p-3 w-14">クラス</th>
-                        <th className="p-3 w-24">試合番号</th>
-                        <th className="p-3">対戦カード</th>
+                        <th className="p-3 w-14 text-center">クラス</th>
+                        <th className="p-3 w-24 text-center">試合番号</th>
+                        <th className="p-3 text-center">対戦カード</th>
                         <th className="p-3 w-20">結果</th>
                         <th className="p-3 w-14">状態</th>
                         <th className="p-3 w-16 text-right">開始</th>
@@ -4040,15 +4040,17 @@ export default function App() {
                         }
                         return (
                           <tr key={m.id} className="border-b align-top">
-                            <td className="p-3 font-bold text-gray-700 break-words">{m.cls}</td>
-                            <td className="p-3 font-mono">
+                            <td className="p-3 font-bold text-gray-700 text-center break-words">{m.cls}</td>
+                            <td className="p-3 font-mono text-center">
                               <div className="truncate">{typeof m.matchNo === 'number' ? `第${m.matchNo}試合` : '-'}</div>
                               <div className="text-xs text-gray-500 truncate">({m.matchType === 'tournament' ? m.group : `グループ${m.group}`})</div>
                             </td>
                             <td className="p-3">
-                              {renderTeamBlock(m.team1Id)}
-                              <div className="text-gray-400 text-xs my-0.5">vs</div>
-                              {renderTeamBlock(m.team2Id)}
+                              <div className="flex items-center justify-center gap-3">
+                                {renderTeamBlock(m.team1Id)}
+                                <span className="text-gray-400 text-xs shrink-0">vs</span>
+                                {renderTeamBlock(m.team2Id)}
+                              </div>
                             </td>
                             <td className="p-3 font-bold break-words">{resultText}</td>
                             <td className="p-3 text-xs text-gray-500 break-words">{statusLabelMap[m.status] || m.status}</td>

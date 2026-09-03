@@ -154,6 +154,12 @@ export default function App() {
     return { winnerId, loserId, isForfeit: false };
   };
 
+  // 大会全体を通した試合番号の次の採番値。matchOrderのようにクラス単位でリセットせず、
+  // コール（呼び出し）・スコア記入時に一意な通し番号として使えるようにする
+  const getNextMatchNo = (matchList) => {
+    return matchList.reduce((max, m) => (typeof m.matchNo === 'number' && m.matchNo > max ? m.matchNo : max), 0) + 1;
+  };
+
   const getPairFee = (ent) => {
     if (!ent) return 0;
     const cat = ent.feeCategory || ent.p1Fee || '一般';
@@ -673,7 +679,8 @@ export default function App() {
             team2Score: m.team2_score,
             forfeitWinnerId: m.forfeit_winner_id,
             status: m.status,
-            matchOrder: m.match_order
+            matchOrder: m.match_order,
+            matchNo: m.match_no
           }));
           setMatches(prev => {
             // 通信の一時的な不調等で0件が返ってきた場合に、既存の試合データを全消去してしまわないよう保護する
@@ -986,7 +993,8 @@ export default function App() {
                   team2_score: m.team2Score,
                   forfeit_winner_id: m.forfeitWinnerId || null,
                   status: m.status,
-                  match_order: m.matchOrder
+                  match_order: m.matchOrder,
+                  match_no: m.matchNo || null
                 }));
                 await supabase.from('matches').insert(dbMatches);
               }
@@ -1400,8 +1408,13 @@ export default function App() {
       }
     });
 
+    // 予選をやり直す場合、そのクラスの旧・決勝トーナメント対戦カードとシード配置はもう無効なので、
+    // 古い予選結果を引きずって決勝ブラケットに残り続けないよう合わせて破棄する
+    const otherMatches = matches.filter(m => !(m.cls === targetCls && (m.matchType === 'league' || m.matchType === 'tournament')));
+
     const newClassMatches = [];
     let orderCounter = 1;
+    let nextMatchNo = getNextMatchNo(otherMatches);
     const dbInserts = [];
     let totalGenerated = 0;
 
@@ -1421,7 +1434,8 @@ export default function App() {
             team1_score: null,
             team2_score: null,
             status: 'waiting',
-            match_order: orderCounter++
+            match_order: orderCounter++,
+            match_no: nextMatchNo++
           };
           dbInserts.push(matchObj);
           newClassMatches.push({
@@ -1435,15 +1449,13 @@ export default function App() {
             team1Score: matchObj.team1_score,
             team2Score: matchObj.team2_score,
             status: matchObj.status,
-            matchOrder: matchObj.match_order
+            matchOrder: matchObj.match_order,
+            matchNo: matchObj.match_no
           });
         }
       });
     }
 
-    // 予選をやり直す場合、そのクラスの旧・決勝トーナメント対戦カードとシード配置はもう無効なので、
-    // 古い予選結果を引きずって決勝ブラケットに残り続けないよう合わせて破棄する
-    const otherMatches = matches.filter(m => !(m.cls === targetCls && (m.matchType === 'league' || m.matchType === 'tournament')));
     const updatedMatches = [...otherMatches, ...newClassMatches];
     setMatches(updatedMatches);
     setEntries(prev => prev.map(e => e.cls === targetCls ? { ...e, tournamentPosition: null } : e));
@@ -1606,6 +1618,7 @@ export default function App() {
     const newMatches = [];
     const advancedUpdates = [];
     let createdCount = 0;
+    let nextMatchNo = getNextMatchNo(matches);
 
     let levelSize = slotCount;
     let level = 0;
@@ -1631,7 +1644,8 @@ export default function App() {
               team1Score: null,
               team2Score: null,
               status: 'waiting',
-              matchOrder: 10000 + slotA
+              matchOrder: 10000 + slotA,
+              matchNo: nextMatchNo++
             });
             createdCount++;
           }
@@ -1676,7 +1690,7 @@ export default function App() {
         await supabase.from('matches').insert(newMatches.map(m => ({
           id: m.id, cls: m.cls, group_name: m.group, match_type: m.matchType, court_number: m.courtNumber,
           team1_id: m.team1Id, team2_id: m.team2Id, team1_score: m.team1Score, team2_score: m.team2Score,
-          status: m.status, match_order: m.matchOrder
+          status: m.status, match_order: m.matchOrder, match_no: m.matchNo
         })));
       }
       if (clsCompletedLeagueOnCourt.length > 0) {
@@ -1689,6 +1703,38 @@ export default function App() {
     if (advancedUpdates.length > 0) parts.push(`不戦勝${advancedUpdates.length}件を自動で勝ち上がらせ`);
     if (clsCompletedLeagueOnCourt.length > 0) parts.push(`予選で使用中だったコート${clsCompletedLeagueOnCourt.length}面を解放`);
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
+  };
+
+  // 試合番号機能の導入前に生成された試合には番号が無いため、未採番の試合にだけ通し番号を振る。
+  // 既に番号が付いている試合や試合結果には一切手を加えない
+  const handleAssignMissingMatchNumbers = async () => {
+    const unnumbered = matches.filter(m => typeof m.matchNo !== 'number');
+    if (unnumbered.length === 0) {
+      setDialog({ title: "対象なし", message: "すべての試合に試合番号が採番済みです。", onClose: () => setDialog(null) });
+      return;
+    }
+
+    const classOrder = config.classes;
+    const sorted = [...unnumbered].sort((a, b) => {
+      const typeDiff = (a.matchType === 'tournament' ? 1 : 0) - (b.matchType === 'tournament' ? 1 : 0);
+      if (typeDiff !== 0) return typeDiff;
+      const clsDiff = classOrder.indexOf(a.cls) - classOrder.indexOf(b.cls);
+      if (clsDiff !== 0) return clsDiff;
+      if (a.group !== b.group) return String(a.group).localeCompare(String(b.group));
+      return (a.matchOrder || 0) - (b.matchOrder || 0);
+    });
+
+    let nextMatchNo = getNextMatchNo(matches);
+    const updates = sorted.map(m => ({ id: m.id, matchNo: nextMatchNo++ }));
+    const updateMap = new Map(updates.map(u => [u.id, u.matchNo]));
+
+    setMatches(prev => prev.map(m => updateMap.has(m.id) ? { ...m, matchNo: updateMap.get(m.id) } : m));
+
+    if (isSupabaseConfigured) {
+      await Promise.all(updates.map(u => supabase.from('matches').update({ match_no: u.matchNo }).eq('id', u.id)));
+    }
+
+    setDialog({ title: "採番完了", message: `未採番だった${updates.length}件の試合に試合番号を振りました。`, onClose: () => setDialog(null) });
   };
 
   const handleEntrySubmit = async (e) => {
@@ -2708,7 +2754,10 @@ export default function App() {
                      <div className="p-4 flex flex-col min-h-32 justify-between text-center">
                        {activeMatch ? (
                           <div>
-                             <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full mb-2 inline-block ${badgeClass}`}>
+                             {typeof activeMatch.matchNo === 'number' && (
+                                <span className="text-[10px] font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded mb-1 inline-block">第{activeMatch.matchNo}試合</span>
+                             )}
+                             <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full mb-2 block ${badgeClass}`}>
                                 ({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}
                              </span>
                              <div className="text-sm font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
@@ -3520,7 +3569,12 @@ export default function App() {
                                    onDragStart={(e) => activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted' && handleMatchDragStart(e, activeMatch.id)}
                                    className={`p-2 rounded border bg-white shadow-xs ${(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') ? 'cursor-not-allowed border-blue-300' : 'cursor-move'}`}
                                  >
-                                    <div className="text-xs font-bold text-gray-500 mb-1">({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}</div>
+                                    <div className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1.5">
+                                       {typeof activeMatch.matchNo === 'number' && (
+                                          <span className="font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded">第{activeMatch.matchNo}試合</span>
+                                       )}
+                                       <span>({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}</span>
+                                    </div>
                                     <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
 
                                     <div className="text-sm text-center font-bold my-1">
@@ -3638,7 +3692,12 @@ export default function App() {
                                   className={`border p-2.5 rounded-lg shadow-xs transition-all ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-pointer sm:cursor-move hover:shadow-sm'} ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                 >
                                    <div className="flex justify-between items-center mb-1">
-                                      <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
+                                      <div className="flex items-center gap-1.5">
+                                         <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
+                                         {typeof m.matchNo === 'number' && (
+                                            <span className="text-[10px] font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded">第{m.matchNo}試合</span>
+                                         )}
+                                      </div>
                                       <span className="text-xs font-bold text-blue-800">({m.cls}) {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>
                                    </div>
                                    <div className="grid items-center gap-x-2" style={{ gridTemplateColumns: 'minmax(0,1fr) 5.5rem 1.2rem minmax(0,1fr) 5.5rem' }}>
@@ -3727,6 +3786,22 @@ export default function App() {
                           </label>
                        </div>
                     </div>
+                 </div>
+
+                 {/* 1.5 試合番号の後追い採番 */}
+                 <div className="border-t-2 pt-6">
+                    <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">
+                       🔢 試合番号の採番
+                    </h4>
+                    <p className="text-base text-gray-600 font-medium mb-4">
+                       試合番号機能の導入前に生成された試合には番号がありません。未採番の試合にだけ通し番号を振ります（既に番号のある試合や試合結果には影響しません）。以後、新しく生成する対戦カードには自動で番号が付きます。
+                    </p>
+                    <button
+                      onClick={handleAssignMissingMatchNumbers}
+                      className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 transition-colors"
+                    >
+                       🔢 未採番の試合に番号を振る
+                    </button>
                  </div>
 
                  {/* 2. クラス別テスト自動エントリー生成 */}
@@ -3987,7 +4062,10 @@ export default function App() {
       {scoreModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in">
            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-2 text-gray-800 text-center">試合結果の入力</h3>
+              <h3 className="text-xl font-bold mb-1 text-gray-800 text-center">試合結果の入力</h3>
+              {typeof scoreModal.match.matchNo === 'number' && (
+                <p className="text-center mb-1"><span className="inline-block bg-[#2c5f4e] text-white text-xs font-extrabold px-2.5 py-0.5 rounded-full">第{scoreModal.match.matchNo}試合</span></p>
+              )}
               <p className="text-xs text-gray-500 text-center mb-6">({scoreModal.match.cls}) {scoreModal.match.matchType === 'tournament' ? scoreModal.match.group : `グループ${scoreModal.match.group}`}</p>
 
               {scoreModal.match.forfeitWinnerId && (

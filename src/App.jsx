@@ -116,6 +116,7 @@ export default function App() {
   const [receptionClassFilter, setReceptionClassFilter] = useState('all');
   const [receptionSearchQuery, setReceptionSearchQuery] = useState('');
   const [scoreModal, setScoreModal] = useState(null);
+  const [printMatchId, setPrintMatchId] = useState(null); // スコアシート印刷対象の試合ID
 
   const [testGenCounts, setTestGenCounts] = useState({});
 
@@ -740,6 +741,23 @@ export default function App() {
         console.error("Matches fetch error:", err);
       }
     }
+  };
+
+  // 印刷対象の試合が確定した後（＝スコアシートの印刷用DOMが描画された後）に印刷ダイアログを開く。
+  // 印刷ダイアログが閉じたら選択状態を解除し、他の画面表示に影響を残さないようにする
+  useEffect(() => {
+    if (!printMatchId) return;
+    const timer = setTimeout(() => window.print(), 50);
+    const clearOnAfterPrint = () => setPrintMatchId(null);
+    window.addEventListener('afterprint', clearOnAfterPrint);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('afterprint', clearOnAfterPrint);
+    };
+  }, [printMatchId]);
+
+  const handlePrintScoreSheet = (matchId) => {
+    setPrintMatchId(matchId);
   };
 
   const handleSaveSettings = async () => {
@@ -3846,6 +3864,13 @@ export default function App() {
                                           </button>
                                        )}
 
+                                       <button
+                                         onClick={() => handlePrintScoreSheet(activeMatch.id)}
+                                         className="text-xs bg-gray-600 hover:bg-gray-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                       >
+                                          🖨️ スコアシート
+                                       </button>
+
                                        {activeMatch.status === 'calling' && (
                                           <button
                                             onClick={() => handleMatchStatusChange(activeMatch.id, 'recepted')}
@@ -4544,6 +4569,73 @@ export default function App() {
            </div>
         </div>
       )}
+
+      {printMatchId && (() => {
+        const m = matches.find(x => x.id === printMatchId);
+        if (!m) return null;
+        const team1 = entries.find(e => e.id === m.team1Id);
+        const team2 = entries.find(e => e.id === m.team2Id);
+        const gameRow = (label) => (
+          <div key={label} className="border border-black flex" style={{ height: '70px' }}>
+            <div className="w-6 border-r border-black flex items-center justify-center text-[10px] shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
+            <div className="flex-1"></div>
+          </div>
+        );
+        return (
+          <div className="print-only-area p-10 bg-white text-black">
+            <h1 className="text-center text-lg font-bold mb-6 tracking-[0.5em]">スコアシート（得点用紙）</h1>
+            <div className="flex justify-between text-sm mb-4">
+              <div className="space-y-2">
+                <div>期日：　{config.date}</div>
+                <div>大会名：　{config.title}</div>
+                <div>場所：　{config.venue}</div>
+              </div>
+              <div className="space-y-2">
+                <div>種目：　{m.cls}</div>
+                <div>試合番号：　{typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-'}</div>
+                <div>コート番号：　{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>
+              </div>
+            </div>
+
+            <table className="w-full border-collapse border border-black text-sm mb-4">
+              <thead>
+                <tr>
+                  <th className="border border-black p-2 w-2/5">選手名・所属</th>
+                  <th className="border border-black p-2">スコア</th>
+                  <th className="border border-black p-2 w-2/5">選手名・所属</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border border-black p-3 align-top">
+                     <div>{team1?.p1Name}</div>
+                     <div>{team1?.p2Name}</div>
+                     <div className="text-xs mt-1">（{team1?.club}）</div>
+                  </td>
+                  <td className="border border-black p-3 text-center align-middle">
+                     <div>－</div><div>－</div><div>－</div>
+                  </td>
+                  <td className="border border-black p-3 align-top">
+                     <div>{team2?.p1Name}</div>
+                     <div>{team2?.p2Name}</div>
+                     <div className="text-xs mt-1">（{team2?.club}）</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div className="space-y-3">
+              {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameRow)}
+            </div>
+
+            <div className="flex justify-between text-sm mt-8">
+              <div>勝者署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
+              <div>主審署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
+              <div>コール時間：　{new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

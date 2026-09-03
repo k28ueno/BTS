@@ -2988,10 +2988,13 @@ export default function App() {
 
                                        return (
                                          <td key={`td-${j}`} className="border p-2 text-xs font-bold">
-                                            {typeof match.matchNo === 'number' && (
-                                               <div className="text-red-600 font-bold leading-none mb-0.5">({match.matchNo})</div>
+                                            {isDecided ? (
+                                               <span className="text-sm">{scoreText}</span>
+                                            ) : typeof match.matchNo === 'number' ? (
+                                               <span className="text-sm text-red-600 font-bold">({match.matchNo})</span>
+                                            ) : (
+                                               <span className="text-gray-300 font-normal">-</span>
                                             )}
-                                            {isDecided ? scoreText : <span className="text-gray-300 font-normal">-</span>}
                                          </td>
                                        );
                                     })}

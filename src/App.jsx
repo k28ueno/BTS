@@ -2794,11 +2794,6 @@ export default function App() {
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-      {/* 修正: 「当日の進行状況・対戦表はこちら」を削除し、ボタン名を「当日の進行状況・対戦表」に変更 */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-md p-6 text-center border border-blue-200">
-         <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md flex items-center justify-center gap-2 mx-auto text-lg"><IconSmartphone /> 当日の進行状況・対戦表</button>
-      </div>
-
       <div ref={measureTitleRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
         <h1
           className="font-extrabold mb-4 tracking-wider relative z-10 leading-tight break-words"
@@ -2810,6 +2805,7 @@ export default function App() {
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
           <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base"><IconSettings /> 修正・取消</button>
+          <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconSmartphone /> 当日の進行状況・対戦表</button>
         </div>
       </div>
 

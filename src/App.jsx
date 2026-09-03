@@ -4000,18 +4000,18 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded border overflow-x-auto">
-                  <table className="min-w-full w-max text-sm text-left whitespace-nowrap">
+                <div className="bg-white rounded border overflow-hidden">
+                  <table className="w-full text-sm text-left table-fixed">
                     <thead className="bg-gray-100 border-b">
                       <tr>
-                        <th className="p-3">クラス</th>
-                        <th className="p-3">試合番号 / ラウンド</th>
+                        <th className="p-3 w-14">クラス</th>
+                        <th className="p-3 w-24">試合番号</th>
                         <th className="p-3">対戦カード</th>
-                        <th className="p-3">結果</th>
-                        <th className="p-3">状態</th>
-                        <th className="p-3 text-right">開始時刻</th>
-                        <th className="p-3 text-right">終了時刻</th>
-                        <th className="p-3 text-right">所要時間</th>
+                        <th className="p-3 w-20">結果</th>
+                        <th className="p-3 w-14">状態</th>
+                        <th className="p-3 w-16 text-right">開始</th>
+                        <th className="p-3 w-16 text-right">終了</th>
+                        <th className="p-3 w-16 text-right">所要</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4028,18 +4028,18 @@ export default function App() {
                           }
                         }
                         return (
-                          <tr key={m.id} className="border-b">
-                            <td className="p-3 font-bold text-gray-700">{m.cls}</td>
-                            <td className="p-3 font-mono">
+                          <tr key={m.id} className="border-b align-top">
+                            <td className="p-3 font-bold text-gray-700 break-words">{m.cls}</td>
+                            <td className="p-3 font-mono break-words">
                               {typeof m.matchNo === 'number' ? `第${m.matchNo}試合` : '-'}
-                              <span className="text-gray-400 ml-1">({m.matchType === 'tournament' ? m.group : `グループ${m.group}`})</span>
+                              <span className="text-gray-400">({m.matchType === 'tournament' ? m.group : `グループ${m.group}`})</span>
                             </td>
-                            <td className="p-3">{getTeamNameWithClub(m.team1Id)} <span className="text-gray-400">vs</span> {getTeamNameWithClub(m.team2Id)}</td>
-                            <td className="p-3 font-bold">{resultText}</td>
-                            <td className="p-3 text-xs text-gray-500">{statusLabelMap[m.status] || m.status}</td>
-                            <td className="p-3 text-right font-mono">{fmtTime(m.inProgressAt)}</td>
-                            <td className="p-3 text-right font-mono">{fmtTime(m.completedAt)}</td>
-                            <td className="p-3 text-right font-mono">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
+                            <td className="p-3 break-words">{getTeamNameWithClub(m.team1Id)} <span className="text-gray-400">vs</span> {getTeamNameWithClub(m.team2Id)}</td>
+                            <td className="p-3 font-bold break-words">{resultText}</td>
+                            <td className="p-3 text-xs text-gray-500 break-words">{statusLabelMap[m.status] || m.status}</td>
+                            <td className="p-3 text-right font-mono text-xs">{fmtTime(m.inProgressAt)}</td>
+                            <td className="p-3 text-right font-mono text-xs">{fmtTime(m.completedAt)}</td>
+                            <td className="p-3 text-right font-mono text-xs">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
                           </tr>
                         );
                       })}

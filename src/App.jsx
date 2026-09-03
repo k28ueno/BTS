@@ -394,9 +394,14 @@ export default function App() {
       return 0;
     };
 
+    // 同じ優先度（tier）内では、クラスごとにリセットされるmatchOrderではなく、
+    // 大会全体を通した試合番号（matchNo）の若い順に並べる。番号未採番の試合は末尾に回す
     return [...waitingMatches].sort((a, b) => {
       const tierDiff = tierOf(a) - tierOf(b);
       if (tierDiff !== 0) return tierDiff;
+      const noA = typeof a.matchNo === 'number' ? a.matchNo : Infinity;
+      const noB = typeof b.matchNo === 'number' ? b.matchNo : Infinity;
+      if (noA !== noB) return noA - noB;
       return a.matchOrder - b.matchOrder;
     });
   };

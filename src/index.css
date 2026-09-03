@@ -7,6 +7,23 @@
    .print-only-area はスコアシートのように印刷時にだけ現れる要素 */
 .print-only-area { display: none; }
 
+/* スコアシートはA4横向きで印刷する（対応ブラウザでは名前付きページで用紙の向きを切り替える） */
+@page score-sheet-page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+.print-only-area {
+  page: score-sheet-page;
+}
+
+/* 得点欄の升目（方眼）パターン */
+.score-grid-cell {
+  background-image:
+    linear-gradient(to right, #999 1px, transparent 1px),
+    linear-gradient(to bottom, #999 1px, transparent 1px);
+  background-size: 4mm 4mm;
+}
+
 @media print {
   @page { margin: 18mm; }
   body * { visibility: hidden; }

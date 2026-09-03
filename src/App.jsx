@@ -4575,60 +4575,73 @@ export default function App() {
         if (!m) return null;
         const team1 = entries.find(e => e.id === m.team1Id);
         const team2 = entries.find(e => e.id === m.team2Id);
-        const gameRow = (label) => (
-          <div key={label} className="border border-black flex" style={{ height: '70px' }}>
-            <div className="w-6 border-r border-black flex items-center justify-center text-[10px] shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
-            <div className="flex-1"></div>
+        const matchNoText = typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-';
+
+        // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
+        const gameBox = (label) => (
+          <div key={label} className="border-2 border-black flex" style={{ height: '78px' }}>
+            <div className="w-5 border-r-2 border-black flex items-center justify-center text-[10px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
+            <div className="flex flex-col flex-1">
+              {[0, 1].map(row => (
+                <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b border-black' : ''}`}>
+                  <div className="w-5 border-r border-black shrink-0"></div>
+                  <div className="w-5 border-r border-black shrink-0"></div>
+                  <div className="flex-1 score-grid-cell"></div>
+                </div>
+              ))}
+            </div>
           </div>
         );
+
         return (
-          <div className="print-only-area p-10 bg-white text-black">
-            <h1 className="text-center text-lg font-bold mb-6 tracking-[0.5em]">スコアシート（得点用紙）</h1>
-            <div className="flex justify-between text-sm mb-4">
-              <div className="space-y-2">
-                <div>期日：　{config.date}</div>
-                <div>大会名：　{config.title}</div>
-                <div>場所：　{config.venue}</div>
+          <div className="print-only-area p-6 bg-white text-black text-sm">
+            <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
+
+            <div className="flex justify-between items-stretch gap-4 mb-4">
+              <div className="space-y-3 w-52 shrink-0">
+                <div className="border-b border-black pb-0.5">期日：　{config.date}</div>
+                <div className="border-b border-black pb-0.5">大会名：　{config.title}</div>
+                <div className="border-b border-black pb-0.5">場所：　{config.venue}</div>
               </div>
-              <div className="space-y-2">
-                <div>種目：　{m.cls}</div>
-                <div>試合番号：　{typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-'}</div>
-                <div>コート番号：　{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>
+
+              <table className="border-collapse border-2 border-black flex-1">
+                <thead>
+                  <tr>
+                    <th className="border border-black p-1 font-normal">選手名・所属</th>
+                    <th className="border border-black p-1 w-16 font-normal">スコア</th>
+                    <th className="border border-black p-1 font-normal">選手名・所属</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td rowSpan={2} className="border border-black w-6 text-center align-middle" style={{ writingMode: 'vertical-rl' }}>L・R</td>
+                    <td className="border border-black px-2 py-1 h-7">{team1?.p1Name}</td>
+                    <td rowSpan={2} className="border border-black text-center align-middle">
+                       <div className="border-b border-dotted border-black py-1.5">－</div>
+                       <div className="py-1.5">－</div>
+                    </td>
+                    <td className="border border-black px-2 py-1 h-7">{team2?.p1Name}</td>
+                    <td rowSpan={2} className="border border-black w-6 text-center align-middle" style={{ writingMode: 'vertical-rl' }}>L・R</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black px-2 py-1 h-7">{team1?.p2Name}（{team1?.club}）</td>
+                    <td className="border border-black px-2 py-1 h-7">{team2?.p2Name}（{team2?.club}）</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="space-y-3 w-52 shrink-0">
+                <div className="border-b border-black pb-0.5">種目：　{m.cls}</div>
+                <div className="border-b border-black pb-0.5">試合番号：　{matchNoText}</div>
+                <div className="border-b border-black pb-0.5">コート番号：　{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>
               </div>
             </div>
 
-            <table className="w-full border-collapse border border-black text-sm mb-4">
-              <thead>
-                <tr>
-                  <th className="border border-black p-2 w-2/5">選手名・所属</th>
-                  <th className="border border-black p-2">スコア</th>
-                  <th className="border border-black p-2 w-2/5">選手名・所属</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="border border-black p-3 align-top">
-                     <div>{team1?.p1Name}</div>
-                     <div>{team1?.p2Name}</div>
-                     <div className="text-xs mt-1">（{team1?.club}）</div>
-                  </td>
-                  <td className="border border-black p-3 text-center align-middle">
-                     <div>－</div><div>－</div><div>－</div>
-                  </td>
-                  <td className="border border-black p-3 align-top">
-                     <div>{team2?.p1Name}</div>
-                     <div>{team2?.p2Name}</div>
-                     <div className="text-xs mt-1">（{team2?.club}）</div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div className="space-y-3">
-              {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameRow)}
+            <div className="space-y-2">
+              {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameBox)}
             </div>
 
-            <div className="flex justify-between text-sm mt-8">
+            <div className="flex justify-between mt-6">
               <div>勝者署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
               <div>主審署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
               <div>コール時間：　{new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>

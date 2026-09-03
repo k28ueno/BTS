@@ -878,6 +878,22 @@ export default function App() {
       }
     });
 
+    // 同一クラス内で同じクラブが複数組になった場合、自動振り分けの同門回避ロジックを
+    // テストで確認できるよう、ランダムにクラブ内順位（1番手、2番手…）を割り振る
+    const idsByClsClub = new Map();
+    newEntries.forEach(ent => {
+      const key = `${ent.cls}__${ent.club}`;
+      if (!idsByClsClub.has(key)) idsByClsClub.set(key, []);
+      idsByClsClub.get(key).push(ent.id);
+    });
+    const clubRankById = new Map();
+    idsByClsClub.forEach(ids => {
+      if (ids.length < 2) return;
+      [...ids].sort(() => Math.random() - 0.5).forEach((id, idx) => clubRankById.set(id, idx + 1));
+    });
+    newEntries.forEach(ent => { ent.clubRank = clubRankById.get(ent.id) ?? null; });
+    dbPayloads.forEach(payload => { payload.club_rank = clubRankById.get(payload.id) ?? null; });
+
     setEntries(newEntries);
 
     if (isSupabaseConfigured && dbPayloads.length > 0) {

@@ -4578,15 +4578,22 @@ export default function App() {
         const matchNoText = typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-';
 
         // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
+        // 背景画像の方眼だと枠幅次第で端が半端な升目になるため、実セル（div）を敷き詰めて
+        // 常に端から端まで均等な升目になるようにする
+        const GRID_COLS = 44;
         const gameBox = (label) => (
-          <div key={label} className="border-2 border-black flex" style={{ height: '78px' }}>
-            <div className="w-5 border-r-2 border-black flex items-center justify-center text-[10px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
+          <div key={label} className="border-2 border-black flex" style={{ height: '80px' }}>
+            <div className="w-6 border-r-2 border-black flex items-center justify-center text-[11px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
             <div className="flex flex-col flex-1">
               {[0, 1].map(row => (
-                <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b border-black' : ''}`}>
-                  <div className="w-5 border-r border-black shrink-0"></div>
-                  <div className="w-5 border-r border-black shrink-0"></div>
-                  <div className="flex-1 score-grid-cell"></div>
+                <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
+                  <div className="w-6 border-r border-black shrink-0"></div>
+                  <div className="w-6 border-r-2 border-black shrink-0"></div>
+                  <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}>
+                    {Array.from({ length: GRID_COLS }).map((_, i) => (
+                      <div key={i} className={i < GRID_COLS - 1 ? 'border-r border-gray-400' : ''}></div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -4598,18 +4605,18 @@ export default function App() {
             <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
 
             <div className="flex justify-between items-stretch gap-4 mb-4">
-              <div className="space-y-3 w-52 shrink-0">
+              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '19%', wordBreak: 'keep-all' }}>
                 <div className="border-b border-black pb-0.5">期日：　{config.date}</div>
                 <div className="border-b border-black pb-0.5">大会名：　{config.title}</div>
                 <div className="border-b border-black pb-0.5">場所：　{config.venue}</div>
               </div>
 
-              <table className="border-collapse border-2 border-black flex-1">
+              <table className="border-collapse border-2 border-black" style={{ width: '62%' }}>
                 <thead>
                   <tr>
-                    <th className="border border-black p-1 font-normal">選手名・所属</th>
+                    <th colSpan={2} className="border border-black p-1 font-normal">選手名・所属</th>
                     <th className="border border-black p-1 w-16 font-normal">スコア</th>
-                    <th className="border border-black p-1 font-normal">選手名・所属</th>
+                    <th colSpan={2} className="border border-black p-1 font-normal">選手名・所属</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4630,7 +4637,7 @@ export default function App() {
                 </tbody>
               </table>
 
-              <div className="space-y-3 w-52 shrink-0">
+              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '19%', wordBreak: 'keep-all' }}>
                 <div className="border-b border-black pb-0.5">種目：　{m.cls}</div>
                 <div className="border-b border-black pb-0.5">試合番号：　{matchNoText}</div>
                 <div className="border-b border-black pb-0.5">コート番号：　{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>

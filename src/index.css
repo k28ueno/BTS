@@ -16,14 +16,6 @@
   page: score-sheet-page;
 }
 
-/* 得点欄の升目（方眼）パターン */
-.score-grid-cell {
-  background-image:
-    linear-gradient(to right, #999 1px, transparent 1px),
-    linear-gradient(to bottom, #999 1px, transparent 1px);
-  background-size: 4mm 4mm;
-}
-
 @media print {
   @page { margin: 18mm; }
   body * { visibility: hidden; }

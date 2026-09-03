@@ -1474,6 +1474,48 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
+  // サークル法で総当たり戦の対戦カードを組む。1チームを固定し、残りを回転させることで、
+  // 各ラウンドでは全チームが高々1試合しか対戦しないようにする（奇数チームの場合は不戦枠(BYE)を1つ加える）。
+  // ラウンドの組み合わせ自体は固定だが、ラウンド内の並び順は自由なので、複数パターンを
+  // 試して「隣接する試合番号で同じチームが連続する回数」が最も少ない並びを採用する
+  const buildRoundRobinPairs = (teams) => {
+    const list = [...teams];
+    if (list.length % 2 !== 0) list.push(null);
+    const n = list.length;
+    const half = n / 2;
+    let arr = list.slice();
+    const rounds = [];
+    for (let r = 0; r < n - 1; r++) {
+      const roundMatches = [];
+      for (let i = 0; i < half; i++) {
+        const a = arr[i];
+        const b = arr[n - 1 - i];
+        if (a != null && b != null) roundMatches.push([a, b]);
+      }
+      rounds.push(roundMatches);
+      arr = [arr[0], arr[n - 1], ...arr.slice(1, n - 1)];
+    }
+
+    const share = (a, b) => !!a && !!b && (a[0] === b[0] || a[0] === b[1] || a[1] === b[0] || a[1] === b[1]);
+    const countAdjacentCollisions = (flat) => {
+      let count = 0;
+      for (let i = 0; i < flat.length - 1; i++) if (share(flat[i], flat[i + 1])) count++;
+      return count;
+    };
+
+    let best = rounds.flat();
+    let bestScore = countAdjacentCollisions(best);
+    for (let attempt = 0; attempt < 30 && bestScore > 0; attempt++) {
+      const flat = rounds.flatMap(roundMatches => [...roundMatches].sort(() => Math.random() - 0.5));
+      const score = countAdjacentCollisions(flat);
+      if (score < bestScore) {
+        best = flat;
+        bestScore = score;
+      }
+    }
+    return best;
+  };
+
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {
     setLastCourtReferees({});
     setLockedReferees({});
@@ -1488,16 +1530,14 @@ export default function App() {
       const groupTeams = clsEntries.filter(e => e.group === groupName);
       groupMatchesMap[groupName] = [];
       if (groupTeams.length >= 2) {
-        for (let i = 0; i < groupTeams.length; i++) {
-          for (let j = i + 1; j < groupTeams.length; j++) {
-            groupMatchesMap[groupName].push({
-              cls: targetCls,
-              group_name: groupName,
-              team1_id: groupTeams[i].id,
-              team2_id: groupTeams[j].id
-            });
-          }
-        }
+        buildRoundRobinPairs(groupTeams).forEach(([t1, t2]) => {
+          groupMatchesMap[groupName].push({
+            cls: targetCls,
+            group_name: groupName,
+            team1_id: t1.id,
+            team2_id: t2.id
+          });
+        });
         if (groupMatchesMap[groupName].length > maxGroupMatches) {
           maxGroupMatches = groupMatchesMap[groupName].length;
         }

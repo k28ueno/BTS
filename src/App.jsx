@@ -2932,7 +2932,7 @@ export default function App() {
                                 ({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}
                              </span>
                              <div className="text-sm font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
-                             <div className="text-sm text-gray-400 my-1">
+                             <div className={activeMatch.status === 'completed' ? 'text-base font-extrabold text-gray-800 my-1' : 'text-sm text-gray-400 my-1'}>
                                 {activeMatch.status === 'completed' ? (activeMatch.forfeitWinnerId ? '不戦勝・不戦敗' : `${activeMatch.team1Score} - ${activeMatch.team2Score}`) : 'vs'}
                              </div>
                              <div className="text-sm font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
@@ -2960,7 +2960,7 @@ export default function App() {
                       <h4 className="font-bold text-lg mb-3 border-l-4 border-[#2c5f4e] pl-2">グループ {group}</h4>
                       <table className="min-w-full w-max text-sm text-center border-collapse whitespace-nowrap">
                          <thead>
-                            <tr>
+                            <tr className="text-gray-500">
                                <th className="border p-2 bg-gray-50 text-left min-w-[110px]">ペア (所属)</th>
                                {groupEntries.map((_, i) => <th key={`th-${i}`} className="border p-2 bg-gray-50">{i+1}</th>)}
                                <th className="border p-2 bg-blue-50">勝敗</th>
@@ -3045,7 +3045,7 @@ export default function App() {
                              <h4 className="font-bold text-lg mb-3 border-l-4 border-[#2c5f4e] pl-2">グループ {group} 順位表</h4>
                              <table className="w-full text-sm text-center border-collapse">
                                 <thead>
-                                   <tr>
+                                   <tr className="text-gray-500">
                                       <th className="border p-2 bg-gray-50">順位</th>
                                       <th className="border p-2 bg-gray-50 text-left">ペア (所属)</th>
                                       <th className="border p-2 bg-blue-50">勝敗</th>
@@ -3311,7 +3311,7 @@ export default function App() {
               <div className="bg-white rounded border overflow-hidden">
                 <table className="w-full text-sm text-left table-fixed">
                   <thead className="bg-gray-100 border-b">
-                    <tr>
+                    <tr className="text-gray-500 font-bold">
                       <th className="p-3 w-16">ID</th>
                       <th className="p-3 w-20">パスワード</th>
                       <th className="p-3">所属クラブ</th>
@@ -3398,7 +3398,7 @@ export default function App() {
               <div className="bg-white rounded border shadow-sm overflow-x-auto">
                  <table className="min-w-full w-max text-sm text-left whitespace-nowrap">
                     <thead className="bg-gray-100 border-b">
-                       <tr>
+                       <tr className="text-gray-500">
                           <th className="p-3 w-28 text-center">受付状態</th>
                           <th className="p-3 w-20 font-bold">ID</th>
                           <th className="p-3 w-24 font-bold">クラス</th>
@@ -4014,7 +4014,7 @@ export default function App() {
                 <div className="bg-white rounded border overflow-hidden">
                   <table className="w-full text-sm text-left table-fixed">
                     <thead className="bg-gray-100 border-b">
-                      <tr>
+                      <tr className="text-gray-500 font-bold">
                         <th className="p-3 w-14 text-center">クラス</th>
                         <th className="p-3 w-24 text-center">試合番号</th>
                         <th className="p-3 text-center">対戦カード</th>
@@ -4053,7 +4053,7 @@ export default function App() {
                               </div>
                             </td>
                             <td className="p-3 font-bold break-words">{resultText}</td>
-                            <td className="p-3 text-xs text-gray-500 break-words">{statusLabelMap[m.status] || m.status}</td>
+                            <td className="p-3 font-bold text-gray-700 break-words">{statusLabelMap[m.status] || m.status}</td>
                             <td className="p-3 text-right font-mono">{fmtTime(m.inProgressAt)}</td>
                             <td className="p-3 text-right font-mono">{fmtTime(m.completedAt)}</td>
                             <td className="p-3 text-right font-mono">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>

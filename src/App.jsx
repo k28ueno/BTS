@@ -161,6 +161,17 @@ export default function App() {
     return matchList.reduce((max, m) => (typeof m.matchNo === 'number' && m.matchNo > max ? m.matchNo : max), 0) + 1;
   };
 
+  // 「試合受付」（in_progress開始）から「スコア入力」（completed）までの所要時間（分）。
+  // 棄権（不戦勝・不戦敗）は実際に試合が行われていないため対象外とし、
+  // どちらかの時刻が未記録の場合もnullを返す
+  const getMatchDurationMinutes = (m) => {
+    if (!m || m.forfeitWinnerId || !m.inProgressAt || !m.completedAt) return null;
+    const start = new Date(m.inProgressAt).getTime();
+    const end = new Date(m.completedAt).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    return (end - start) / 60000;
+  };
+
   const getPairFee = (ent) => {
     if (!ent) return 0;
     const cat = ent.feeCategory || ent.p1Fee || '一般';
@@ -711,7 +722,9 @@ export default function App() {
             forfeitWinnerId: m.forfeit_winner_id,
             status: m.status,
             matchOrder: m.match_order,
-            matchNo: m.match_no
+            matchNo: m.match_no,
+            inProgressAt: m.in_progress_at,
+            completedAt: m.completed_at
           }));
           setMatches(prev => {
             // 通信の一時的な不調等で0件が返ってきた場合に、既存の試合データを全消去してしまわないよう保護する
@@ -756,6 +769,32 @@ export default function App() {
         setDialog({ title: "エラー", message: "設定の保存に失敗しました。詳細: " + error.message, onClose: () => setDialog(null) });
       }
     }
+  };
+
+  // 実際の試合の「試合受付～スコア入力」所要時間の平均を計算し、マスタ設定の
+  // 「1試合の平均所要時間」に反映する（棄権試合や時刻未記録の試合は対象外）
+  const handleApplyAverageMatchDuration = async () => {
+    const durations = matches.map(getMatchDurationMinutes).filter(d => d !== null);
+    if (durations.length === 0) {
+      setDialog({ title: "対象なし", message: "所要時間を算出できる試合結果がまだありません（試合受付とスコア入力の両方が記録された試合が必要です）。", onClose: () => setDialog(null) });
+      return;
+    }
+    const avg = Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length);
+
+    setDialog({
+      title: "平均試合時間の更新",
+      message: `実績のある${durations.length}試合から算出した平均所要時間は ${avg}分 です。マスタ設定の「1試合の平均所要時間」をこの値に更新します。よろしいですか？`,
+      confirmText: "更新する",
+      confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
+      onConfirm: async () => {
+        setConfig(prev => ({ ...prev, avgMatchDuration: avg }));
+        if (isSupabaseConfigured) {
+          await supabase.from('settings').update({ avgmatchduration: avg }).eq('id', 1);
+        }
+        setDialog({ title: "更新完了", message: `平均試合時間を ${avg}分 に更新しました。`, onClose: () => setDialog(null) });
+      },
+      onClose: () => setDialog(null)
+    });
   };
 
   // 削除系の操作は実行前に「ローカルへバックアップしてから削除」を選べるようにする共通ダイアログ
@@ -1044,7 +1083,9 @@ export default function App() {
                   forfeit_winner_id: m.forfeitWinnerId || null,
                   status: m.status,
                   match_order: m.matchOrder,
-                  match_no: m.matchNo || null
+                  match_no: m.matchNo || null,
+                  in_progress_at: m.inProgressAt || null,
+                  completed_at: m.completedAt || null
                 }));
                 await supabase.from('matches').insert(dbMatches);
               }
@@ -1295,10 +1336,13 @@ export default function App() {
   };
 
   const handleMatchStatusChange = async (matchId, newStatus) => {
-    const updated = matches.map(m => m.id === matchId ? { ...m, status: newStatus } : m);
+    // 「試合受付」（in_progress開始）の時刻を記録し、スコア入力完了時刻との差分から
+    // 実際の試合所要時間を平均試合時間の算出に使えるようにする
+    const inProgressAt = newStatus === 'in_progress' ? new Date().toISOString() : undefined;
+    const updated = matches.map(m => m.id === matchId ? { ...m, status: newStatus, ...(inProgressAt ? { inProgressAt } : {}) } : m);
     setMatches(updated);
     if (isSupabaseConfigured) {
-      await supabase.from('matches').update({ status: newStatus }).eq('id', matchId);
+      await supabase.from('matches').update({ status: newStatus, ...(inProgressAt ? { in_progress_at: inProgressAt } : {}) }).eq('id', matchId);
     }
   };
 
@@ -2239,6 +2283,7 @@ export default function App() {
       team1Score: null,
       team2Score: null,
       forfeitWinnerId: null,
+      completedAt: null,
       status: newStatus
     } : m);
     setMatches(updated);
@@ -2248,6 +2293,7 @@ export default function App() {
         team1_score: null,
         team2_score: null,
         forfeit_winner_id: null,
+        completed_at: null,
         status: newStatus
       }).eq('id', matchId);
     }
@@ -2284,12 +2330,18 @@ export default function App() {
       return;
     }
 
+    // 初めてスコアを確定した時だけスコア入力完了時刻を記録する（後からの「スコア修正」では
+    // 上書きしない）。試合受付（in_progress開始）からの所要時間を平均試合時間の算出に使う
+    const isFirstCompletion = targetMatch && targetMatch.status !== 'completed';
+    const completedAt = isFirstCompletion ? new Date().toISOString() : undefined;
+
     const updated = matches.map(m => m.id === matchId ? {
       ...m,
       team1Score: s1,
       team2Score: s2,
       forfeitWinnerId: null,
-      status: 'completed'
+      status: 'completed',
+      ...(completedAt ? { completedAt } : {})
     } : m);
     setMatches(updated);
 
@@ -2298,7 +2350,8 @@ export default function App() {
         team1_score: s1,
         team2_score: s2,
         forfeit_winner_id: null,
-        status: 'completed'
+        status: 'completed',
+        ...(completedAt ? { completed_at: completedAt } : {})
       }).eq('id', matchId);
     }
 
@@ -3174,6 +3227,7 @@ export default function App() {
            <button onClick={() => setAdminTab('draw')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'draw' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>ドロー編成</button>
            <button onClick={() => setAdminTab('simulation')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'simulation' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>シミュレーション</button>
            <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
+           <button onClick={() => setAdminTab('results')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'results' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>試合結果明細</button>
            <button onClick={() => setAdminTab('data')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'data' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>データ管理</button>
            <button onClick={() => setAdminTab('manual')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'manual' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マニュアル</button>
         </div>
@@ -3906,6 +3960,88 @@ export default function App() {
             </div>
           )}
 
+          {adminTab === 'results' && (() => {
+            const relevantMatches = matches.filter(m => m.matchType === 'league' || m.matchType === 'tournament');
+            const sorted = [...relevantMatches].sort((a, b) => {
+              const clsDiff = config.classes.indexOf(a.cls) - config.classes.indexOf(b.cls);
+              if (clsDiff !== 0) return clsDiff;
+              const typeDiff = (a.matchType === 'tournament' ? 1 : 0) - (b.matchType === 'tournament' ? 1 : 0);
+              if (typeDiff !== 0) return typeDiff;
+              return (a.matchNo || 0) - (b.matchNo || 0);
+            });
+            const durations = relevantMatches.map(getMatchDurationMinutes).filter(d => d !== null);
+            const avg = durations.length > 0 ? (durations.reduce((s, d) => s + d, 0) / durations.length) : null;
+            const statusLabelMap = { waiting: '未実施', calling: 'コール済', recepted: 'コール済', in_progress: '試合中', completed: '完了' };
+
+            return (
+              <div>
+                <h3 className="text-xl font-bold mb-4">試合結果明細</h3>
+
+                <div className="bg-white border rounded-lg p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-sm text-gray-700">
+                    <span className="font-bold">実績からの平均試合時間（試合受付〜スコア入力）: </span>
+                    {avg !== null ? (
+                      <span className="font-mono font-extrabold text-[#2c5f4e] text-base">{avg.toFixed(1)}分</span>
+                    ) : (
+                      <span className="text-gray-400">算出可能な試合結果がまだありません</span>
+                    )}
+                    <span className="text-xs text-gray-500 ml-2">（有効データ {durations.length}件、棄権試合は除く）</span>
+                  </div>
+                  <button
+                    onClick={handleApplyAverageMatchDuration}
+                    disabled={durations.length === 0}
+                    className={`px-4 py-2 rounded font-bold text-sm shadow-sm whitespace-nowrap ${durations.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
+                  >
+                    この平均値をマスタ設定に反映する
+                  </button>
+                </div>
+
+                <div className="bg-white rounded border overflow-x-auto">
+                  <table className="min-w-full w-max text-sm text-left whitespace-nowrap">
+                    <thead className="bg-gray-100 border-b">
+                      <tr>
+                        <th className="p-3">クラス</th>
+                        <th className="p-3">試合番号 / ラウンド</th>
+                        <th className="p-3">対戦カード</th>
+                        <th className="p-3">結果</th>
+                        <th className="p-3">状態</th>
+                        <th className="p-3 text-right">所要時間</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.length === 0 ? (
+                        <tr><td colSpan={6} className="p-6 text-center text-gray-400">対戦カードがまだ生成されていません。</td></tr>
+                      ) : sorted.map(m => {
+                        const duration = getMatchDurationMinutes(m);
+                        let resultText = '-';
+                        if (m.status === 'completed') {
+                          if (m.forfeitWinnerId) {
+                            resultText = `不戦勝: ${getTeamNameWithClub(m.forfeitWinnerId)}`;
+                          } else if (m.team1Score !== null && m.team2Score !== null) {
+                            resultText = `${m.team1Score} - ${m.team2Score}`;
+                          }
+                        }
+                        return (
+                          <tr key={m.id} className="border-b">
+                            <td className="p-3 font-bold text-gray-700">{m.cls}</td>
+                            <td className="p-3 font-mono">
+                              {typeof m.matchNo === 'number' ? `第${m.matchNo}試合` : '-'}
+                              <span className="text-gray-400 ml-1">({m.matchType === 'tournament' ? m.group : `グループ${m.group}`})</span>
+                            </td>
+                            <td className="p-3">{getTeamNameWithClub(m.team1Id)} <span className="text-gray-400">vs</span> {getTeamNameWithClub(m.team2Id)}</td>
+                            <td className="p-3 font-bold">{resultText}</td>
+                            <td className="p-3 text-xs text-gray-500">{statusLabelMap[m.status] || m.status}</td>
+                            <td className="p-3 text-right font-mono">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+
           {adminTab === 'data' && (
             <div className="space-y-8">
               <h3 className="text-3xl font-extrabold border-b pb-3 flex items-center gap-2 text-slate-800">
@@ -4087,6 +4223,7 @@ export default function App() {
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、スコア入力を行います。'],
+                      ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">

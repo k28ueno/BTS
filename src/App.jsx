@@ -4577,18 +4577,31 @@ export default function App() {
         const team2 = entries.find(e => e.id === m.team2Id);
         const matchNoText = typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-';
 
-        // 用紙様式に合わせた升目（1ゲーム分の得点欄は横一列）
-        // 背景画像の方眼だと枠幅次第で端が半端な升目になるため、実セル（div）を敷き詰めて
-        // 常に端から端まで均等な升目になるようにする
+        // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
+        // 縦横とも罫線のある方眼にするため、行×列とも均等分割できるCSS Gridで
+        // 実セル（div）を敷き詰め、端が半端な升目にならないようにする
         const GRID_COLS = 44;
+        const GRID_ROWS = 3;
+        const gridArea = () => (
+          <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}>
+            {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => (
+              <div
+                key={i}
+                className={`${(i + 1) % GRID_COLS !== 0 ? 'border-r' : ''} ${i < GRID_COLS * (GRID_ROWS - 1) ? 'border-b' : ''} border-gray-400`}
+              ></div>
+            ))}
+          </div>
+        );
         const gameBox = (label) => (
-          <div key={label} className="border-2 border-black flex" style={{ height: '68px' }}>
+          <div key={label} className="border-2 border-black flex" style={{ height: '80px' }}>
             <div className="w-6 border-r-2 border-black flex items-center justify-center text-[11px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
-            <div className="w-6 border-r border-black shrink-0"></div>
-            <div className="w-6 border-r-2 border-black shrink-0"></div>
-            <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}>
-              {Array.from({ length: GRID_COLS }).map((_, i) => (
-                <div key={i} className={i < GRID_COLS - 1 ? 'border-r border-gray-400' : ''}></div>
+            <div className="flex flex-col flex-1">
+              {[0, 1].map(row => (
+                <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
+                  <div className="w-6 border-r border-black shrink-0"></div>
+                  <div className="w-6 border-r-2 border-black shrink-0"></div>
+                  {gridArea()}
+                </div>
               ))}
             </div>
           </div>

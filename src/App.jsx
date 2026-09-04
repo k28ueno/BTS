@@ -4599,7 +4599,7 @@ export default function App() {
             <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
 
             <div className="flex justify-between items-stretch gap-4 mb-4">
-              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '17%' }}>
+              <div className="flex flex-col justify-between shrink-0" style={{ width: '19%', fontSize: '11px' }}>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">期日：</div>{config.date}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">大会名：</div>{config.title}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">場所：</div>{config.venue}</div>
@@ -4613,26 +4613,26 @@ export default function App() {
                 </div>
                 <div className="flex" style={{ height: '78px' }}>
                   <div className="w-6 border-r-2 border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
-                  <div className="flex flex-col flex-1 border-r border-dotted border-black">
-                     <div className="flex-1 border-b border-black px-2 flex items-center">{team1?.p1Name}</div>
-                     <div className="flex-1 border-b border-black px-2 flex items-center">{team1?.p2Name}</div>
-                     <div className="flex-1 px-2 flex items-center text-gray-600">{team1?.club}</div>
+                  <div className="flex flex-col flex-1 border-r border-dotted border-black" style={{ minWidth: 0 }}>
+                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1?.p1Name}</div>
+                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1?.p2Name}</div>
+                     <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team1?.club}</div>
                   </div>
                   <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '56px' }}>
                      <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
                      <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
                      <div className="flex-1 flex items-center justify-center">－</div>
                   </div>
-                  <div className="flex flex-col flex-1">
-                     <div className="flex-1 border-b border-black px-2 flex items-center">{team2?.p1Name}</div>
-                     <div className="flex-1 border-b border-black px-2 flex items-center">{team2?.p2Name}</div>
-                     <div className="flex-1 px-2 flex items-center text-gray-600">{team2?.club}</div>
+                  <div className="flex flex-col flex-1" style={{ minWidth: 0 }}>
+                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2?.p1Name}</div>
+                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2?.p2Name}</div>
+                     <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team2?.club}</div>
                   </div>
                   <div className="w-6 border-l-2 border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '17%' }}>
+              <div className="flex flex-col justify-between shrink-0" style={{ width: '19%', fontSize: '11px' }}>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">種目：</div>{m.cls}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">試合番号：</div>{matchNoText}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">コート番号：</div>{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>

@@ -4599,16 +4599,16 @@ export default function App() {
             <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
 
             <div className="flex justify-between items-stretch gap-4 mb-4">
-              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '11%' }}>
-                <div className="border-b border-black pb-0.5">期日：　{config.date}</div>
-                <div className="border-b border-black pb-0.5">大会名：　{config.title}</div>
-                <div className="border-b border-black pb-0.5">場所：　{config.venue}</div>
+              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '17%' }}>
+                <div className="border-b border-black pb-0.5"><div className="text-gray-500">期日：</div>{config.date}</div>
+                <div className="border-b border-black pb-0.5"><div className="text-gray-500">大会名：</div>{config.title}</div>
+                <div className="border-b border-black pb-0.5"><div className="text-gray-500">場所：</div>{config.venue}</div>
               </div>
 
               <div className="border-2 border-black flex-1">
                 <div className="flex border-b-2 border-black text-center">
                   <div className="flex-[3] border-r border-black p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
-                  <div className="shrink-0 border-r border-black p-1" style={{ width: '40px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
+                  <div className="shrink-0 border-r border-black p-1" style={{ width: '56px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
                   <div className="flex-[3] p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
                 </div>
                 <div className="flex" style={{ height: '78px' }}>
@@ -4618,7 +4618,7 @@ export default function App() {
                      <div className="flex-1 border-b border-black px-2 flex items-center">{team1?.p2Name}</div>
                      <div className="flex-1 px-2 flex items-center text-gray-600">{team1?.club}</div>
                   </div>
-                  <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '40px' }}>
+                  <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '56px' }}>
                      <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
                      <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
                      <div className="flex-1 flex items-center justify-center">－</div>
@@ -4632,10 +4632,10 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '11%', wordBreak: 'keep-all' }}>
-                <div className="border-b border-black pb-0.5">種目：　{m.cls}</div>
-                <div className="border-b border-black pb-0.5">試合番号：　{matchNoText}</div>
-                <div className="border-b border-black pb-0.5">コート番号：　{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>
+              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '17%' }}>
+                <div className="border-b border-black pb-0.5"><div className="text-gray-500">種目：</div>{m.cls}</div>
+                <div className="border-b border-black pb-0.5"><div className="text-gray-500">試合番号：</div>{matchNoText}</div>
+                <div className="border-b border-black pb-0.5"><div className="text-gray-500">コート番号：</div>{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>
               </div>
             </div>
 

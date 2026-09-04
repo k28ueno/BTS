@@ -4593,12 +4593,12 @@ export default function App() {
           </div>
         );
         const gameBox = (label) => (
-          <div key={label} className="border-2 border-black flex" style={{ height: '80px' }}>
+          <div key={label} className="border-2 border-black flex" style={{ height: '128px' }}>
             <div className="w-6 border-r-2 border-black flex items-center justify-center text-[11px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
             <div className="flex flex-col flex-1">
               {[0, 1].map(row => (
                 <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
-                  <div className="w-20 border-r-2 border-black shrink-0"></div>
+                  <div className="shrink-0 border-r-2 border-black" style={{ width: '160px' }}></div>
                   {gridArea()}
                 </div>
               ))}

@@ -4623,7 +4623,7 @@ export default function App() {
               <div className="border-y-2 border-x-[1.5px] border-black flex-1">
                 <div className="flex border-b-2 border-black text-center">
                   <div className="flex-[3] border-r border-black p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
-                  <div className="shrink-0 border-r border-black p-1" style={{ width: '56px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
+                  <div className="shrink-0 border-r border-black p-1" style={{ width: '80px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
                   <div className="flex-[3] p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
                 </div>
                 <div className="flex" style={{ height: '78px' }}>
@@ -4633,7 +4633,7 @@ export default function App() {
                      <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1?.p2Name}</div>
                      <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team1?.club}</div>
                   </div>
-                  <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '56px' }}>
+                  <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '80px' }}>
                      <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
                      <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
                      <div className="flex-1 flex items-center justify-center">－</div>

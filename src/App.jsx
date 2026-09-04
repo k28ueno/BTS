@@ -4581,7 +4581,7 @@ export default function App() {
         // 縦横とも罫線のある方眼にするため、行×列とも均等分割できるCSS Gridで
         // 実セル（div）を敷き詰め、端が半端な升目にならないようにする
         const GRID_COLS = 44;
-        const GRID_ROWS = 3;
+        const GRID_ROWS = 2;
         const gridArea = () => (
           <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}>
             {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => (
@@ -4598,8 +4598,7 @@ export default function App() {
             <div className="flex flex-col flex-1">
               {[0, 1].map(row => (
                 <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
-                  <div className="w-6 border-r border-black shrink-0"></div>
-                  <div className="w-6 border-r-2 border-black shrink-0"></div>
+                  <div className="w-20 border-r-2 border-black shrink-0"></div>
                   {gridArea()}
                 </div>
               ))}

@@ -2830,13 +2830,13 @@ export default function App() {
       <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 space-y-6">
         <div>
            <h2 className="text-2xl font-bold border-b-2 border-[#2c5f4e] pb-2 mb-6 text-[#2c5f4e] flex items-center gap-2"><IconCheckCircle /> 大会要項</h2>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-gray-700">
-             <div><strong className="block text-sm text-gray-500">日程</strong>{config.date}</div>
-             <div><strong className="block text-sm text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
-             <div className="md:col-span-2"><strong className="block text-sm text-gray-500">会場</strong>{config.venue}</div>
-             <div className="md:col-span-2"><strong className="block text-sm text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
-             <div className="md:col-span-2"><strong className="block text-sm text-gray-500">申込締切</strong><span className="text-red-500 font-bold">{config.deadline}</span></div>
-             <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-sm mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-gray-700 text-lg">
+             <div><strong className="block text-base text-gray-500">日程</strong>{config.date}</div>
+             <div><strong className="block text-base text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
+             <div className="md:col-span-2"><strong className="block text-base text-gray-500">会場</strong>{config.venue}</div>
+             <div className="md:col-span-2"><strong className="block text-base text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
+             <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込締切</strong><span className="text-red-500 font-bold">{config.deadline}</span></div>
+             <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-base mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
            </div>
         </div>
 
@@ -2844,27 +2844,27 @@ export default function App() {
            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2">
               🏸 審判割り当て ＆ スコア提出の流れ
            </h3>
-           <p className="text-xs text-slate-600 font-bold">
+           <p className="text-sm text-slate-600 font-bold">
               ※原則として、審判は同一クラス内の直前試合のペアが担当します。
            </p>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-700 pt-1">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700 pt-1">
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
-                 <div className="font-bold text-emerald-800 text-sm">1. 審判の分担</div>
+                 <div className="font-bold text-emerald-800 text-base">1. 審判の分担</div>
                  <p className="leading-relaxed">直前試合の<strong>【勝者組】が主審・副審</strong>を務め、<strong>【敗者組】が線審</strong>を務めます。</p>
-                 <p className="text-[11px] text-gray-500 pt-0.5">※予選初戦は、同クラスの空いているペアが審判を担当します（グループは問いません）。</p>
+                 <p className="text-xs text-gray-500 pt-0.5">※予選初戦は、同クラスの空いているペアが審判を担当します（グループは問いません）。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
-                 <div className="font-bold text-emerald-800 text-sm">2. 試合後の受渡</div>
+                 <div className="font-bold text-emerald-800 text-base">2. 試合後の受渡</div>
                  <p className="leading-relaxed">試合終了後、主審は結果を記入したスコア用紙を<strong>【勝者ペアの代表者】</strong>に渡します。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
-                 <div className="font-bold text-emerald-800 text-sm">3. 事務局への提出</div>
+                 <div className="font-bold text-emerald-800 text-base">3. 事務局への提出</div>
                  <p className="leading-relaxed">勝者・敗者両ペアの代表者が一緒にスコア用紙を持って事務局本部へ提出します。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
-                 <div className="font-bold text-emerald-800 text-sm">4. 次試合の指示・他クラス応援</div>
+                 <div className="font-bold text-emerald-800 text-base">4. 次試合の指示・他クラス応援</div>
                  <p className="leading-relaxed">事務局は勝者ペアに次試合のスコア用紙を渡し、敗者ペアには線審に入るよう案内します。</p>
-                 <p className="text-[11px] text-gray-500 pt-0.5">※組数が少なく同一クラス内から審判が出せない場合は、他クラスの空きペアに応援を依頼します。</p>
+                 <p className="text-xs text-gray-500 pt-0.5">※組数が少なく同一クラス内から審判が出せない場合は、他クラスの空きペアに応援を依頼します。</p>
               </div>
            </div>
         </div>

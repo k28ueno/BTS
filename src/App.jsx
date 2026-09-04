@@ -4598,7 +4598,10 @@ export default function App() {
             <div className="flex flex-col flex-1">
               {[0, 1].map(row => (
                 <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
-                  <div className="shrink-0 border-r-2 border-black" style={{ width: '160px' }}></div>
+                  <div className="shrink-0 border-r-2 border-black flex flex-col" style={{ width: '160px' }}>
+                     <div className="flex-1 border-b border-dashed border-gray-400"></div>
+                     <div className="flex-1"></div>
+                  </div>
                   {gridArea()}
                 </div>
               ))}

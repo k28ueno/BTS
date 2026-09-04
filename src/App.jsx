@@ -762,6 +762,24 @@ export default function App() {
 
   const handleSaveSettings = async () => {
     if (isSupabaseConfigured) {
+      // 出場クラス名を変更した場合、既存のエントリー・試合に保存済みの cls が
+      // 旧クラス名のまま残ってしまうため、同じ並び順の項目を「改名」とみなして追従させる
+      const { data: prevSettings } = await supabase.from('settings').select('classes').eq('id', 1).single();
+      const oldClasses = prevSettings?.classes || [];
+      const renameMap = oldClasses
+        .map((oldName, i) => [oldName, config.classes[i]])
+        .filter(([oldName, newName]) => newName && newName !== oldName);
+
+      if (renameMap.length > 0) {
+        for (const [oldName, newName] of renameMap) {
+          await supabase.from('entries').update({ cls: newName }).eq('cls', oldName);
+          await supabase.from('matches').update({ cls: newName }).eq('cls', oldName);
+        }
+        const renameCls = (val) => renameMap.find(([o]) => o === val)?.[1] ?? val;
+        setEntries(prev => prev.map(e => ({ ...e, cls: renameCls(e.cls) })));
+        setMatches(prev => prev.map(m => ({ ...m, cls: renameCls(m.cls) })));
+      }
+
       const payload = {
         id: 1,
         title: config.title,

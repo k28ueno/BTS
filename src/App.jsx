@@ -4599,23 +4599,24 @@ export default function App() {
             <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
 
             <div className="flex justify-between items-stretch gap-4 mb-4">
-              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '19%', wordBreak: 'keep-all' }}>
+              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '13%', wordBreak: 'keep-all' }}>
                 <div className="border-b border-black pb-0.5">期日：　{config.date}</div>
                 <div className="border-b border-black pb-0.5">大会名：　{config.title}</div>
                 <div className="border-b border-black pb-0.5">場所：　{config.venue}</div>
               </div>
 
-              <div className="border-2 border-black" style={{ width: '62%' }}>
+              <div className="border-2 border-black flex-1">
                 <div className="flex border-b-2 border-black text-center">
                   <div className="flex-[2] border-r border-black p-1">選手名・所属</div>
                   <div className="shrink-0 border-r border-black p-1" style={{ width: '52px' }}>スコア</div>
                   <div className="flex-[2] p-1">選手名・所属</div>
                 </div>
-                <div className="flex" style={{ height: '62px' }}>
+                <div className="flex" style={{ height: '78px' }}>
                   <div className="w-6 border-r-2 border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
                   <div className="flex flex-col flex-1 border-r border-dotted border-black">
                      <div className="flex-1 border-b border-black px-2 flex items-center">{team1?.p1Name}</div>
-                     <div className="flex-1 px-2 flex items-center">{team1?.p2Name}（{team1?.club}）</div>
+                     <div className="flex-1 border-b border-black px-2 flex items-center">{team1?.p2Name}</div>
+                     <div className="flex-1 px-2 flex items-center text-gray-600">{team1?.club}</div>
                   </div>
                   <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '52px' }}>
                      <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
@@ -4624,13 +4625,14 @@ export default function App() {
                   </div>
                   <div className="flex flex-col flex-1">
                      <div className="flex-1 border-b border-black px-2 flex items-center">{team2?.p1Name}</div>
-                     <div className="flex-1 px-2 flex items-center">{team2?.p2Name}（{team2?.club}）</div>
+                     <div className="flex-1 border-b border-black px-2 flex items-center">{team2?.p2Name}</div>
+                     <div className="flex-1 px-2 flex items-center text-gray-600">{team2?.club}</div>
                   </div>
                   <div className="w-6 border-l-2 border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '19%', wordBreak: 'keep-all' }}>
+              <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '13%', wordBreak: 'keep-all' }}>
                 <div className="border-b border-black pb-0.5">種目：　{m.cls}</div>
                 <div className="border-b border-black pb-0.5">試合番号：　{matchNoText}</div>
                 <div className="border-b border-black pb-0.5">コート番号：　{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>

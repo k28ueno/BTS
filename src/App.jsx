@@ -4598,8 +4598,8 @@ export default function App() {
           <div className="print-only-area p-6 bg-white text-black text-sm">
             <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
 
-            <div className="flex justify-between items-stretch gap-4 mb-4">
-              <div className="flex flex-col justify-between shrink-0" style={{ width: '19%', fontSize: '11px' }}>
+            <div className="flex justify-between items-start gap-4 mb-4">
+              <div className="flex flex-col justify-between shrink-0 whitespace-nowrap" style={{ width: '23%', fontSize: '11px' }}>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">期日：</div>{config.date}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">大会名：</div>{config.title}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">場所：</div>{config.venue}</div>
@@ -4632,7 +4632,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between shrink-0" style={{ width: '19%', fontSize: '11px' }}>
+              <div className="flex flex-col justify-between shrink-0 whitespace-nowrap" style={{ width: '15%', fontSize: '11px' }}>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">種目：</div>{m.cls}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">試合番号：</div>{matchNoText}</div>
                 <div className="border-b border-black pb-0.5"><div className="text-gray-500">コート番号：</div>{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>

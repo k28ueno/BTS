@@ -32,4 +32,15 @@
     border: none;
   }
   .print-only-area { display: block; }
+
+  /* スコアシート印刷時：ヘッダーとメイン画面は表示上は隠れていても
+     レイアウト上の高さを持ったままになり、余分な空白ページが出力されてしまうため、
+     完全に取り除いて1ページに収まるようにする */
+  .printing-score-sheet {
+    min-height: 0 !important;
+  }
+  .printing-score-sheet > header,
+  .printing-score-sheet > main {
+    display: none !important;
+  }
 }

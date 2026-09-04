@@ -4449,7 +4449,7 @@ export default function App() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-xl text-gray-500">データを読み込み中...</div>;
 
   return (
-    <div className="min-h-screen font-sans bg-gray-50 text-gray-800 pb-20">
+    <div className={`min-h-screen font-sans bg-gray-50 text-gray-800 pb-20 ${printMatchId ? 'printing-score-sheet' : ''}`}>
       {/* 修正: 右上の「エントリー」「修正・取消」ボタンを削除し、「管理」ボタンのみ配置 */}
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -4577,24 +4577,18 @@ export default function App() {
         const team2 = entries.find(e => e.id === m.team2Id);
         const matchNoText = typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-';
 
-        // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
+        // 用紙様式に合わせた升目（1ゲーム分の得点欄は横一列）
         // 背景画像の方眼だと枠幅次第で端が半端な升目になるため、実セル（div）を敷き詰めて
         // 常に端から端まで均等な升目になるようにする
         const GRID_COLS = 44;
         const gameBox = (label) => (
-          <div key={label} className="border-2 border-black flex" style={{ height: '80px' }}>
+          <div key={label} className="border-2 border-black flex" style={{ height: '68px' }}>
             <div className="w-6 border-r-2 border-black flex items-center justify-center text-[11px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
-            <div className="flex flex-col flex-1">
-              {[0, 1].map(row => (
-                <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
-                  <div className="w-6 border-r border-black shrink-0"></div>
-                  <div className="w-6 border-r-2 border-black shrink-0"></div>
-                  <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}>
-                    {Array.from({ length: GRID_COLS }).map((_, i) => (
-                      <div key={i} className={i < GRID_COLS - 1 ? 'border-r border-gray-400' : ''}></div>
-                    ))}
-                  </div>
-                </div>
+            <div className="w-6 border-r border-black shrink-0"></div>
+            <div className="w-6 border-r-2 border-black shrink-0"></div>
+            <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}>
+              {Array.from({ length: GRID_COLS }).map((_, i) => (
+                <div key={i} className={i < GRID_COLS - 1 ? 'border-r border-gray-400' : ''}></div>
               ))}
             </div>
           </div>
@@ -4611,31 +4605,30 @@ export default function App() {
                 <div className="border-b border-black pb-0.5">場所：　{config.venue}</div>
               </div>
 
-              <table className="border-collapse border-2 border-black" style={{ width: '62%' }}>
-                <thead>
-                  <tr>
-                    <th colSpan={2} className="border border-black p-1 font-normal">選手名・所属</th>
-                    <th className="border border-black p-1 w-16 font-normal">スコア</th>
-                    <th colSpan={2} className="border border-black p-1 font-normal">選手名・所属</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td rowSpan={2} className="border border-black w-6 text-center align-middle" style={{ writingMode: 'vertical-rl' }}>L・R</td>
-                    <td className="border border-black px-2 py-1 h-7">{team1?.p1Name}</td>
-                    <td rowSpan={2} className="border border-black text-center align-middle">
-                       <div className="border-b border-dotted border-black py-1.5">－</div>
-                       <div className="py-1.5">－</div>
-                    </td>
-                    <td className="border border-black px-2 py-1 h-7">{team2?.p1Name}</td>
-                    <td rowSpan={2} className="border border-black w-6 text-center align-middle" style={{ writingMode: 'vertical-rl' }}>L・R</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black px-2 py-1 h-7">{team1?.p2Name}（{team1?.club}）</td>
-                    <td className="border border-black px-2 py-1 h-7">{team2?.p2Name}（{team2?.club}）</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div className="border-2 border-black" style={{ width: '62%' }}>
+                <div className="flex border-b-2 border-black text-center">
+                  <div className="flex-[2] border-r border-black p-1">選手名・所属</div>
+                  <div className="shrink-0 border-r border-black p-1" style={{ width: '52px' }}>スコア</div>
+                  <div className="flex-[2] p-1">選手名・所属</div>
+                </div>
+                <div className="flex" style={{ height: '62px' }}>
+                  <div className="w-6 border-r-2 border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
+                  <div className="flex flex-col flex-1 border-r border-dotted border-black">
+                     <div className="flex-1 border-b border-black px-2 flex items-center">{team1?.p1Name}</div>
+                     <div className="flex-1 px-2 flex items-center">{team1?.p2Name}（{team1?.club}）</div>
+                  </div>
+                  <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '52px' }}>
+                     <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
+                     <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
+                     <div className="flex-1 flex items-center justify-center">－</div>
+                  </div>
+                  <div className="flex flex-col flex-1">
+                     <div className="flex-1 border-b border-black px-2 flex items-center">{team2?.p1Name}</div>
+                     <div className="flex-1 px-2 flex items-center">{team2?.p2Name}（{team2?.club}）</div>
+                  </div>
+                  <div className="w-6 border-l-2 border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
+                </div>
+              </div>
 
               <div className="flex flex-col justify-between shrink-0 text-xs" style={{ width: '19%', wordBreak: 'keep-all' }}>
                 <div className="border-b border-black pb-0.5">種目：　{m.cls}</div>

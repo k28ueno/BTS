@@ -111,6 +111,8 @@ export default function App() {
     entryStartDate: '',
     deadline: '11月27日(金)',
     notes: '参加者は当日の8時40分までに受付を済ませる。当日ゴミは各自持ち帰り。昼食等は各自持参。',
+    announcement: '',
+    sponsors: [],
     classes: ['1部', '2部', '3部', '4部'],
     courts: 8,
     fees: { '一般': 4000, '高校生まで': 2000 },
@@ -691,6 +693,8 @@ export default function App() {
             entryStartDate: data.entrystartdate || '',
             deadline: data.deadline,
             notes: data.notes,
+            announcement: data.announcement || '',
+            sponsors: data.sponsors || [],
             classes: data.classes || ['1部', '2部', '3部', '4部'],
             courts: data.courts || 8,
             fees: data.fees || { '一般': 4000, '高校生まで': 2000 },
@@ -849,6 +853,8 @@ export default function App() {
         entrystartdate: config.entryStartDate,
         deadline: config.deadline,
         notes: config.notes,
+        announcement: config.announcement,
+        sponsors: config.sponsors,
         classes: config.classes,
         courts: config.courts,
         fees: config.fees,
@@ -1165,6 +1171,8 @@ export default function App() {
                 entrystartdate: data.config.entryStartDate,
                 deadline: data.config.deadline,
                 notes: data.config.notes,
+                announcement: data.config.announcement,
+                sponsors: data.config.sponsors,
                 classes: data.config.classes,
                 courts: data.config.courts,
                 fees: data.config.fees,
@@ -2993,6 +3001,11 @@ export default function App() {
         >
           {config.title}
         </h1>
+        {config.announcement && (
+          <div className="relative z-10 bg-white/95 text-gray-800 rounded-lg p-3 md:p-4 mb-4 text-sm md:text-base text-left max-w-2xl mx-auto shadow-sm whitespace-pre-wrap">
+            <span className="font-bold text-[#2c5f4e]">📢 お知らせ：</span>{config.announcement}
+          </div>
+        )}
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
           <button onClick={() => {
@@ -3052,6 +3065,19 @@ export default function App() {
            </div>
         </div>
       </div>
+
+      {config.sponsors.length > 0 && (
+        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-500 text-center mb-4">協賛</h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            {config.sponsors.map((sponsor, i) => (
+              <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg px-5 py-2.5 text-gray-700 font-bold text-sm">
+                {sponsor}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -3547,6 +3573,16 @@ export default function App() {
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
+                <div className="md:col-span-2">
+                  <label className="block font-bold text-sm mb-1 text-gray-700">お知らせ（トップ画面のタイトル下に表示）</label>
+                  <textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-20" value={config.announcement} onChange={e=>setConfig({...config, announcement: e.target.value})} placeholder="例: 荒天時は当日朝7時までにホームページで開催可否をお知らせします。" />
+                  <p className="text-xs text-gray-500 mt-1">※空欄の場合は表示されません。</p>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block font-bold text-sm mb-1 text-gray-700">協賛企業（カンマ `,` 区切り、トップ画面の下部に表示）</label>
+                  <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.sponsors.join(',')} onChange={e=>setConfig({...config, sponsors: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
+                  <p className="text-xs text-gray-500 mt-1">※空欄の場合は表示されません。</p>
+                </div>
               </div>
             </div>
           )}

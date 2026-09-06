@@ -120,6 +120,11 @@ export default function App() {
     avgMatchDuration: 15,
     adminIdleTimeoutMinutes: DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES
   });
+  // 出場クラス・協賛企業のカンマ区切り入力欄は、config側の配列（split/trim/filter済み）を
+  // そのままvalueに戻すと、入力途中の半角カンマや末尾の空要素が確定前に消えてしまい
+  // 入力しづらくなるため、入力中の生のテキストを別途保持しておく
+  const [classesText, setClassesText] = useState(config.classes.join(','));
+  const [sponsorsText, setSponsorsText] = useState(config.sponsors.join(','));
 
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
@@ -703,6 +708,8 @@ export default function App() {
             adminIdleTimeoutMinutes: data.adminidletimeoutminutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES
           };
           setConfig(loadedConfig);
+          setClassesText(loadedConfig.classes.join(','));
+          setSponsorsText(loadedConfig.sponsors.join(','));
           const defaultTime = formatHHMM(loadedConfig.timeStart);
           setSimCurrentTime(defaultTime);
           advanceSimTimeIfPast();
@@ -1150,6 +1157,8 @@ export default function App() {
             setLoading(true);
             
             setConfig(data.config);
+            setClassesText((data.config.classes || []).join(','));
+            setSponsorsText((data.config.sponsors || []).join(','));
             setEntries(data.entries);
             setMatches(data.matches);
             if (data.lastCourtReferees) {
@@ -2994,6 +3003,11 @@ export default function App() {
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+      {config.announcement && (
+        <div className="bg-white text-gray-800 rounded-xl p-4 text-sm md:text-base text-left shadow-md border-l-4 border-[#2c5f4e] whitespace-pre-wrap">
+          <span className="font-bold text-[#2c5f4e]">📢 お知らせ：</span>{config.announcement}
+        </div>
+      )}
       <div ref={measureTitleRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
         <h1
           className="font-extrabold mb-4 tracking-wider relative z-10 leading-tight break-words"
@@ -3001,11 +3015,6 @@ export default function App() {
         >
           {config.title}
         </h1>
-        {config.announcement && (
-          <div className="relative z-10 bg-white/95 text-gray-800 rounded-lg p-3 md:p-4 mb-4 text-sm md:text-base text-left max-w-2xl mx-auto shadow-sm whitespace-pre-wrap">
-            <span className="font-bold text-[#2c5f4e]">📢 お知らせ：</span>{config.announcement}
-          </div>
-        )}
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
           <button onClick={() => {
@@ -3569,7 +3578,7 @@ export default function App() {
                   <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。</p>
                 </div>
 
-                <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.classes.join(',')} onChange={e=>setConfig({...config, classes: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="例: 1部,2部,3部" /></div>
+                <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={classesText} onChange={e=>{ setClassesText(e.target.value); setConfig({...config, classes: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 1部,2部,3部" /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
@@ -3580,7 +3589,7 @@ export default function App() {
                 </div>
                 <div className="md:col-span-2">
                   <label className="block font-bold text-sm mb-1 text-gray-700">協賛企業（カンマ `,` 区切り、トップ画面の下部に表示）</label>
-                  <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.sponsors.join(',')} onChange={e=>setConfig({...config, sponsors: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
+                  <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={sponsorsText} onChange={e=>{ setSponsorsText(e.target.value); setConfig({...config, sponsors: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
                   <p className="text-xs text-gray-500 mt-1">※空欄の場合は表示されません。</p>
                 </div>
               </div>

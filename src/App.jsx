@@ -127,11 +127,9 @@ export default function App() {
   const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league'); 
-  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1Furigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2Furigana: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', email: '', clubRank: '' });
-  // 姓・名欄のIME変換からふりがなを自動補完するための一時バッファ（読みが確定するまでの入力中文字列を保持）
-  const furiganaBufferRef = useRef({ p1: { last: '', first: '' }, p2: { last: '', first: '' } });
-  // ふりがな欄をユーザーが直接編集したら、以後は自動補完で上書きしない
-  const furiganaDirtyRef = useRef({ p1: false, p2: false });
+  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1LastFurigana: '', p1FirstFurigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2LastFurigana: '', p2FirstFurigana: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', email: '', clubRank: '' });
+  // ふりがな欄（姓・名それぞれ）をユーザーが直接編集したら、以後は自動補完で上書きしない
+  const furiganaDirtyRef = useRef({ p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false });
   const [editLogin, setEditLogin] = useState({ id: '', password: '' });
   const [editMode, setEditMode] = useState(false);
   const [currentEditId, setCurrentEditId] = useState(null);
@@ -166,7 +164,9 @@ export default function App() {
   const renderTeamNameWithFurigana = (teamId) => {
     const ent = entries.find(e => String(e.id) === String(teamId));
     if (!ent) return <div className="font-bold text-base truncate">未定</div>;
-    const nameFurigana = [ent.p1Furigana, ent.p2Furigana].filter(Boolean).join('・');
+    const p1Furigana = `${ent.p1LastFurigana || ''}${ent.p1FirstFurigana || ''}`;
+    const p2Furigana = `${ent.p2LastFurigana || ''}${ent.p2FirstFurigana || ''}`;
+    const nameFurigana = [p1Furigana, p2Furigana].filter(Boolean).join('・');
     return (
       <div>
         {nameFurigana && (
@@ -719,13 +719,15 @@ export default function App() {
             p1Name: d.p1name,
             p1LastName: d.p1lastname || '',
             p1FirstName: d.p1firstname || '',
-            p1Furigana: d.p1furigana || '',
+            p1LastFurigana: d.p1lastfurigana || '',
+            p1FirstFurigana: d.p1firstfurigana || '',
             p1Club: d.p1club,
             p1Fee: d.p1fee,
             p2Name: d.p2name,
             p2LastName: d.p2lastname || '',
             p2FirstName: d.p2firstname || '',
-            p2Furigana: d.p2furigana || '',
+            p2LastFurigana: d.p2lastfurigana || '',
+            p2FirstFurigana: d.p2firstfurigana || '',
             p2Club: d.p2club,
             p2Fee: d.p2fee,
             feeCategory: d.p1fee || '一般',
@@ -997,8 +999,6 @@ export default function App() {
         const [p2First, p2FirstFuri] = givenNames[Math.floor(Math.random() * givenNames.length)];
         const p1 = `${p1Last}${p1First}`;
         const p2 = `${p2Last}${p2First}`;
-        const p1Furigana = `${p1LastFuri}${p1FirstFuri}`;
-        const p2Furigana = `${p2LastFuri}${p2FirstFuri}`;
 
         const pairFeeCategory = Math.random() > 0.4 ? '一般' : '高校生まで';
 
@@ -1010,13 +1010,15 @@ export default function App() {
           p1Name: p1,
           p1LastName: p1Last,
           p1FirstName: p1First,
-          p1Furigana: p1Furigana,
+          p1LastFurigana: p1LastFuri,
+          p1FirstFurigana: p1FirstFuri,
           p1Club: clubName,
           p1Fee: pairFeeCategory,
           p2Name: p2,
           p2LastName: p2Last,
           p2FirstName: p2First,
-          p2Furigana: p2Furigana,
+          p2LastFurigana: p2LastFuri,
+          p2FirstFurigana: p2FirstFuri,
           p2Club: clubName,
           p2Fee: pairFeeCategory,
           feeCategory: pairFeeCategory,
@@ -1036,13 +1038,15 @@ export default function App() {
           p1name: p1,
           p1lastname: p1Last,
           p1firstname: p1First,
-          p1furigana: p1Furigana,
+          p1lastfurigana: p1LastFuri,
+          p1firstfurigana: p1FirstFuri,
           p1club: clubName,
           p1fee: pairFeeCategory,
           p2name: p2,
           p2lastname: p2Last,
           p2firstname: p2First,
-          p2furigana: p2Furigana,
+          p2lastfurigana: p2LastFuri,
+          p2firstfurigana: p2FirstFuri,
           p2club: clubName,
           p2fee: pairFeeCategory,
           password: generatedPassword,
@@ -1169,13 +1173,15 @@ export default function App() {
                   p1name: ent.p1Name,
                   p1lastname: ent.p1LastName,
                   p1firstname: ent.p1FirstName,
-                  p1furigana: ent.p1Furigana,
+                  p1lastfurigana: ent.p1LastFurigana,
+                  p1firstfurigana: ent.p1FirstFurigana,
                   p1club: ent.p1Club,
                   p1fee: ent.p1Fee,
                   p2name: ent.p2Name,
                   p2lastname: ent.p2LastName,
                   p2firstname: ent.p2FirstName,
-                  p2furigana: ent.p2Furigana,
+                  p2lastfurigana: ent.p2LastFurigana,
+                  p2firstfurigana: ent.p2FirstFurigana,
                   p2club: ent.p2Club,
                   p2fee: ent.p2Fee,
                   password: ent.password,
@@ -2007,18 +2013,13 @@ export default function App() {
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 
-  // 姓・名欄をIME変換中に、変換前のひらがな読みを捕捉してふりがな欄へ自動反映する
+  // 姓・名欄をIME変換確定時、変換前のひらがな読みを対応するふりがな欄へ自動反映する
   // （ユーザーがふりがな欄を直接編集した後は上書きしない。読みの取得に失敗した場合は何もしない）
-  const makeFuriganaAutofillHandler = (player, part) => (e) => {
+  const makeFuriganaAutofillHandler = (nameField, furiganaField) => (e) => {
+    if (e.type !== 'compositionend') return;
     const reading = e.data;
-    if (reading && /^[ぁ-んー]+$/.test(reading)) {
-      furiganaBufferRef.current[player][part] = reading;
-    }
-    if (e.type === 'compositionend' && !furiganaDirtyRef.current[player]) {
-      const combined = furiganaBufferRef.current[player].last + furiganaBufferRef.current[player].first;
-      if (combined) {
-        setEntryForm(prev => ({ ...prev, [`${player}Furigana`]: combined }));
-      }
+    if (reading && /^[ぁ-んー]+$/.test(reading) && !furiganaDirtyRef.current[nameField]) {
+      setEntryForm(prev => ({ ...prev, [furiganaField]: reading }));
     }
   };
 
@@ -2049,13 +2050,15 @@ export default function App() {
       p1name: p1Name,
       p1lastname: entryForm.p1LastName,
       p1firstname: entryForm.p1FirstName,
-      p1furigana: entryForm.p1Furigana,
+      p1lastfurigana: entryForm.p1LastFurigana,
+      p1firstfurigana: entryForm.p1FirstFurigana,
       p1club: entryForm.club,
       p1fee: feeCat,
       p2name: p2Name,
       p2lastname: entryForm.p2LastName,
       p2firstname: entryForm.p2FirstName,
-      p2furigana: entryForm.p2Furigana,
+      p2lastfurigana: entryForm.p2LastFurigana,
+      p2firstfurigana: entryForm.p2FirstFurigana,
       p2club: entryForm.club,
       p2fee: feeCat,
       password: generatedPassword,
@@ -2137,7 +2140,7 @@ export default function App() {
       ),
       onClose: () => { setDialog(null); setCurrentTab('home'); }
     });
-    setEntryForm({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1Furigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2Furigana: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '', email: '', clubRank: '' });
+    setEntryForm({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1LastFurigana: '', p1FirstFurigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2LastFurigana: '', p2FirstFurigana: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '', email: '', clubRank: '' });
   };
 
   const handleEditLogin = (e) => {
@@ -2150,7 +2153,7 @@ export default function App() {
     if (target) {
       setEntryForm({ ...target, feeCategory: target.feeCategory || target.p1Fee || '一般' });
       // 既存のふりがなを氏名の再入力で誤って上書きしないよう、編集開始時は自動補完を無効化しておく
-      furiganaDirtyRef.current = { p1: true, p2: true };
+      furiganaDirtyRef.current = { p1LastName: true, p1FirstName: true, p2LastName: true, p2FirstName: true };
       setCurrentEditId(target.id);
       setEditMode(true);
       setCurrentTab('entry');
@@ -2174,13 +2177,15 @@ export default function App() {
       p1name: p1Name,
       p1lastname: entryForm.p1LastName,
       p1firstname: entryForm.p1FirstName,
-      p1furigana: entryForm.p1Furigana,
+      p1lastfurigana: entryForm.p1LastFurigana,
+      p1firstfurigana: entryForm.p1FirstFurigana,
       p1club: entryForm.club,
       p1fee: feeCat,
       p2name: p2Name,
       p2lastname: entryForm.p2LastName,
       p2firstname: entryForm.p2FirstName,
-      p2furigana: entryForm.p2Furigana,
+      p2lastfurigana: entryForm.p2LastFurigana,
+      p2firstfurigana: entryForm.p2FirstFurigana,
       p2club: entryForm.club,
       p2fee: feeCat,
       club_rank: clubRankValue
@@ -2970,7 +2975,7 @@ export default function App() {
         </h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
-          <button onClick={() => {setEditMode(false); furiganaDirtyRef.current = { p1: false, p2: false }; furiganaBufferRef.current = { p1: { last: '', first: '' }, p2: { last: '', first: '' } }; setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => {setEditMode(false); furiganaDirtyRef.current = { p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false }; setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base"><IconSettings /> 修正・取消</button>
           <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconSmartphone /> 当日の進行状況・対戦表</button>
         </div>
@@ -3339,15 +3344,17 @@ export default function App() {
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-blue-50">
            <div className="col-span-2 font-bold text-blue-800">選手 1</div>
-           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p1LastName} onChange={e => setEntryForm({...entryForm, p1LastName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p1', 'last')} onCompositionEnd={makeFuriganaAutofillHandler('p1', 'last')} />
-           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p1FirstName} onChange={e => setEntryForm({...entryForm, p1FirstName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p1', 'first')} onCompositionEnd={makeFuriganaAutofillHandler('p1', 'first')} />
-           <input type="text" placeholder="ふりがな（例: やまだ たろう）" className="col-span-2 p-2 border rounded text-sm" required value={entryForm.p1Furigana} onChange={e => { furiganaDirtyRef.current.p1 = true; setEntryForm({...entryForm, p1Furigana: e.target.value}); }} />
+           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p1LastName} onChange={e => setEntryForm({...entryForm, p1LastName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p1LastName', 'p1LastFurigana')} />
+           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p1FirstName} onChange={e => setEntryForm({...entryForm, p1FirstName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p1FirstName', 'p1FirstFurigana')} />
+           <input type="text" placeholder="ふりがな（せい）" className="p-2 border rounded text-sm" required value={entryForm.p1LastFurigana} onChange={e => { furiganaDirtyRef.current.p1LastName = true; setEntryForm({...entryForm, p1LastFurigana: e.target.value}); }} />
+           <input type="text" placeholder="ふりがな（めい）" className="p-2 border rounded text-sm" required value={entryForm.p1FirstFurigana} onChange={e => { furiganaDirtyRef.current.p1FirstName = true; setEntryForm({...entryForm, p1FirstFurigana: e.target.value}); }} />
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-green-50">
            <div className="col-span-2 font-bold text-green-800">選手 2</div>
-           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p2LastName} onChange={e => setEntryForm({...entryForm, p2LastName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p2', 'last')} onCompositionEnd={makeFuriganaAutofillHandler('p2', 'last')} />
-           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p2FirstName} onChange={e => setEntryForm({...entryForm, p2FirstName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p2', 'first')} onCompositionEnd={makeFuriganaAutofillHandler('p2', 'first')} />
-           <input type="text" placeholder="ふりがな（例: やまだ たろう）" className="col-span-2 p-2 border rounded text-sm" required value={entryForm.p2Furigana} onChange={e => { furiganaDirtyRef.current.p2 = true; setEntryForm({...entryForm, p2Furigana: e.target.value}); }} />
+           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p2LastName} onChange={e => setEntryForm({...entryForm, p2LastName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p2LastName', 'p2LastFurigana')} />
+           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p2FirstName} onChange={e => setEntryForm({...entryForm, p2FirstName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p2FirstName', 'p2FirstFurigana')} />
+           <input type="text" placeholder="ふりがな（せい）" className="p-2 border rounded text-sm" required value={entryForm.p2LastFurigana} onChange={e => { furiganaDirtyRef.current.p2LastName = true; setEntryForm({...entryForm, p2LastFurigana: e.target.value}); }} />
+           <input type="text" placeholder="ふりがな（めい）" className="p-2 border rounded text-sm" required value={entryForm.p2FirstFurigana} onChange={e => { furiganaDirtyRef.current.p2FirstName = true; setEntryForm({...entryForm, p2FirstFurigana: e.target.value}); }} />
         </div>
 
         <div>

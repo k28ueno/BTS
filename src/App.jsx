@@ -160,13 +160,20 @@ export default function App() {
     return `${ent.p1Name}・${ent.p2Name}${clubStr}`;
   };
 
+  // コールの際に選手名を正しく読み上げられるよう、ペアのふりがな（「姓＋名・姓＋名」）を返す
+  const getTeamFurigana = (teamId) => {
+    const ent = entries.find(e => String(e.id) === String(teamId));
+    if (!ent) return '';
+    const p1Furigana = `${ent.p1LastFurigana || ''}${ent.p1FirstFurigana || ''}`;
+    const p2Furigana = `${ent.p2LastFurigana || ''}${ent.p2FirstFurigana || ''}`;
+    return [p1Furigana, p2Furigana].filter(Boolean).join('・');
+  };
+
   // コールの際に選手名を正しく読み上げられるよう、氏名・ふりがなを2段で表示する
   const renderTeamNameWithFurigana = (teamId) => {
     const ent = entries.find(e => String(e.id) === String(teamId));
     if (!ent) return <div className="font-bold text-base truncate">未定</div>;
-    const p1Furigana = `${ent.p1LastFurigana || ''}${ent.p1FirstFurigana || ''}`;
-    const p2Furigana = `${ent.p2LastFurigana || ''}${ent.p2FirstFurigana || ''}`;
-    const nameFurigana = [p1Furigana, p2Furigana].filter(Boolean).join('・');
+    const nameFurigana = getTeamFurigana(teamId);
     return (
       <div>
         {nameFurigana && (
@@ -3104,7 +3111,9 @@ export default function App() {
                                        <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
                                     </div>
                                     <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
+                                    {getTeamFurigana(ref.mainId) && <div className="text-[9px] text-slate-400 truncate -mt-0.5">{getTeamFurigana(ref.mainId)}</div>}
                                     <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                    {getTeamFurigana(ref.lineId) && <div className="text-[9px] text-slate-400 truncate -mt-0.5">{getTeamFurigana(ref.lineId)}</div>}
                                     {hasSub && (
                                        <div className="mt-1.5 pt-1.5 border-t border-slate-600 text-amber-300 space-y-0.5">
                                           {ref.substitutionNotes.map((note, i) => <div key={i} className="leading-snug">⚠️ {note}</div>)}
@@ -3984,7 +3993,9 @@ export default function App() {
                                                 <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
                                              </div>
                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
+                                             {getTeamFurigana(ref.mainId) && <div className="text-[9px] text-slate-400 truncate -mt-0.5">{getTeamFurigana(ref.mainId)}</div>}
                                              <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
+                                             {getTeamFurigana(ref.lineId) && <div className="text-[9px] text-slate-400 truncate -mt-0.5">{getTeamFurigana(ref.lineId)}</div>}
                                              {hasSub && (
                                                 <div className="mt-1.5 pt-1.5 border-t border-slate-600 text-amber-300 space-y-0.5">
                                                    {ref.substitutionNotes.map((note, i) => <div key={i} className="leading-snug">⚠️ {note}</div>)}

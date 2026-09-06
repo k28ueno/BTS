@@ -3578,7 +3578,7 @@ export default function App() {
                   <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。</p>
                 </div>
 
-                <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={classesText} onChange={e=>{ setClassesText(e.target.value); setConfig({...config, classes: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 1部,2部,3部" /></div>
+                <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={classesText} onChange={e=>{ setClassesText(e.target.value); setConfig({...config, classes: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 1部,2部,3部" /><p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。</p></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
@@ -3589,8 +3589,8 @@ export default function App() {
                 </div>
                 <div className="md:col-span-2">
                   <label className="block font-bold text-sm mb-1 text-gray-700">協賛企業（カンマ `,` 区切り、トップ画面の下部に表示）</label>
-                  <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={sponsorsText} onChange={e=>{ setSponsorsText(e.target.value); setConfig({...config, sponsors: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
-                  <p className="text-xs text-gray-500 mt-1">※空欄の場合は表示されません。</p>
+                  <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={sponsorsText} onChange={e=>{ setSponsorsText(e.target.value); setConfig({...config, sponsors: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
+                  <p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。空欄の場合は表示されません。</p>
                 </div>
               </div>
             </div>

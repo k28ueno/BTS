@@ -893,25 +893,26 @@ export default function App() {
   };
 
   // 削除系の操作は実行前に「ローカルへバックアップしてから削除」を選べるようにする共通ダイアログ
-  const confirmDestructiveAction = (title, warningText, onProceed) => {
+  // （テストデータ生成のように「削除」が主目的でない操作向けに、actionLabelでボタン文言を差し替えられる）
+  const confirmDestructiveAction = (title, warningText, onProceed, actionLabel = '削除') => {
     setDialog({
       title,
       message: (
         <div className="text-left space-y-4">
           <p className="text-red-800 font-bold bg-red-50 border border-red-200 rounded-lg p-3 text-sm">⚠️ {warningText}</p>
-          <p className="text-sm text-gray-600">削除する前に、念のため現在のデータをローカルにバックアップ保存できます。</p>
+          <p className="text-sm text-gray-600">{actionLabel}する前に、念のため現在のデータをローカルにバックアップ保存できます。</p>
           <div className="flex flex-col sm:flex-row gap-2">
             <button
               onClick={() => { handleExportBackup(); setDialog(null); onProceed(); }}
               className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg shadow-sm"
             >
-              📥 バックアップしてから削除
+              📥 バックアップしてから{actionLabel}
             </button>
             <button
               onClick={() => { setDialog(null); onProceed(); }}
               className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg shadow-sm"
             >
-              バックアップせず削除
+              バックアップせず{actionLabel}
             </button>
           </div>
         </div>
@@ -4453,7 +4454,8 @@ export default function App() {
                             onClick={() => confirmDestructiveAction(
                               "テストデータ生成の確認",
                               "テストデータを生成すると、現在のエントリーおよび試合結果データは一度すべて自動的にクリア（初期化）されます。",
-                              handleGenerateTestData
+                              handleGenerateTestData,
+                              '生成'
                             )}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base px-6 py-3 rounded-lg shadow-md flex items-center gap-2 transition-colors"
                           >

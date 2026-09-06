@@ -3003,11 +3003,6 @@ export default function App() {
 
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-      {config.announcement && (
-        <div className="bg-white text-gray-800 rounded-xl p-4 text-sm md:text-base text-left shadow-md border-l-4 border-[#2c5f4e] whitespace-pre-wrap">
-          <span className="font-bold text-[#2c5f4e]">📢 お知らせ：</span>{config.announcement}
-        </div>
-      )}
       <div ref={measureTitleRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
         <h1
           className="font-extrabold mb-4 tracking-wider relative z-10 leading-tight break-words"
@@ -3031,6 +3026,12 @@ export default function App() {
           <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconSmartphone /> 当日の進行状況・対戦表</button>
         </div>
       </div>
+
+      {config.announcement && (
+        <div className="bg-white text-gray-800 rounded-xl p-4 text-sm md:text-base text-left shadow-md border-l-4 border-[#2c5f4e] whitespace-pre-wrap">
+          <span className="font-bold text-[#2c5f4e]">📢 お知らせ：</span>{config.announcement}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 space-y-6">
         <div>

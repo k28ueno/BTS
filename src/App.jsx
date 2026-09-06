@@ -130,6 +130,9 @@ export default function App() {
   const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1LastFurigana: '', p1FirstFurigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2LastFurigana: '', p2FirstFurigana: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', email: '', clubRank: '' });
   // ふりがな欄（姓・名それぞれ）をユーザーが直接編集したら、以後は自動補完で上書きしない
   const furiganaDirtyRef = useRef({ p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false });
+  // IME変換中は変換確定後の文字列（漢字）ではなく、変換前のひらがな読みを捕まえておく必要があるため、
+  // compositionupdate中の「まだひらがなのみ」の状態を随時保持しておくバッファ
+  const compositionReadingRef = useRef({ p1LastName: '', p1FirstName: '', p2LastName: '', p2FirstName: '' });
   const [editLogin, setEditLogin] = useState({ id: '', password: '' });
   const [editMode, setEditMode] = useState(false);
   const [currentEditId, setCurrentEditId] = useState(null);
@@ -2020,13 +2023,22 @@ export default function App() {
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 
-  // 姓・名欄をIME変換確定時、変換前のひらがな読みを対応するふりがな欄へ自動反映する
+  // 姓・名欄のIME変換から、確定後の漢字ではなく変換前のひらがな読みを対応するふりがな欄へ自動反映する。
+  // compositionend時点のデータは変換確定後の文字列（＝漢字）であることが多く読みとして使えないため、
+  // compositionupdate中に見えている「まだひらがなのみ」の状態を随時バッファへ保持しておき、
+  // 変換確定（compositionend）のタイミングでそのバッファを読みとして採用する
   // （ユーザーがふりがな欄を直接編集した後は上書きしない。読みの取得に失敗した場合は何もしない）
   const makeFuriganaAutofillHandler = (nameField, furiganaField) => (e) => {
-    if (e.type !== 'compositionend') return;
-    const reading = e.data;
-    if (reading && /^[ぁ-んー]+$/.test(reading) && !furiganaDirtyRef.current[nameField]) {
-      setEntryForm(prev => ({ ...prev, [furiganaField]: reading }));
+    const val = e.data;
+    if (val && /^[ぁ-んー]+$/.test(val)) {
+      compositionReadingRef.current[nameField] = val;
+    }
+    if (e.type === 'compositionend') {
+      const reading = compositionReadingRef.current[nameField];
+      if (reading && !furiganaDirtyRef.current[nameField]) {
+        setEntryForm(prev => ({ ...prev, [furiganaField]: reading }));
+      }
+      compositionReadingRef.current[nameField] = '';
     }
   };
 
@@ -2982,7 +2994,16 @@ export default function App() {
         </h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
-          <button onClick={() => {setEditMode(false); furiganaDirtyRef.current = { p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false }; setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => {
+            const periodCheck = checkEntryPeriod(config);
+            if (!periodCheck.ok) {
+              setDialog({ title: "受付期間外です", message: periodCheck.message, onClose: () => setDialog(null) });
+              return;
+            }
+            setEditMode(false);
+            furiganaDirtyRef.current = { p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false };
+            setCurrentTab('entry');
+          }} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base"><IconSettings /> 修正・取消</button>
           <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconSmartphone /> 当日の進行状況・対戦表</button>
         </div>
@@ -3353,15 +3374,15 @@ export default function App() {
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-blue-50">
            <div className="col-span-2 font-bold text-blue-800">選手 1</div>
-           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p1LastName} onChange={e => setEntryForm({...entryForm, p1LastName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p1LastName', 'p1LastFurigana')} />
-           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p1FirstName} onChange={e => setEntryForm({...entryForm, p1FirstName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p1FirstName', 'p1FirstFurigana')} />
+           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p1LastName} onChange={e => setEntryForm({...entryForm, p1LastName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p1LastName', 'p1LastFurigana')} onCompositionEnd={makeFuriganaAutofillHandler('p1LastName', 'p1LastFurigana')} />
+           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p1FirstName} onChange={e => setEntryForm({...entryForm, p1FirstName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p1FirstName', 'p1FirstFurigana')} onCompositionEnd={makeFuriganaAutofillHandler('p1FirstName', 'p1FirstFurigana')} />
            <input type="text" placeholder="ふりがな（せい）" className="p-2 border rounded text-sm" required value={entryForm.p1LastFurigana} onChange={e => { furiganaDirtyRef.current.p1LastName = true; setEntryForm({...entryForm, p1LastFurigana: e.target.value}); }} />
            <input type="text" placeholder="ふりがな（めい）" className="p-2 border rounded text-sm" required value={entryForm.p1FirstFurigana} onChange={e => { furiganaDirtyRef.current.p1FirstName = true; setEntryForm({...entryForm, p1FirstFurigana: e.target.value}); }} />
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-green-50">
            <div className="col-span-2 font-bold text-green-800">選手 2</div>
-           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p2LastName} onChange={e => setEntryForm({...entryForm, p2LastName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p2LastName', 'p2LastFurigana')} />
-           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p2FirstName} onChange={e => setEntryForm({...entryForm, p2FirstName: e.target.value})} onCompositionEnd={makeFuriganaAutofillHandler('p2FirstName', 'p2FirstFurigana')} />
+           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p2LastName} onChange={e => setEntryForm({...entryForm, p2LastName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p2LastName', 'p2LastFurigana')} onCompositionEnd={makeFuriganaAutofillHandler('p2LastName', 'p2LastFurigana')} />
+           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p2FirstName} onChange={e => setEntryForm({...entryForm, p2FirstName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p2FirstName', 'p2FirstFurigana')} onCompositionEnd={makeFuriganaAutofillHandler('p2FirstName', 'p2FirstFurigana')} />
            <input type="text" placeholder="ふりがな（せい）" className="p-2 border rounded text-sm" required value={entryForm.p2LastFurigana} onChange={e => { furiganaDirtyRef.current.p2LastName = true; setEntryForm({...entryForm, p2LastFurigana: e.target.value}); }} />
            <input type="text" placeholder="ふりがな（めい）" className="p-2 border rounded text-sm" required value={entryForm.p2FirstFurigana} onChange={e => { furiganaDirtyRef.current.p2FirstName = true; setEntryForm({...entryForm, p2FirstFurigana: e.target.value}); }} />
         </div>

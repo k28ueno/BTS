@@ -75,6 +75,24 @@ const inputValueToDate = (value) => {
   return isNaN(date.getTime()) ? null : date;
 };
 
+// 現在日時がエントリー受付期間内（受付開始日〜申込締切日の23:59まで）かどうかを判定する
+const checkEntryPeriod = (config) => {
+  const fallbackYear = (parseJapaneseFullDate(config.date) || new Date()).getFullYear();
+  const now = new Date();
+  const startDate = parseJapaneseMonthDay(config.entryStartDate, fallbackYear);
+  if (startDate && now < startDate) {
+    return { ok: false, message: `エントリー受付はまだ開始していません。受付開始日は${config.entryStartDate}です。` };
+  }
+  const deadlineDate = parseJapaneseMonthDay(config.deadline, fallbackYear);
+  if (deadlineDate) {
+    const deadlineEnd = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate(), 23, 59, 59, 999);
+    if (now > deadlineEnd) {
+      return { ok: false, message: `エントリーの受付は終了しました（申込締切: ${config.deadline}）。` };
+    }
+  }
+  return { ok: true };
+};
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
   const [dashTab, setDashTab] = useState('matches');
@@ -90,6 +108,7 @@ export default function App() {
     timeReception: '8:15',
     timeStart: '8:50',
     venue: '紀北町東長島スポーツ公園体育館',
+    entryStartDate: '',
     deadline: '11月27日(金)',
     notes: '参加者は当日の8時40分までに受付を済ませる。当日ゴミは各自持ち帰り。昼食等は各自持参。',
     classes: ['1部', '2部', '3部', '4部'],
@@ -108,7 +127,11 @@ export default function App() {
   const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league'); 
-  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', clubRank: '' });
+  const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1Furigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2Furigana: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', email: '', clubRank: '' });
+  // 姓・名欄のIME変換からふりがなを自動補完するための一時バッファ（読みが確定するまでの入力中文字列を保持）
+  const furiganaBufferRef = useRef({ p1: { last: '', first: '' }, p2: { last: '', first: '' } });
+  // ふりがな欄をユーザーが直接編集したら、以後は自動補完で上書きしない
+  const furiganaDirtyRef = useRef({ p1: false, p2: false });
   const [editLogin, setEditLogin] = useState({ id: '', password: '' });
   const [editMode, setEditMode] = useState(false);
   const [currentEditId, setCurrentEditId] = useState(null);
@@ -137,6 +160,21 @@ export default function App() {
     if (!ent) return '未定';
     const clubStr = ent.club ? ` (${ent.club})` : '';
     return `${ent.p1Name}・${ent.p2Name}${clubStr}`;
+  };
+
+  // コールの際に選手名を正しく読み上げられるよう、氏名・ふりがなを2段で表示する
+  const renderTeamNameWithFurigana = (teamId) => {
+    const ent = entries.find(e => String(e.id) === String(teamId));
+    if (!ent) return <div className="font-bold text-base truncate">未定</div>;
+    const nameFurigana = [ent.p1Furigana, ent.p2Furigana].filter(Boolean).join('・');
+    return (
+      <div>
+        {nameFurigana && (
+          <div className="text-[10px] text-gray-400 truncate leading-tight">{nameFurigana}</div>
+        )}
+        <div className="font-bold text-base truncate">{getTeamNameWithClub(teamId)}</div>
+      </div>
+    );
   };
 
   // スコア入力済み、または棄権による不戦勝が記録済みなら「結果が確定した試合」とみなす
@@ -640,6 +678,7 @@ export default function App() {
             timeReception: data.timereception,
             timeStart: data.timestart,
             venue: data.venue,
+            entryStartDate: data.entrystartdate || '',
             deadline: data.deadline,
             notes: data.notes,
             classes: data.classes || ['1部', '2部', '3部', '4部'],
@@ -675,11 +714,18 @@ export default function App() {
             id: d.id,
             cls: d.cls,
             contact: d.contact,
+            email: d.email || '',
             club: d.club || '',
             p1Name: d.p1name,
+            p1LastName: d.p1lastname || '',
+            p1FirstName: d.p1firstname || '',
+            p1Furigana: d.p1furigana || '',
             p1Club: d.p1club,
             p1Fee: d.p1fee,
             p2Name: d.p2name,
+            p2LastName: d.p2lastname || '',
+            p2FirstName: d.p2firstname || '',
+            p2Furigana: d.p2furigana || '',
             p2Club: d.p2club,
             p2Fee: d.p2fee,
             feeCategory: d.p1fee || '一般',
@@ -788,6 +834,7 @@ export default function App() {
         timereception: config.timeReception,
         timestart: config.timeStart,
         venue: config.venue,
+        entrystartdate: config.entryStartDate,
         deadline: config.deadline,
         notes: config.notes,
         classes: config.classes,
@@ -899,9 +946,18 @@ export default function App() {
   };
 
   const handleGenerateTestData = async () => {
+    // ふりがな表示（コール時）も再現できるよう、クラブ名・姓・名それぞれに読みを対で持たせる
     const clubs = ['熊野バドミントン', '紀北クラブ', '松阪BC', '伊勢シャトルズ', '尾鷲バド同好会', '津フェニックス'];
-    const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村'];
-    const givenNames = ['太郎', '次郎', '健太', '大輔', '直樹', '拓也', '翔太', '花子', '美咲', '彩乃', '葵', '優花', '結衣', '陽菜'];
+    const familyNames = [
+      ['佐藤', 'さとう'], ['鈴木', 'すずき'], ['高橋', 'たかはし'], ['田中', 'たなか'], ['伊藤', 'いとう'],
+      ['山本', 'やまもと'], ['中村', 'なかむら'], ['小林', 'こばやし'], ['加藤', 'かとう'], ['吉田', 'よしだ'],
+      ['山田', 'やまだ'], ['佐々木', 'ささき'], ['山口', 'やまぐち'], ['松本', 'まつもと'], ['井上', 'いのうえ'], ['木村', 'きむら']
+    ];
+    const givenNames = [
+      ['太郎', 'たろう'], ['次郎', 'じろう'], ['健太', 'けんた'], ['大輔', 'だいすけ'], ['直樹', 'なおき'],
+      ['拓也', 'たくや'], ['翔太', 'しょうた'], ['花子', 'はなこ'], ['美咲', 'みさき'], ['彩乃', 'あやの'],
+      ['葵', 'あおい'], ['優花', 'ゆうか'], ['結衣', 'ゆい'], ['陽菜', 'ひな']
+    ];
 
     let totalToGen = 0;
     config.classes.forEach(cls => {
@@ -934,9 +990,15 @@ export default function App() {
         const newId = currentIdCount.toString().padStart(4, '0');
         const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
         const clubName = clubs[Math.floor(Math.random() * clubs.length)];
-        
-        const p1 = `${familyNames[Math.floor(Math.random() * familyNames.length)]}${givenNames[Math.floor(Math.random() * givenNames.length)]}`;
-        const p2 = `${familyNames[Math.floor(Math.random() * familyNames.length)]}${givenNames[Math.floor(Math.random() * givenNames.length)]}`;
+
+        const [p1Last, p1LastFuri] = familyNames[Math.floor(Math.random() * familyNames.length)];
+        const [p1First, p1FirstFuri] = givenNames[Math.floor(Math.random() * givenNames.length)];
+        const [p2Last, p2LastFuri] = familyNames[Math.floor(Math.random() * familyNames.length)];
+        const [p2First, p2FirstFuri] = givenNames[Math.floor(Math.random() * givenNames.length)];
+        const p1 = `${p1Last}${p1First}`;
+        const p2 = `${p2Last}${p2First}`;
+        const p1Furigana = `${p1LastFuri}${p1FirstFuri}`;
+        const p2Furigana = `${p2LastFuri}${p2FirstFuri}`;
 
         const pairFeeCategory = Math.random() > 0.4 ? '一般' : '高校生まで';
 
@@ -946,9 +1008,15 @@ export default function App() {
           contact: `090-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
           club: clubName,
           p1Name: p1,
+          p1LastName: p1Last,
+          p1FirstName: p1First,
+          p1Furigana: p1Furigana,
           p1Club: clubName,
           p1Fee: pairFeeCategory,
           p2Name: p2,
+          p2LastName: p2Last,
+          p2FirstName: p2First,
+          p2Furigana: p2Furigana,
           p2Club: clubName,
           p2Fee: pairFeeCategory,
           feeCategory: pairFeeCategory,
@@ -966,9 +1034,15 @@ export default function App() {
           contact: entryObj.contact,
           club: clubName,
           p1name: p1,
+          p1lastname: p1Last,
+          p1firstname: p1First,
+          p1furigana: p1Furigana,
           p1club: clubName,
           p1fee: pairFeeCategory,
           p2name: p2,
+          p2lastname: p2Last,
+          p2firstname: p2First,
+          p2furigana: p2Furigana,
           p2club: clubName,
           p2fee: pairFeeCategory,
           password: generatedPassword,
@@ -1073,6 +1147,7 @@ export default function App() {
                 timereception: data.config.timeReception,
                 timestart: data.config.timeStart,
                 venue: data.config.venue,
+                entrystartdate: data.config.entryStartDate,
                 deadline: data.config.deadline,
                 notes: data.config.notes,
                 classes: data.config.classes,
@@ -1089,11 +1164,18 @@ export default function App() {
                   id: ent.id,
                   cls: ent.cls,
                   contact: ent.contact,
+                  email: ent.email,
                   club: ent.club,
                   p1name: ent.p1Name,
+                  p1lastname: ent.p1LastName,
+                  p1firstname: ent.p1FirstName,
+                  p1furigana: ent.p1Furigana,
                   p1club: ent.p1Club,
                   p1fee: ent.p1Fee,
                   p2name: ent.p2Name,
+                  p2lastname: ent.p2LastName,
+                  p2firstname: ent.p2FirstName,
+                  p2furigana: ent.p2Furigana,
                   p2club: ent.p2Club,
                   p2fee: ent.p2Fee,
                   password: ent.password,
@@ -1925,23 +2007,56 @@ export default function App() {
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 
+  // 姓・名欄をIME変換中に、変換前のひらがな読みを捕捉してふりがな欄へ自動反映する
+  // （ユーザーがふりがな欄を直接編集した後は上書きしない。読みの取得に失敗した場合は何もしない）
+  const makeFuriganaAutofillHandler = (player, part) => (e) => {
+    const reading = e.data;
+    if (reading && /^[ぁ-んー]+$/.test(reading)) {
+      furiganaBufferRef.current[player][part] = reading;
+    }
+    if (e.type === 'compositionend' && !furiganaDirtyRef.current[player]) {
+      const combined = furiganaBufferRef.current[player].last + furiganaBufferRef.current[player].first;
+      if (combined) {
+        setEntryForm(prev => ({ ...prev, [`${player}Furigana`]: combined }));
+      }
+    }
+  };
+
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
+
+    const periodCheck = checkEntryPeriod(config);
+    if (!periodCheck.ok) {
+      setDialog({ title: "受付期間外です", message: periodCheck.message, onClose: () => setDialog(null) });
+      return;
+    }
+
     const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
     const feeCat = entryForm.feeCategory || '一般';
 
     const clubRankValue = entryForm.clubRank !== '' && entryForm.clubRank != null ? parseInt(entryForm.clubRank, 10) : null;
 
+    // 姓・名は保存時に結合し、従来どおり氏名1本の文字列（p1Name/p2Name）としても保持する
+    const p1Name = `${entryForm.p1LastName}${entryForm.p1FirstName}`;
+    const p2Name = `${entryForm.p2LastName}${entryForm.p2FirstName}`;
+
     const buildDbPayload = (id) => ({
       id,
       cls: entryForm.cls,
       contact: entryForm.contact,
+      email: entryForm.email,
       club: entryForm.club,
-      p1name: entryForm.p1Name,
-      p1club: entryForm.p1Club,
+      p1name: p1Name,
+      p1lastname: entryForm.p1LastName,
+      p1firstname: entryForm.p1FirstName,
+      p1furigana: entryForm.p1Furigana,
+      p1club: entryForm.club,
       p1fee: feeCat,
-      p2name: entryForm.p2Name,
-      p2club: entryForm.p2Club,
+      p2name: p2Name,
+      p2lastname: entryForm.p2LastName,
+      p2firstname: entryForm.p2FirstName,
+      p2furigana: entryForm.p2Furigana,
+      p2club: entryForm.club,
       p2fee: feeCat,
       password: generatedPassword,
       checkedin: false,
@@ -1984,6 +2099,10 @@ export default function App() {
 
     const newEntryState = {
       ...entryForm,
+      p1Name,
+      p2Name,
+      p1Club: entryForm.club,
+      p2Club: entryForm.club,
       p1Fee: feeCat,
       p2Fee: feeCat,
       feeCategory: feeCat,
@@ -2018,7 +2137,7 @@ export default function App() {
       ),
       onClose: () => { setDialog(null); setCurrentTab('home'); }
     });
-    setEntryForm({ club: '', p1Name: '', p1Club: '', p2Name: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '', clubRank: '' });
+    setEntryForm({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1Furigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2Furigana: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '', email: '', clubRank: '' });
   };
 
   const handleEditLogin = (e) => {
@@ -2030,6 +2149,8 @@ export default function App() {
     const target = entries.find(ent => ent.id === editLogin.id && ent.password === editLogin.password);
     if (target) {
       setEntryForm({ ...target, feeCategory: target.feeCategory || target.p1Fee || '一般' });
+      // 既存のふりがなを氏名の再入力で誤って上書きしないよう、編集開始時は自動補完を無効化しておく
+      furiganaDirtyRef.current = { p1: true, p2: true };
       setCurrentEditId(target.id);
       setEditMode(true);
       setCurrentTab('entry');
@@ -2042,15 +2163,25 @@ export default function App() {
     e.preventDefault();
     const feeCat = entryForm.feeCategory || '一般';
     const clubRankValue = entryForm.clubRank !== '' && entryForm.clubRank != null ? parseInt(entryForm.clubRank, 10) : null;
+    // 姓・名は保存時に結合し、従来どおり氏名1本の文字列（p1Name/p2Name）としても保持する
+    const p1Name = `${entryForm.p1LastName}${entryForm.p1FirstName}`;
+    const p2Name = `${entryForm.p2LastName}${entryForm.p2FirstName}`;
     const dbPayload = {
       cls: entryForm.cls,
       contact: entryForm.contact,
+      email: entryForm.email,
       club: entryForm.club,
-      p1name: entryForm.p1Name,
-      p1club: entryForm.p1Club,
+      p1name: p1Name,
+      p1lastname: entryForm.p1LastName,
+      p1firstname: entryForm.p1FirstName,
+      p1furigana: entryForm.p1Furigana,
+      p1club: entryForm.club,
       p1fee: feeCat,
-      p2name: entryForm.p2Name,
-      p2club: entryForm.p2Club,
+      p2name: p2Name,
+      p2lastname: entryForm.p2LastName,
+      p2firstname: entryForm.p2FirstName,
+      p2furigana: entryForm.p2Furigana,
+      p2club: entryForm.club,
       p2fee: feeCat,
       club_rank: clubRankValue
     };
@@ -2063,7 +2194,7 @@ export default function App() {
       }
     }
 
-    setEntries(entries.map(ent => ent.id === currentEditId ? { ...entryForm, p1Fee: feeCat, p2Fee: feeCat, feeCategory: feeCat, clubRank: clubRankValue, id: currentEditId, password: ent.password, checkedIn: ent.checkedIn, group: ent.group, tournamentPosition: ent.tournamentPosition } : ent));
+    setEntries(entries.map(ent => ent.id === currentEditId ? { ...entryForm, p1Name, p2Name, p1Club: entryForm.club, p2Club: entryForm.club, p1Fee: feeCat, p2Fee: feeCat, feeCategory: feeCat, clubRank: clubRankValue, id: currentEditId, password: ent.password, checkedIn: ent.checkedIn, group: ent.group, tournamentPosition: ent.tournamentPosition } : ent));
     setDialog({ title: "更新完了", message: "登録内容を更新しました。", onClose: () => { setDialog(null); setCurrentTab(isAdminLoggedIn ? 'admin' : 'home'); } });
     setEditMode(false);
     setCurrentEditId(null);
@@ -2839,7 +2970,7 @@ export default function App() {
         </h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
-          <button onClick={() => {setEditMode(false); setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => {setEditMode(false); furiganaDirtyRef.current = { p1: false, p2: false }; furiganaBufferRef.current = { p1: { last: '', first: '' }, p2: { last: '', first: '' } }; setCurrentTab('entry');}} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base"><IconSettings /> 修正・取消</button>
           <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconSmartphone /> 当日の進行状況・対戦表</button>
         </div>
@@ -2853,7 +2984,7 @@ export default function App() {
              <div><strong className="block text-base text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">会場</strong>{config.venue}</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
-             <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込締切</strong><span className="text-red-500 font-bold">{config.deadline}</span></div>
+             <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込期間</strong><span className="text-red-500 font-bold">{config.entryStartDate ? `${config.entryStartDate} 〜 ` : ''}{config.deadline}</span></div>
              <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-base mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
            </div>
         </div>
@@ -3208,15 +3339,22 @@ export default function App() {
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-blue-50">
            <div className="col-span-2 font-bold text-blue-800">選手 1</div>
-           <input type="text" placeholder="氏名" className="p-2 border rounded" required value={entryForm.p1Name} onChange={e => setEntryForm({...entryForm, p1Name: e.target.value})} />
-           <input type="text" placeholder="所属" className="p-2 border rounded" required value={entryForm.p1Club} onChange={e => setEntryForm({...entryForm, p1Club: e.target.value})} />
+           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p1LastName} onChange={e => setEntryForm({...entryForm, p1LastName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p1', 'last')} onCompositionEnd={makeFuriganaAutofillHandler('p1', 'last')} />
+           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p1FirstName} onChange={e => setEntryForm({...entryForm, p1FirstName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p1', 'first')} onCompositionEnd={makeFuriganaAutofillHandler('p1', 'first')} />
+           <input type="text" placeholder="ふりがな（例: やまだ たろう）" className="col-span-2 p-2 border rounded text-sm" required value={entryForm.p1Furigana} onChange={e => { furiganaDirtyRef.current.p1 = true; setEntryForm({...entryForm, p1Furigana: e.target.value}); }} />
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-green-50">
            <div className="col-span-2 font-bold text-green-800">選手 2</div>
-           <input type="text" placeholder="氏名" className="p-2 border rounded" required value={entryForm.p2Name} onChange={e => setEntryForm({...entryForm, p2Name: e.target.value})} />
-           <input type="text" placeholder="所属" className="p-2 border rounded" required value={entryForm.p2Club} onChange={e => setEntryForm({...entryForm, p2Club: e.target.value})} />
+           <input type="text" placeholder="姓" className="p-2 border rounded" required value={entryForm.p2LastName} onChange={e => setEntryForm({...entryForm, p2LastName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p2', 'last')} onCompositionEnd={makeFuriganaAutofillHandler('p2', 'last')} />
+           <input type="text" placeholder="名" className="p-2 border rounded" required value={entryForm.p2FirstName} onChange={e => setEntryForm({...entryForm, p2FirstName: e.target.value})} onCompositionUpdate={makeFuriganaAutofillHandler('p2', 'first')} onCompositionEnd={makeFuriganaAutofillHandler('p2', 'first')} />
+           <input type="text" placeholder="ふりがな（例: やまだ たろう）" className="col-span-2 p-2 border rounded text-sm" required value={entryForm.p2Furigana} onChange={e => { furiganaDirtyRef.current.p2 = true; setEntryForm({...entryForm, p2Furigana: e.target.value}); }} />
         </div>
-        
+
+        <div>
+           <label className="block text-sm font-bold text-gray-700 mb-1">メールアドレス（任意）</label>
+           <input type="email" placeholder="example@example.com" className="w-full p-2 border rounded" value={entryForm.email} onChange={e => setEntryForm({...entryForm, email: e.target.value})} />
+        </div>
+
         <div className="flex flex-col gap-3">
           <button type="submit" className="w-full bg-orange-500 text-white font-bold py-4 rounded-lg shadow-lg text-lg hover:bg-orange-600 transition-colors">
             {editMode ? '変更を保存する' : 'エントリーを確定する'}
@@ -3316,6 +3454,17 @@ export default function App() {
                   {config.date && <p className="text-xs text-gray-400 mt-1">表示: {config.date}</p>}
                 </div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">会場</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.venue} onChange={e=>setConfig({...config, venue: e.target.value})} /></div>
+                <div>
+                  <label className="block font-bold text-sm mb-1 text-gray-700">エントリー受付開始日</label>
+                  <input
+                    type="date"
+                    className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                    value={dateToInputValue(parseJapaneseMonthDay(config.entryStartDate, (parseJapaneseFullDate(config.date) || new Date()).getFullYear()))}
+                    onChange={e => setConfig({ ...config, entryStartDate: formatJapaneseMonthDay(inputValueToDate(e.target.value)) })}
+                  />
+                  {config.entryStartDate && <p className="text-xs text-gray-400 mt-1">表示: {config.entryStartDate}</p>}
+                  <p className="text-xs text-gray-500 mt-1">※未設定の場合、開始日の制限はかけません。</p>
+                </div>
                 <div>
                   <label className="block font-bold text-sm mb-1 text-gray-700">申込締切</label>
                   <input
@@ -3854,7 +4003,7 @@ export default function App() {
                                        )}
                                        <span>({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}</span>
                                     </div>
-                                    <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
+                                    {renderTeamNameWithFurigana(activeMatch.team1Id)}
 
                                     <div className="text-sm text-center font-bold my-1">
                                        {activeMatch.status === 'completed' ? (
@@ -3866,7 +4015,7 @@ export default function App() {
                                        )}
                                     </div>
 
-                                    <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
+                                    {renderTeamNameWithFurigana(activeMatch.team2Id)}
                                     
                                     <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
                                        {activeMatch.status === 'completed' ? (

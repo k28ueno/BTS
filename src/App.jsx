@@ -15,6 +15,18 @@ const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確�
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
 const DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES = 10; // 無操作で自動ログオフするまでの時間の既定値（分）。マスタ設定で変更可能
 
+// 試合ルール（ゲーム数・ゲーム別点数・デュース・MAX点数）の既定値。
+// クラス×ラウンド（予選/決勝）ごとにマスタ設定で上書きできる
+const DEFAULT_LEAGUE_MATCH_RULE = { gamesToWin: 1, games: [{ points: 15, maxPoints: 15, deuce: false }] };
+const DEFAULT_TOURNAMENT_MATCH_RULE = {
+  gamesToWin: 2,
+  games: [
+    { points: 21, maxPoints: 30, deuce: true },
+    { points: 21, maxPoints: 30, deuce: true },
+    { points: 21, maxPoints: 30, deuce: true }
+  ]
+};
+
 function IconUser() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function IconTrophy() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>; }
 function IconSettings() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>; }
@@ -118,7 +130,8 @@ export default function App() {
     fees: { '一般': 4000, '高校生まで': 2000 },
     advancementCondition: 'top2',
     avgMatchDuration: 15,
-    adminIdleTimeoutMinutes: DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES
+    adminIdleTimeoutMinutes: DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES,
+    matchRules: {} // { [クラス名]: { league: {gamesToWin, games:[{points,maxPoints,deuce}]}, tournament: {...} } }。未設定のクラス/ラウンドは既定値を使用
   });
   // 出場クラス・協賛企業のカンマ区切り入力欄は、config側の配列（split/trim/filter済み）を
   // そのままvalueに戻すと、入力途中の半角カンマや末尾の空要素が確定前に消えてしまい
@@ -194,10 +207,64 @@ export default function App() {
     );
   };
 
-  // スコア入力済み、または棄権による不戦勝が記録済みなら「結果が確定した試合」とみなす
-  const isMatchScored = (m) => !!m && ((m.team1Score !== null && m.team1Score !== undefined && m.team2Score !== null && m.team2Score !== undefined) || !!m.forfeitWinnerId);
+  // ----------------------------------------------------------------
+  // 試合ルール（ゲーム別点数・デュース・MAX点数）関連の共通関数
+  // ----------------------------------------------------------------
 
-  // 試合の勝者・敗者を求める（棄権による不戦勝はforfeitWinnerIdを優先する）。未確定ならnull
+  // クラス×ラウンド（予選/決勝）の試合ルールを返す。マスタ未設定なら既定値にフォールバックする
+  const getMatchRule = (cls, matchType) => {
+    const fallback = matchType === 'tournament' ? DEFAULT_TOURNAMENT_MATCH_RULE : DEFAULT_LEAGUE_MATCH_RULE;
+    const rule = config.matchRules && config.matchRules[cls] && config.matchRules[cls][matchType];
+    if (!rule || !Array.isArray(rule.games) || rule.games.length === 0 || !rule.gamesToWin) return fallback;
+    return rule;
+  };
+
+  // 指定ゲーム（0始まり）のルール（点数・MAX点数・デュース）を返す
+  const getGameRule = (matchRule, gameIndex) => {
+    if (!matchRule || !Array.isArray(matchRule.games) || matchRule.games.length === 0) {
+      return DEFAULT_TOURNAMENT_MATCH_RULE.games[0];
+    }
+    return matchRule.games[gameIndex] || matchRule.games[matchRule.games.length - 1];
+  };
+
+  // そのゲームの勝敗が確定しているか（MAX点数到達を優先し、デュース有無に応じた通常判定はその次）
+  const isGameComplete = (score1, score2, gameRule) => {
+    if (score1 === '' || score2 === '' || score1 === null || score2 === null || score1 === undefined || score2 === undefined) return false;
+    const s1 = Number(score1), s2 = Number(score2);
+    if (!Number.isFinite(s1) || !Number.isFinite(s2) || s1 < 0 || s2 < 0) return false;
+    const { points, maxPoints, deuce } = gameRule;
+    const max = Math.max(s1, s2);
+    const diff = Math.abs(s1 - s2);
+    if (max >= maxPoints) return s1 !== s2; // MAX点数到達：同点は未確定（保存不可）、それ以外は高得点側の勝ち
+    if (max < points) return false; // まだ目標点数に誰も到達していない
+    if (!deuce) return true; // デュース無：目標点数に先に到達した時点で終了
+    return diff >= 2; // デュース有：2点差が必要（MAX点数未到達の間）
+  };
+
+  // そのゲームの勝者（1 or 2）。未確定ならnull
+  const getGameWinner = (score1, score2, gameRule) => {
+    if (!isGameComplete(score1, score2, gameRule)) return null;
+    return Number(score1) > Number(score2) ? 1 : 2;
+  };
+
+  // 試合に紐づくゲームスコア（gameScores）から、team1/team2それぞれの獲得ゲーム数を数える
+  const getGameWins = (match) => {
+    if (!match) return { team1: 0, team2: 0 };
+    const matchRule = match.matchRule || getMatchRule(match.cls, match.matchType);
+    const gameScores = Array.isArray(match.gameScores) ? match.gameScores : [];
+    let team1 = 0, team2 = 0;
+    gameScores.forEach((g, i) => {
+      if (!g) return;
+      const gameRule = getGameRule(matchRule, i);
+      const winner = getGameWinner(g.team1, g.team2, gameRule);
+      if (winner === 1) team1++;
+      else if (winner === 2) team2++;
+    });
+    return { team1, team2 };
+  };
+
+  // 試合の勝者・敗者を求める（棄権による不戦勝はforfeitWinnerIdを優先する）。未確定ならnull。
+  // gameScoresが無い旧データ（1ゲーム制の頃の記録）は、従来どおりteam1Score/team2Scoreの比較にフォールバックする
   const getMatchResult = (m) => {
     if (!m) return null;
     if (m.forfeitWinnerId) {
@@ -205,10 +272,102 @@ export default function App() {
       const loserId = String(m.team1Id) === String(winnerId) ? m.team2Id : m.team1Id;
       return { winnerId, loserId, isForfeit: true };
     }
-    if (m.team1Score === null || m.team1Score === undefined || m.team2Score === null || m.team2Score === undefined) return null;
-    const winnerId = m.team1Score >= m.team2Score ? m.team1Id : m.team2Id;
-    const loserId = m.team1Score >= m.team2Score ? m.team2Id : m.team1Id;
-    return { winnerId, loserId, isForfeit: false };
+    if (!Array.isArray(m.gameScores) || m.gameScores.length === 0) {
+      if (m.team1Score === null || m.team1Score === undefined || m.team2Score === null || m.team2Score === undefined) return null;
+      const winnerId = m.team1Score >= m.team2Score ? m.team1Id : m.team2Id;
+      const loserId = m.team1Score >= m.team2Score ? m.team2Id : m.team1Id;
+      return { winnerId, loserId, isForfeit: false };
+    }
+    const matchRule = m.matchRule || getMatchRule(m.cls, m.matchType);
+    const { team1, team2 } = getGameWins(m);
+    const gamesToWin = matchRule.gamesToWin || 1;
+    if (team1 >= gamesToWin) return { winnerId: m.team1Id, loserId: m.team2Id, isForfeit: false };
+    if (team2 >= gamesToWin) return { winnerId: m.team2Id, loserId: m.team1Id, isForfeit: false };
+    return null;
+  };
+
+  // スコア入力済み、または棄権による不戦勝が記録済みなら「結果が確定した試合」とみなす
+  const isMatchScored = (m) => !!getMatchResult(m);
+
+  // 試合の全ゲームの得点を合計する（順位表の得失点差用）。旧データ（gameScoresが無い）は
+  // team1Score/team2Scoreをそのまま使う。棄権試合は実際に試合をしていないため0点扱い
+  const getTotalPoints = (match) => {
+    if (!match || match.forfeitWinnerId) return { team1: 0, team2: 0 };
+    if (!Array.isArray(match.gameScores) || match.gameScores.length === 0) {
+      return { team1: match.team1Score || 0, team2: match.team2Score || 0 };
+    }
+    return match.gameScores.reduce((acc, g) => {
+      if (g && g.team1 !== '' && g.team2 !== '' && g.team1 != null && g.team2 != null) {
+        acc.team1 += Number(g.team1) || 0;
+        acc.team2 += Number(g.team2) || 0;
+      }
+      return acc;
+    }, { team1: 0, team2: 0 });
+  };
+
+  // 画面表示用のスコア文字列（「21-18, 19-21, 21-17」のようにゲームごとに表示。
+  // 旧データはこれまでどおり「X - Y」の単一ゲーム表示にフォールバックする）
+  const getScoreDisplayText = (match) => {
+    if (!match) return '';
+    if (match.forfeitWinnerId) return '不戦勝・不戦敗';
+    if (!Array.isArray(match.gameScores) || match.gameScores.length === 0) {
+      if (match.team1Score === null || match.team1Score === undefined || match.team2Score === null || match.team2Score === undefined) return '';
+      return `${match.team1Score} - ${match.team2Score}`;
+    }
+    return match.gameScores
+      .filter(g => g && g.team1 !== '' && g.team2 !== '' && g.team1 != null && g.team2 != null)
+      .map(g => `${g.team1}-${g.team2}`)
+      .join(', ');
+  };
+
+  // teamId側から見たスコア文字列（対戦表など、自分/相手の順で表示したい場面で使用）
+  const getScoreDisplayTextForTeam = (match, teamId) => {
+    if (!match) return '';
+    if (match.forfeitWinnerId) {
+      return String(match.forfeitWinnerId) === String(teamId) ? '不戦勝' : '不戦敗';
+    }
+    const isTeam1 = String(match.team1Id) === String(teamId);
+    if (!Array.isArray(match.gameScores) || match.gameScores.length === 0) {
+      if (match.team1Score === null || match.team1Score === undefined || match.team2Score === null || match.team2Score === undefined) return '';
+      return isTeam1 ? `${match.team1Score} - ${match.team2Score}` : `${match.team2Score} - ${match.team1Score}`;
+    }
+    return match.gameScores
+      .filter(g => g && g.team1 !== '' && g.team2 !== '' && g.team1 != null && g.team2 != null)
+      .map(g => isTeam1 ? `${g.team1}-${g.team2}` : `${g.team2}-${g.team1}`)
+      .join(', ');
+  };
+
+  // 参加者向けの試合ルール告知文を、マスタ設定の値から自動生成する（固定文言・固定点数は書かない）
+  const getParticipantAnnouncement = (matchRule) => {
+    if (!matchRule || !Array.isArray(matchRule.games) || matchRule.games.length === 0) return '';
+    const gamesToWin = matchRule.gamesToWin || 1;
+    const setLabel = gamesToWin <= 1 ? '1セット先取' : `${gamesToWin}セット先取`;
+    if (gamesToWin <= 1) {
+      const g = matchRule.games[0];
+      return `${setLabel}・${g.points}点・デュース${g.deuce ? 'あり' : 'なし'}・MAX${g.maxPoints}点`;
+    }
+    const maxGames = gamesToWin * 2 - 1;
+    const lines = matchRule.games.slice(0, maxGames).map((g, i) => `第${i + 1}ゲーム：${g.points}点・デュース${g.deuce ? 'あり' : 'なし'}・MAX${g.maxPoints}点`);
+    return `${setLabel}\n${lines.join('\n')}`;
+  };
+
+  // スコア入力中のgameScores配列から、今どのゲームまで入力欄を表示すべきかを求める。
+  // 直前のゲームが確定するまで次のゲームは表示せず、勝敗が決した時点でそれ以上は表示しない
+  const getVisibleGameCount = (matchRule, gameScoresSoFar) => {
+    const gamesToWin = matchRule.gamesToWin || 1;
+    const maxGames = gamesToWin * 2 - 1;
+    let team1Wins = 0, team2Wins = 0;
+    for (let i = 0; i < maxGames; i++) {
+      if (team1Wins >= gamesToWin || team2Wins >= gamesToWin) return i;
+      const g = gameScoresSoFar[i];
+      if (!g || g.team1 === '' || g.team2 === '' || g.team1 == null || g.team2 == null) return i + 1;
+      const gameRule = getGameRule(matchRule, i);
+      const winner = getGameWinner(g.team1, g.team2, gameRule);
+      if (winner === 1) team1Wins++;
+      else if (winner === 2) team2Wins++;
+      else return i + 1; // このゲームがまだ未確定なら、ここで表示を止める
+    }
+    return maxGames;
   };
 
   // 大会全体を通した試合番号の次の採番値。matchOrderのようにクラス単位でリセットせず、
@@ -705,7 +864,8 @@ export default function App() {
             fees: data.fees || { '一般': 4000, '高校生まで': 2000 },
             advancementCondition: data.advancementcondition || 'top2',
             avgMatchDuration: data.avgmatchduration || 15,
-            adminIdleTimeoutMinutes: data.adminidletimeoutminutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES
+            adminIdleTimeoutMinutes: data.adminidletimeoutminutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES,
+            matchRules: data.matchrules || {}
           };
           setConfig(loadedConfig);
           setClassesText(loadedConfig.classes.join(','));
@@ -789,6 +949,8 @@ export default function App() {
             team2Id: m.team2_id,
             team1Score: m.team1_score,
             team2Score: m.team2_score,
+            matchRule: m.match_rule || null,
+            gameScores: m.game_scores || [],
             forfeitWinnerId: m.forfeit_winner_id,
             status: m.status,
             matchOrder: m.match_order,
@@ -829,6 +991,49 @@ export default function App() {
     setPrintMatchId(matchId);
   };
 
+  // 試合ルール設定（マスタ設定画面）：クラス×ラウンドのゲーム数（1/2セット先取）を変更する。
+  // 必要なゲーム数分だけ games 配列を確保し、既存のゲーム別設定はできるだけ保持する
+  const setMatchRuleGamesToWin = (cls, matchType, gamesToWin) => {
+    setConfig(prev => {
+      const fallback = matchType === 'tournament' ? DEFAULT_TOURNAMENT_MATCH_RULE : DEFAULT_LEAGUE_MATCH_RULE;
+      const current = (prev.matchRules && prev.matchRules[cls] && prev.matchRules[cls][matchType]) || fallback;
+      const neededGames = gamesToWin * 2 - 1;
+      const games = current.games.slice();
+      while (games.length < neededGames) {
+        games.push({ ...(games[games.length - 1] || fallback.games[0]) });
+      }
+      return {
+        ...prev,
+        matchRules: {
+          ...prev.matchRules,
+          [cls]: { ...(prev.matchRules && prev.matchRules[cls]), [matchType]: { gamesToWin, games } }
+        }
+      };
+    });
+  };
+
+  // 試合ルール設定：指定ゲームの点数・MAX点数・デュース有無を変更する。
+  // MAX点数は点数以上を必須とするため、矛盾する入力は自動的に補正する
+  const updateMatchRuleGame = (cls, matchType, gameIndex, patch) => {
+    setConfig(prev => {
+      const fallback = matchType === 'tournament' ? DEFAULT_TOURNAMENT_MATCH_RULE : DEFAULT_LEAGUE_MATCH_RULE;
+      const current = (prev.matchRules && prev.matchRules[cls] && prev.matchRules[cls][matchType]) || fallback;
+      const games = current.games.map((g, i) => {
+        if (i !== gameIndex) return g;
+        const merged = { ...g, ...patch };
+        if (merged.maxPoints < merged.points) merged.maxPoints = merged.points;
+        return merged;
+      });
+      return {
+        ...prev,
+        matchRules: {
+          ...prev.matchRules,
+          [cls]: { ...(prev.matchRules && prev.matchRules[cls]), [matchType]: { ...current, games } }
+        }
+      };
+    });
+  };
+
   const handleSaveSettings = async () => {
     if (isSupabaseConfigured) {
       // 出場クラス名を変更した場合、既存のエントリー・試合に保存済みの cls が
@@ -867,7 +1072,8 @@ export default function App() {
         fees: config.fees,
         advancementcondition: config.advancementCondition,
         avgmatchduration: config.avgMatchDuration,
-        adminidletimeoutminutes: config.adminIdleTimeoutMinutes
+        adminidletimeoutminutes: config.adminIdleTimeoutMinutes,
+        matchrules: config.matchRules
       };
 
       const { error } = await supabase.from('settings').upsert(payload);
@@ -1187,7 +1393,8 @@ export default function App() {
                 fees: data.config.fees,
                 advancementcondition: data.config.advancementCondition,
                 avgmatchduration: data.config.avgMatchDuration,
-                adminidletimeoutminutes: data.config.adminIdleTimeoutMinutes
+                adminidletimeoutminutes: data.config.adminIdleTimeoutMinutes,
+                matchrules: data.config.matchRules
               };
               await supabase.from('settings').upsert(payloadSettings);
 
@@ -1232,6 +1439,8 @@ export default function App() {
                   team2_id: m.team2Id,
                   team1_score: m.team1Score,
                   team2_score: m.team2Score,
+                  match_rule: m.matchRule || null,
+                  game_scores: m.gameScores || [],
                   forfeit_winner_id: m.forfeitWinnerId || null,
                   status: m.status,
                   match_order: m.matchOrder,
@@ -1758,6 +1967,9 @@ export default function App() {
           totalGenerated++;
           const m = groupMatchesMap[groupName][round];
           nextMatchNoByGroup[groupName] = (nextMatchNoByGroup[groupName] || 0) + 1;
+          // 生成時点の試合ルールをこの試合にスナップショット保存する（後からマスタを変更しても
+          // この試合のルールは変わらない）
+          const leagueMatchRule = getMatchRule(targetCls, 'league');
           const matchObj = {
             id: `M-${targetCls}-${m.group_name}-${m.team1_id}-${m.team2_id}`,
             cls: targetCls,
@@ -1768,6 +1980,8 @@ export default function App() {
             team2_id: m.team2_id,
             team1_score: null,
             team2_score: null,
+            match_rule: leagueMatchRule,
+            game_scores: [],
             status: 'waiting',
             match_order: orderCounter++,
             match_no: nextMatchNoByGroup[groupName]
@@ -1783,6 +1997,8 @@ export default function App() {
             team2Id: matchObj.team2_id,
             team1Score: matchObj.team1_score,
             team2Score: matchObj.team2_score,
+            matchRule: matchObj.match_rule,
+            gameScores: matchObj.game_scores,
             status: matchObj.status,
             matchOrder: matchObj.match_order,
             matchNo: matchObj.match_no
@@ -1955,6 +2171,8 @@ export default function App() {
     let createdCount = 0;
     // 決勝トーナメントの試合番号は、予選（グループ内連番）とは独立してクラス単位で1から採番する
     let nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls && m.matchType === 'tournament'));
+    // 生成時点の試合ルールをこのクラスの決勝トーナメント全試合にスナップショット保存する
+    const tournamentMatchRule = getMatchRule(cls, 'tournament');
 
     let levelSize = slotCount;
     let level = 0;
@@ -1979,6 +2197,8 @@ export default function App() {
               team2Id: entB.id,
               team1Score: null,
               team2Score: null,
+              matchRule: tournamentMatchRule,
+              gameScores: [],
               status: 'waiting',
               matchOrder: 10000 + slotA,
               matchNo: nextMatchNo++
@@ -2026,6 +2246,7 @@ export default function App() {
         await supabase.from('matches').insert(newMatches.map(m => ({
           id: m.id, cls: m.cls, group_name: m.group, match_type: m.matchType, court_number: m.courtNumber,
           team1_id: m.team1Id, team2_id: m.team2Id, team1_score: m.team1Score, team2_score: m.team2Score,
+          match_rule: m.matchRule, game_scores: m.gameScores,
           status: m.status, match_order: m.matchOrder, match_no: m.matchNo
         })));
       }
@@ -2480,6 +2701,15 @@ export default function App() {
   };
 
   // 「スコア解除」ボタン処理（ステータスを in_progress に戻す）
+  // スコア入力ダイアログを開く。既存のgameScoresがあればそれを初期値にし、無ければ
+  // 第1ゲーム分だけ空欄の入力行を用意する
+  const openScoreModal = (match) => {
+    const initialGameScores = Array.isArray(match.gameScores) && match.gameScores.length > 0
+      ? match.gameScores.map(g => ({ team1: g && g.team1 != null ? g.team1 : '', team2: g && g.team2 != null ? g.team2 : '' }))
+      : [{ team1: '', team2: '' }];
+    setScoreModal({ match, gameScores: initialGameScores });
+  };
+
   const handleResetScore = async (matchId) => {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
@@ -2491,6 +2721,7 @@ export default function App() {
       ...m,
       team1Score: null,
       team2Score: null,
+      gameScores: [],
       forfeitWinnerId: null,
       completedAt: null,
       status: newStatus
@@ -2501,6 +2732,7 @@ export default function App() {
       await supabase.from('matches').update({
         team1_score: null,
         team2_score: null,
+        game_scores: [],
         forfeit_winner_id: null,
         completed_at: null,
         status: newStatus
@@ -2530,24 +2762,38 @@ export default function App() {
     });
   };
 
-  const handleSaveScore = async (matchId, s1, s2) => {
+  // gameScores: [{team1, team2}, ...]（ゲームごとの得点）。試合ルールに従って勝敗が
+  // 確定していない場合は保存しない
+  const handleSaveScore = async (matchId, gameScores) => {
     const targetMatch = matches.find(m => m.id === matchId);
-    
-    const isCleared = (s1 === 0 && s2 === 0);
-    if (isCleared) {
-      await handleResetScore(matchId);
+    if (!targetMatch) return;
+
+    const matchRule = targetMatch.matchRule || getMatchRule(targetMatch.cls, targetMatch.matchType);
+    // 決着がついた時点より後のゲーム（非表示になった第3ゲームの残存データ等）は保存対象から除外し、
+    // 空欄のゲームも除外する
+    const visibleGameCount = getVisibleGameCount(matchRule, gameScores);
+    const cleanedGameScores = gameScores
+      .slice(0, visibleGameCount)
+      .filter(g => g && g.team1 !== '' && g.team2 !== '' && g.team1 != null && g.team2 != null)
+      .map(g => ({ team1: Number(g.team1), team2: Number(g.team2) }));
+
+    const resultCheck = getMatchResult({ ...targetMatch, matchRule, gameScores: cleanedGameScores, forfeitWinnerId: null });
+    if (!resultCheck) {
+      setDialog({ title: "エラー", message: "まだ勝敗が決まっていません。試合ルールに従って正しくスコアを入力してください。", onClose: () => setDialog(null) });
       return;
     }
 
     // 初めてスコアを確定した時だけスコア入力完了時刻を記録する（後からの「スコア修正」では
     // 上書きしない）。試合受付（in_progress開始）からの所要時間を平均試合時間の算出に使う
-    const isFirstCompletion = targetMatch && targetMatch.status !== 'completed';
+    const isFirstCompletion = targetMatch.status !== 'completed';
     const completedAt = isFirstCompletion ? new Date().toISOString() : undefined;
 
     const updated = matches.map(m => m.id === matchId ? {
       ...m,
-      team1Score: s1,
-      team2Score: s2,
+      team1Score: null,
+      team2Score: null,
+      gameScores: cleanedGameScores,
+      matchRule,
       forfeitWinnerId: null,
       status: 'completed',
       ...(completedAt ? { completedAt } : {})
@@ -2556,35 +2802,38 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       await supabase.from('matches').update({
-        team1_score: s1,
-        team2_score: s2,
+        team1_score: null,
+        team2_score: null,
+        game_scores: cleanedGameScores,
+        match_rule: matchRule,
         forfeit_winner_id: null,
         status: 'completed',
         ...(completedAt ? { completed_at: completedAt } : {})
       }).eq('id', matchId);
     }
 
-    if (targetMatch && targetMatch.courtNumber !== null) {
-      const winnerId = s1 >= s2 ? targetMatch.team1Id : targetMatch.team2Id;
-      const loserId = s1 >= s2 ? targetMatch.team2Id : targetMatch.team1Id;
-      const winnerName = getTeamNameWithClub(winnerId);
-      const loserName = getTeamNameWithClub(loserId);
+    const resultMatch = { ...targetMatch, matchRule, gameScores: cleanedGameScores };
+    const result = getMatchResult(resultMatch);
+
+    if (targetMatch.courtNumber !== null && result) {
+      const winnerName = getTeamNameWithClub(result.winnerId);
+      const loserName = getTeamNameWithClub(result.loserId);
 
       setLastCourtReferees(prev => ({
         ...prev,
         [targetMatch.courtNumber]: {
           main: winnerName,
-          mainId: winnerId,
+          mainId: result.winnerId,
           line: loserName,
-          lineId: loserId
+          lineId: result.loserId
         }
       }));
     }
 
     // 決勝トーナメントの試合なら、勝ち組を次ラウンドの枠へ自動的に勝ち上がらせる
-    if (targetMatch && targetMatch.matchType === 'tournament') {
-      const winnerId = s1 >= s2 ? targetMatch.team1Id : targetMatch.team2Id;
-      const loserId = s1 >= s2 ? targetMatch.team2Id : targetMatch.team1Id;
+    if (targetMatch.matchType === 'tournament' && result) {
+      const winnerId = result.winnerId;
+      const loserId = result.loserId;
       const winnerEntry = entries.find(e => e.id === winnerId);
       const slotCount = getTournamentSlotCount(targetMatch.cls);
       const totalLevels = Math.log2(slotCount);
@@ -2613,7 +2862,7 @@ export default function App() {
       message: (
         <div className="text-left space-y-3">
            <div className="bg-emerald-50 text-emerald-800 p-3 rounded-lg font-bold text-sm flex items-center gap-2">
-              <IconCheckCircle /> 試合結果を保存しました ({s1} - {s2})
+              <IconCheckCircle /> 試合結果を保存しました（{getScoreDisplayText(resultMatch)}）
            </div>
         </div>
       ),
@@ -2632,6 +2881,7 @@ export default function App() {
       ...m,
       team1Score: null,
       team2Score: null,
+      gameScores: [],
       forfeitWinnerId: winnerId,
       status: 'completed'
     } : m);
@@ -2641,6 +2891,7 @@ export default function App() {
       await supabase.from('matches').update({
         team1_score: null,
         team2_score: null,
+        game_scores: [],
         forfeit_winner_id: winnerId,
         status: 'completed'
       }).eq('id', matchId);
@@ -2724,17 +2975,13 @@ export default function App() {
           if (String(m.forfeitWinnerId) === String(ent.id)) wins++; else losses++;
           return;
         }
-        if (m.team1Id === ent.id) {
-          pointsFor += m.team1Score || 0;
-          pointsAgainst += m.team2Score || 0;
-          if (m.team1Score > m.team2Score) wins++;
-          else if (m.team1Score < m.team2Score) losses++;
-        } else {
-          pointsFor += m.team2Score || 0;
-          pointsAgainst += m.team1Score || 0;
-          if (m.team2Score > m.team1Score) wins++;
-          else if (m.team2Score < m.team1Score) losses++;
-        }
+        const result = getMatchResult(m);
+        if (!result) return;
+        const totals = getTotalPoints(m);
+        const isTeam1 = m.team1Id === ent.id;
+        pointsFor += isTeam1 ? totals.team1 : totals.team2;
+        pointsAgainst += isTeam1 ? totals.team2 : totals.team1;
+        if (String(result.winnerId) === String(ent.id)) wins++; else losses++;
       });
       return { ...ent, wins, losses, pointsFor, pointsAgainst, pointDiff: pointsFor - pointsAgainst };
     });
@@ -2915,17 +3162,11 @@ export default function App() {
       let isWinner = false;
       let isLoser = false;
       if (ent && isDecided) {
-        if (pairMatch.forfeitWinnerId) {
-          isWinner = String(pairMatch.forfeitWinnerId) === String(ent.id);
+        const result = getMatchResult(pairMatch);
+        scoreLabel = getScoreDisplayTextForTeam(pairMatch, ent.id);
+        if (result) {
+          isWinner = String(result.winnerId) === String(ent.id);
           isLoser = !isWinner;
-          scoreLabel = isWinner ? '不戦勝' : '不戦敗';
-        } else {
-          const isTeam1 = String(pairMatch.team1Id) === String(ent.id);
-          const myScore = isTeam1 ? pairMatch.team1Score : pairMatch.team2Score;
-          const oppScore = isTeam1 ? pairMatch.team2Score : pairMatch.team1Score;
-          scoreLabel = `${myScore} - ${oppScore}`;
-          isWinner = myScore > oppScore;
-          isLoser = myScore < oppScore;
         }
       }
 
@@ -3043,6 +3284,23 @@ export default function App() {
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込期間</strong><span className="text-red-500 font-bold">{config.entryStartDate ? `${config.entryStartDate} 〜 ` : ''}{config.deadline}</span></div>
              <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-base mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
+           </div>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
+           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2">
+              🏸 試合ルール（クラス別）
+           </h3>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {config.classes.map(cls => (
+                <div key={cls} className="bg-white p-3 rounded-lg border shadow-2xs">
+                   <div className="font-bold text-emerald-800 text-base mb-1">{cls}</div>
+                   <div className="text-xs text-slate-500 font-bold mb-0.5">予選</div>
+                   <p className="text-sm text-slate-700 whitespace-pre-line mb-2">{getParticipantAnnouncement(getMatchRule(cls, 'league'))}</p>
+                   <div className="text-xs text-slate-500 font-bold mb-0.5">決勝</div>
+                   <p className="text-sm text-slate-700 whitespace-pre-line">{getParticipantAnnouncement(getMatchRule(cls, 'tournament'))}</p>
+                </div>
+              ))}
            </div>
         </div>
 
@@ -3194,7 +3452,7 @@ export default function App() {
                              </span>
                              <div className="text-sm font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team1Id)}</div>
                              <div className={activeMatch.status === 'completed' ? 'text-base font-extrabold text-gray-800 my-1' : 'text-sm text-gray-400 my-1'}>
-                                {activeMatch.status === 'completed' ? (activeMatch.forfeitWinnerId ? '不戦勝・不戦敗' : `${activeMatch.team1Score} - ${activeMatch.team2Score}`) : 'vs'}
+                                {activeMatch.status === 'completed' ? getScoreDisplayText(activeMatch) : 'vs'}
                              </div>
                              <div className="text-sm font-bold truncate w-full">{getTeamNameWithClub(activeMatch.team2Id)}</div>
                           </div>
@@ -3247,16 +3505,10 @@ export default function App() {
                                        const isDecided = match.status === 'completed';
                                        let scoreText = '';
                                        if (isDecided) {
-                                         if (match.forfeitWinnerId) {
-                                           const won = String(match.forfeitWinnerId) === String(ent.id);
-                                           scoreText = won ? '不戦勝' : '不戦敗';
-                                           if (won) wins++; else losses++;
-                                         } else if (match.team1Id === ent.id) {
-                                           scoreText = `${match.team1Score} - ${match.team2Score}`;
-                                           if (match.team1Score > match.team2Score) wins++; else if (match.team1Score < match.team2Score) losses++;
-                                         } else {
-                                           scoreText = `${match.team2Score} - ${match.team1Score}`;
-                                           if (match.team2Score > match.team1Score) wins++; else if (match.team2Score < match.team1Score) losses++;
+                                         scoreText = getScoreDisplayTextForTeam(match, ent.id);
+                                         const result = getMatchResult(match);
+                                         if (result) {
+                                           if (String(result.winnerId) === String(ent.id)) wins++; else losses++;
                                          }
                                        }
 
@@ -3594,9 +3846,75 @@ export default function App() {
                   <p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。空欄の場合は表示されません。</p>
                 </div>
               </div>
+
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-bold text-lg text-gray-800 mb-1">試合ルール設定</h4>
+                <p className="text-xs text-gray-500 mb-3">クラス×予選/決勝ごとに、ゲーム数・ゲーム別の点数／MAX点数／デュース有無を設定します。対戦カード生成の時点のルールが各試合に記録されるため、生成後にここを変更しても既存の試合には影響しません。</p>
+                <div className="space-y-4">
+                  {config.classes.map(cls => (
+                    <div key={cls} className="border rounded-lg p-3 bg-gray-50">
+                      <div className="font-bold text-sm text-[#2c5f4e] mb-2">{cls}</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {['league', 'tournament'].map(matchType => {
+                          const rule = getMatchRule(cls, matchType);
+                          const gamesToWin = rule.gamesToWin;
+                          const maxGames = gamesToWin * 2 - 1;
+                          return (
+                            <div key={matchType} className="bg-white border rounded p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-bold text-xs text-gray-600">{matchType === 'league' ? '予選' : '決勝'}</span>
+                                <select
+                                  className="text-xs border rounded p-1"
+                                  value={gamesToWin}
+                                  onChange={e => setMatchRuleGamesToWin(cls, matchType, parseInt(e.target.value, 10))}
+                                >
+                                  <option value={1}>1セット先取</option>
+                                  <option value={2}>2セット先取</option>
+                                </select>
+                              </div>
+                              <div className="space-y-1.5">
+                                {Array.from({ length: maxGames }).map((_, i) => {
+                                  const g = rule.games[i] || rule.games[rule.games.length - 1];
+                                  return (
+                                    <div key={i} className="flex flex-wrap items-center gap-1.5 text-xs">
+                                      <span className="w-12 shrink-0 text-gray-500">第{i + 1}G</span>
+                                      <input
+                                        type="number" min="1" step="1"
+                                        className="w-14 border rounded p-1"
+                                        value={g.points}
+                                        onChange={e => updateMatchRuleGame(cls, matchType, i, { points: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                                      />
+                                      <span className="text-gray-400">点／MAX</span>
+                                      <input
+                                        type="number" min="1" step="1"
+                                        className="w-14 border rounded p-1"
+                                        value={g.maxPoints}
+                                        onChange={e => updateMatchRuleGame(cls, matchType, i, { maxPoints: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                                      />
+                                      <label className="flex items-center gap-1 ml-1 whitespace-nowrap">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!g.deuce}
+                                          onChange={e => updateMatchRuleGame(cls, matchType, i, { deuce: e.target.checked })}
+                                        />
+                                        <span className="text-gray-500">デュース</span>
+                                      </label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-[10px] text-gray-400 mt-2 whitespace-pre-line border-t pt-1.5">{getParticipantAnnouncement({ gamesToWin, games: rule.games.slice(0, maxGames) })}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
-          
+
           {adminTab === 'entries' && (
             <div>
               <h3 className="text-xl font-bold mb-4">エントリー管理</h3>
@@ -4092,7 +4410,7 @@ export default function App() {
                                     <div className="text-sm text-center font-bold my-1">
                                        {activeMatch.status === 'completed' ? (
                                           <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded font-extrabold">
-                                             {activeMatch.forfeitWinnerId ? '不戦勝・不戦敗' : `${activeMatch.team1Score} - ${activeMatch.team2Score}`}
+                                             {getScoreDisplayText(activeMatch)}
                                           </span>
                                        ) : (
                                           <span className="text-gray-400 text-xs">vs</span>
@@ -4142,7 +4460,7 @@ export default function App() {
 
                                        {activeMatch.status === 'in_progress' && (
                                           <button
-                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })}
+                                            onClick={() => openScoreModal(activeMatch)}
                                             className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              スコア入力
@@ -4151,7 +4469,7 @@ export default function App() {
 
                                        {activeMatch.status === 'completed' && (
                                           <button
-                                            onClick={() => setScoreModal({ match: activeMatch, s1: activeMatch.team1Score || 0, s2: activeMatch.team2Score || 0 })}
+                                            onClick={() => openScoreModal(activeMatch)}
                                             className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              スコア修正
@@ -4335,8 +4653,8 @@ export default function App() {
                         if (m.status === 'completed') {
                           if (m.forfeitWinnerId) {
                             resultText = `不戦勝: ${getTeamNameWithClub(m.forfeitWinnerId)}`;
-                          } else if (m.team1Score !== null && m.team2Score !== null) {
-                            resultText = `${m.team1Score} - ${m.team2Score}`;
+                          } else {
+                            resultText = getScoreDisplayText(m) || '-';
                           }
                         }
                         return (
@@ -4726,50 +5044,99 @@ export default function App() {
         {currentTab === 'admin' && (isAdminLoggedIn ? viewAdmin : viewAdminLogin)}
       </main>
 
-      {scoreModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in">
-           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-1 text-gray-800 text-center">試合結果の入力</h3>
-              {typeof scoreModal.match.matchNo === 'number' && (
-                <p className="text-center mb-1"><span className="inline-block bg-[#2c5f4e] text-white text-xs font-extrabold px-2.5 py-0.5 rounded-full">第{scoreModal.match.matchNo}試合</span></p>
-              )}
-              <p className="text-xs text-gray-500 text-center mb-6">({scoreModal.match.cls}) {scoreModal.match.matchType === 'tournament' ? scoreModal.match.group : `グループ${scoreModal.match.group}`}</p>
+      {scoreModal && (() => {
+        const m = scoreModal.match;
+        const matchRule = m.matchRule || getMatchRule(m.cls, m.matchType);
+        const gamesToWin = matchRule.gamesToWin || 1;
+        const visibleCount = getVisibleGameCount(matchRule, scoreModal.gameScores);
+        const gameWins = (() => {
+          let team1 = 0, team2 = 0;
+          scoreModal.gameScores.forEach((g, i) => {
+            if (!g || g.team1 === '' || g.team2 === '') return;
+            const winner = getGameWinner(g.team1, g.team2, getGameRule(matchRule, i));
+            if (winner === 1) team1++; else if (winner === 2) team2++;
+          });
+          return { team1, team2 };
+        })();
+        const updateGameScore = (idx, side, value) => {
+          const next = scoreModal.gameScores.slice();
+          while (next.length <= idx) next.push({ team1: '', team2: '' });
+          next[idx] = { ...next[idx], [side]: value === '' ? '' : Math.max(0, parseInt(value, 10) || 0) };
+          setScoreModal({ ...scoreModal, gameScores: next });
+        };
+        const hasExistingScore = m.status === 'completed' || (Array.isArray(m.gameScores) && m.gameScores.length > 0) || m.forfeitWinnerId;
 
-              {scoreModal.match.forfeitWinnerId && (
+        return (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in">
+           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-xl font-bold mb-1 text-gray-800 text-center">試合結果の入力</h3>
+              {typeof m.matchNo === 'number' && (
+                <p className="text-center mb-1"><span className="inline-block bg-[#2c5f4e] text-white text-xs font-extrabold px-2.5 py-0.5 rounded-full">第{m.matchNo}試合</span></p>
+              )}
+              <p className="text-xs text-gray-500 text-center mb-1">({m.cls}) {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</p>
+              <p className="text-[11px] text-gray-400 text-center mb-4 whitespace-pre-line">{getParticipantAnnouncement(matchRule)}</p>
+
+              {m.forfeitWinnerId && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-800 text-xs font-bold rounded-lg px-3 py-2 mb-4 text-center">
-                   現在、{getTeamNameWithClub(scoreModal.match.forfeitWinnerId)} の不戦勝として記録されています。
+                   現在、{getTeamNameWithClub(m.forfeitWinnerId)} の不戦勝として記録されています。
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4 items-center mb-6">
-                 <div className="text-center p-3 bg-blue-50 rounded-lg border">
-                    <div className="font-bold text-sm text-blue-900 truncate mb-2">{getTeamNameWithClub(scoreModal.match.team1Id)}</div>
-                    <input 
-                      type="number" 
-                      min="0"
-                      className="w-20 p-2 text-center text-2xl font-extrabold border-2 border-blue-400 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                      value={scoreModal.s1}
-                      onChange={e => setScoreModal({ ...scoreModal, s1: parseInt(e.target.value) || 0 })}
-                    />
-                 </div>
+              <div className="grid grid-cols-2 gap-4 mb-2">
+                 <div className="font-bold text-sm text-blue-900 truncate text-center">{getTeamNameWithClub(m.team1Id)}</div>
+                 <div className="font-bold text-sm text-red-900 truncate text-center">{getTeamNameWithClub(m.team2Id)}</div>
+              </div>
 
-                 <div className="text-center p-3 bg-red-50 rounded-lg border">
-                    <div className="font-bold text-sm text-red-900 truncate mb-2">{getTeamNameWithClub(scoreModal.match.team2Id)}</div>
-                    <input 
-                      type="number" 
-                      min="0"
-                      className="w-20 p-2 text-center text-2xl font-extrabold border-2 border-red-400 rounded focus:ring-2 focus:ring-red-500 outline-none"
-                      value={scoreModal.s2}
-                      onChange={e => setScoreModal({ ...scoreModal, s2: parseInt(e.target.value) || 0 })}
-                    />
-                 </div>
+              {gamesToWin > 1 && (
+                <p className="text-center text-xs font-bold text-gray-500 mb-2">ゲーム獲得数：{gameWins.team1} - {gameWins.team2}</p>
+              )}
+
+              <div className="space-y-3 mb-6">
+                {Array.from({ length: Math.max(visibleCount, 1) }).map((_, idx) => {
+                  const gameRule = getGameRule(matchRule, idx);
+                  const g = scoreModal.gameScores[idx] || { team1: '', team2: '' };
+                  return (
+                    <div key={idx} className="border rounded-lg p-3">
+                      {gamesToWin > 1 && (
+                        <div className="text-xs font-bold text-gray-500 mb-1.5">
+                          第{idx + 1}ゲーム
+                          <span className="text-gray-400 font-normal ml-2">（{gameRule.points}点・デュース{gameRule.deuce ? 'あり' : 'なし'}・MAX{gameRule.maxPoints}点）</span>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-4 items-center">
+                         <div className="text-center p-2 bg-blue-50 rounded border">
+                            <input
+                              type="number"
+                              min="0"
+                              max={gameRule.maxPoints}
+                              step="1"
+                              className="w-20 p-2 text-center text-2xl font-extrabold border-2 border-blue-400 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                              value={g.team1}
+                              onChange={e => updateGameScore(idx, 'team1', e.target.value)}
+                            />
+                         </div>
+                         <div className="text-center p-2 bg-red-50 rounded border">
+                            <input
+                              type="number"
+                              min="0"
+                              max={gameRule.maxPoints}
+                              step="1"
+                              className="w-20 p-2 text-center text-2xl font-extrabold border-2 border-red-400 rounded focus:ring-2 focus:ring-red-500 outline-none"
+                              value={g.team2}
+                              onChange={e => updateGameScore(idx, 'team2', e.target.value)}
+                            />
+                         </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex gap-2 justify-between border-t pt-4">
-                 {scoreModal.match.status === 'completed' || scoreModal.match.team1Score !== null || scoreModal.match.forfeitWinnerId ? (
+                 {hasExistingScore ? (
                    <button
                      type="button"
-                     onClick={() => handleResetScore(scoreModal.match.id)}
+                     onClick={() => handleResetScore(m.id)}
                      className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded border border-red-300 text-sm"
                    >
                       スコア解除
@@ -4778,7 +5145,7 @@ export default function App() {
 
                  <div className="flex gap-2">
                     <button onClick={() => setScoreModal(null)} className="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded text-sm">キャンセル</button>
-                    <button onClick={() => handleSaveScore(scoreModal.match.id, scoreModal.s1, scoreModal.s2)} className="px-5 py-2 bg-[#2c5f4e] hover:bg-[#1f4236] text-white font-bold rounded shadow text-sm">確定して保存</button>
+                    <button onClick={() => handleSaveScore(m.id, scoreModal.gameScores)} className="px-5 py-2 bg-[#2c5f4e] hover:bg-[#1f4236] text-white font-bold rounded shadow text-sm">確定して保存</button>
                  </div>
               </div>
 
@@ -4787,23 +5154,24 @@ export default function App() {
                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => confirmForfeitMatch(scoreModal.match, scoreModal.match.team1Id)}
+                      onClick={() => confirmForfeitMatch(m, m.team1Id)}
                       className="flex-1 text-xs font-bold px-2 py-2 rounded border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100"
                     >
-                       {getTeamNameWithClub(scoreModal.match.team1Id)} が棄権
+                       {getTeamNameWithClub(m.team1Id)} が棄権
                     </button>
                     <button
                       type="button"
-                      onClick={() => confirmForfeitMatch(scoreModal.match, scoreModal.match.team2Id)}
+                      onClick={() => confirmForfeitMatch(m, m.team2Id)}
                       className="flex-1 text-xs font-bold px-2 py-2 rounded border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100"
                     >
-                       {getTeamNameWithClub(scoreModal.match.team2Id)} が棄権
+                       {getTeamNameWithClub(m.team2Id)} が棄権
                     </button>
                  </div>
               </div>
            </div>
         </div>
-      )}
+        );
+      })()}
 
       {dialog && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in">
@@ -4831,6 +5199,9 @@ export default function App() {
         const team1 = entries.find(e => e.id === m.team1Id);
         const team2 = entries.find(e => e.id === m.team2Id);
         const matchNoText = typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-';
+        const printMatchRule = m.matchRule || getMatchRule(m.cls, m.matchType);
+        const printMaxGames = (printMatchRule.gamesToWin || 1) * 2 - 1;
+        const printGameLabels = ['第一ゲーム', '第二ゲーム', '第三ゲーム'].slice(0, printMaxGames);
 
         // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
         // 縦横とも罫線のある方眼にするため、行×列とも均等分割できるCSS Gridで
@@ -4909,8 +5280,9 @@ export default function App() {
               </div>
             </div>
 
+            <div className="text-[9px] text-gray-500 mb-1">{getParticipantAnnouncement(printMatchRule).replace(/\n/g, '　')}</div>
             <div className="space-y-2">
-              {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameBox)}
+              {printGameLabels.map(gameBox)}
             </div>
 
             <div className="flex justify-between mt-6">

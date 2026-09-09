@@ -4573,37 +4573,61 @@ export default function App() {
                 <div>
                 {(() => {
                   const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => entries.some(e => e.cls === drawClass && e.group === g));
-                  const allUnresolved = activeGroups.flatMap(g => getTieClusters(drawClass, g).filter(c => !c.resolved).map(c => ({ group: g, ...c })));
-                  if (allUnresolved.length === 0) return null;
+                  const groupsWithTies = activeGroups
+                    .map(g => ({ group: g, standings: getGroupStandings(drawClass, g), unresolvedClusters: getTieClusters(drawClass, g).filter(c => !c.resolved) }))
+                    .filter(x => x.unresolvedClusters.length > 0);
+                  if (groupsWithTies.length === 0) return null;
                   return (
-                    <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg space-y-3">
-                      <p className="text-sm text-red-700 font-bold">⚠️ 予選順位が勝敗・得失点差・総得点まで完全に同着のグループがあります。ジャンケンまたは抽選で決定した順位を入力してください。</p>
-                      {allUnresolved.map((cluster, ci) => (
-                        <div key={ci} className="space-y-1.5">
-                          <div className="text-xs font-bold text-gray-600">グループ{cluster.group}</div>
-                          {cluster.members.map(m => (
-                            <div key={m.id} className="flex items-center justify-between gap-2 bg-white border rounded p-2">
-                              <div className="min-w-0">
-                                <div className="text-sm font-bold truncate">{getTeamNameWithClub(m.id)}</div>
-                                <div className="text-xs text-blue-700 font-bold">
-                                  {m.wins}勝{m.losses}敗　得失点差 {m.pointDiff > 0 ? `+${m.pointDiff}` : m.pointDiff}　総得点 {m.pointsFor}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="text-xs text-gray-500">決定順位</span>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  step="1"
-                                  className="w-16 border rounded p-1.5 text-sm text-center"
-                                  value={m.tieRank ?? ''}
-                                  onChange={(e) => handleSetTieRank(m.id, e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
+                    <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg space-y-4">
+                      <p className="text-sm text-red-700 font-bold">⚠️ 予選順位が勝敗・得失点差・総得点まで完全に同着の組があります。該当する組にジャンケンまたは抽選で決定した順位を入力してください。</p>
+                      {groupsWithTies.map(({ group, standings, unresolvedClusters }) => {
+                        const unresolvedIds = new Set(unresolvedClusters.flatMap(c => c.members.map(m => m.id)));
+                        return (
+                          <div key={group} className="bg-white border rounded-lg p-3">
+                            <div className="text-sm font-bold text-gray-700 mb-2">グループ{group} 順位表</div>
+                            <table className="w-full text-sm text-center border-collapse">
+                              <thead>
+                                <tr className="text-gray-500">
+                                  <th className="border p-2 bg-gray-50">順位</th>
+                                  <th className="border p-2 bg-gray-50 text-left">ペア (所属)</th>
+                                  <th className="border p-2 bg-blue-50">勝敗</th>
+                                  <th className="border p-2 bg-blue-50">得失点差</th>
+                                  <th className="border p-2 bg-blue-50">総得点</th>
+                                  <th className="border p-2 bg-red-100">決定順位</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {standings.map((ent, i) => {
+                                  const isUnresolved = unresolvedIds.has(ent.id);
+                                  return (
+                                    <tr key={ent.id} className={isUnresolved ? 'bg-red-50' : ''}>
+                                      <td className="border p-2 font-bold">{i + 1}</td>
+                                      <td className="border p-2 text-left font-bold truncate max-w-[220px]">{getTeamNameWithClub(ent.id)}</td>
+                                      <td className="border p-2 font-bold text-blue-700">{ent.wins}勝{ent.losses}敗</td>
+                                      <td className="border p-2 font-bold text-gray-600">{ent.pointDiff > 0 ? `+${ent.pointDiff}` : ent.pointDiff}</td>
+                                      <td className="border p-2 font-bold text-gray-600">{ent.pointsFor}</td>
+                                      <td className="border p-2">
+                                        {isUnresolved ? (
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            className="w-16 border rounded p-1.5 text-sm text-center"
+                                            value={ent.tieRank ?? ''}
+                                            onChange={(e) => handleSetTieRank(ent.id, e.target.value)}
+                                          />
+                                        ) : (
+                                          <span className="text-gray-300">-</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}

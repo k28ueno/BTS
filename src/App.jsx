@@ -3173,6 +3173,40 @@ export default function App() {
     }
   };
 
+  // 同着グループの並び替え（ドラッグ／▲▼）を確定するまでの作業中の順序を保持する
+  const [tieOrderDraft, setTieOrderDraft] = useState({});
+
+  const getTieClusterKey = (cls, group, cluster) => `${cls}-${group}-${cluster.members.map(m => m.id).sort().join('_')}`;
+
+  const getTieOrder = (key, cluster) => {
+    if (tieOrderDraft[key]) return tieOrderDraft[key];
+    return cluster.members
+      .slice()
+      .sort((a, b) => (a.tieRank ?? 999) - (b.tieRank ?? 999) || String(a.id).localeCompare(String(b.id)))
+      .map(m => m.id);
+  };
+
+  const moveTieOrder = (key, order, fromIndex, toIndex) => {
+    if (toIndex < 0 || toIndex >= order.length) return;
+    const next = order.slice();
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    setTieOrderDraft(prev => ({ ...prev, [key]: next }));
+  };
+
+  const dropTieOrder = (key, order, draggedId, targetId) => {
+    if (!draggedId || draggedId === targetId) return;
+    const next = order.filter(id => id !== draggedId);
+    const targetIndex = next.indexOf(targetId);
+    next.splice(targetIndex, 0, draggedId);
+    setTieOrderDraft(prev => ({ ...prev, [key]: next }));
+  };
+
+  const confirmTieOrder = async (key, order) => {
+    await Promise.all(order.map((id, idx) => handleSetTieRank(id, String(idx + 1))));
+    setTieOrderDraft(prev => { const next = { ...prev }; delete next[key]; return next; });
+  };
+
   // 予選リーグの対戦カードが1件以上生成済み、かつ全試合が完了しているか
   const isLeagueComplete = (cls) => {
     const leagueMatches = matches.filter(m => m.cls === cls && m.matchType === 'league');
@@ -4623,16 +4657,9 @@ export default function App() {
                                       <td className="border p-2 font-bold text-blue-700">{ent.wins}勝{ent.losses}敗</td>
                                       <td className="border p-2 font-bold text-gray-600">{ent.pointDiff > 0 ? `+${ent.pointDiff}` : ent.pointDiff}</td>
                                       <td className="border p-2 font-bold text-gray-600">{ent.pointsFor}</td>
-                                      <td className="border p-2">
+                                      <td className="border p-2 font-bold">
                                         {isUnresolved ? (
-                                          <input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            className="w-16 border rounded p-1.5 text-sm text-center"
-                                            value={ent.tieRank ?? ''}
-                                            onChange={(e) => handleSetTieRank(ent.id, e.target.value)}
-                                          />
+                                          <span className="text-red-500">未決定</span>
                                         ) : (
                                           <span className="text-gray-300">-</span>
                                         )}
@@ -4642,6 +4669,44 @@ export default function App() {
                                 })}
                               </tbody>
                             </table>
+
+                            {unresolvedClusters.map((cluster, ci) => {
+                              const key = getTieClusterKey(drawClass, group, cluster);
+                              const order = getTieOrder(key, cluster);
+                              const byId = Object.fromEntries(cluster.members.map(m => [m.id, m]));
+                              return (
+                                <div key={ci} className="mt-3 border-t pt-3">
+                                  <div className="text-xs font-bold text-gray-600 mb-2">同着グループ（ドラッグまたは▲▼で並べ替えて「この順序で確定」を押してください）</div>
+                                  <div className="space-y-1.5">
+                                    {order.map((id, idx) => (
+                                      <div
+                                        key={id}
+                                        draggable
+                                        onDragStart={(e) => e.dataTransfer.setData('text/plain', id)}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDrop={(e) => { e.preventDefault(); dropTieOrder(key, order, e.dataTransfer.getData('text/plain'), id); }}
+                                        className="flex items-center gap-2 bg-white border rounded p-2 cursor-move hover:border-red-400"
+                                      >
+                                        <span className="text-gray-400 font-black shrink-0" aria-hidden="true">⋮⋮</span>
+                                        <span className="font-bold text-sm text-red-600 w-10 shrink-0">{idx + 1}位</span>
+                                        <span className="flex-1 min-w-0 text-sm font-bold truncate">{getTeamNameWithClub(id)}</span>
+                                        <div className="flex flex-col gap-0.5 shrink-0">
+                                          <button type="button" onClick={() => moveTieOrder(key, order, idx, idx - 1)} disabled={idx === 0} className="text-xs leading-none px-1.5 py-1 border rounded disabled:opacity-30 hover:bg-gray-50">▲</button>
+                                          <button type="button" onClick={() => moveTieOrder(key, order, idx, idx + 1)} disabled={idx === order.length - 1} className="text-xs leading-none px-1.5 py-1 border rounded disabled:opacity-30 hover:bg-gray-50">▼</button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => confirmTieOrder(key, order)}
+                                    className="mt-2 px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-sm"
+                                  >
+                                    この順序で確定
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })}

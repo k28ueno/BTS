@@ -1,0 +1,19 @@
+name: Keep Supabase Alive
+
+# Supabase無料プランは7日間APIアクセスが無いと自動的に一時停止(Pause)されるため、
+# 毎日Supabaseへ軽いリクエストを送ってアクセス実績を作り、一時停止を防ぐ
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 毎日 03:00 UTC (=日本時間 正午12:00)
+  workflow_dispatch: {}
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -sf "${{ secrets.SUPABASE_URL }}/rest/v1/settings?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -o /dev/null -w "Supabase応答コード: %{http_code}\n"

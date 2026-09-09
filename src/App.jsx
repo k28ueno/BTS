@@ -3418,16 +3418,18 @@ export default function App() {
       const pairMatch = matches.find(m => m.id === `T-${cls}-${lo}-${hi}`);
       const isDecided = !!(pairMatch && pairMatch.status === 'completed');
       const isLocked = isGhost || isDecided;
+      // 事務局（editable=true）はコート運用のため実際のスコアを表示し、
+      // 一般公開の進行状況ページ（editable=false）は見やすさ優先で勝敗のみ表示する
       let scoreLabel = null;
       let isWinner = false;
       let isLoser = false;
       if (ent && isDecided) {
         const result = getMatchResult(pairMatch);
-        scoreLabel = getScoreDisplayTextForTeam(pairMatch, ent.id);
         if (result) {
           isWinner = String(result.winnerId) === String(ent.id);
           isLoser = !isWinner;
         }
+        scoreLabel = editable ? getScoreDisplayTextForTeam(pairMatch, ent.id) : (isWinner ? '勝' : '敗');
       }
 
       return (
@@ -3489,7 +3491,7 @@ export default function App() {
     const renderThirdPlaceSlot = (teamId) => {
       const isWinner = thirdPlaceResult && String(thirdPlaceResult.winnerId) === String(teamId);
       const isLoser = thirdPlaceResult && !isWinner;
-      const scoreLabel = thirdPlaceResult ? getScoreDisplayTextForTeam(thirdPlaceMatch, teamId) : null;
+      const scoreLabel = thirdPlaceResult ? (editable ? getScoreDisplayTextForTeam(thirdPlaceMatch, teamId) : (isWinner ? '勝' : '敗')) : null;
       return (
         <div className={`border rounded-lg px-3 py-2.5 text-sm font-bold w-52 min-h-[48px] flex items-center gap-2 bg-white border-amber-400 shadow-xs ${thirdPlaceResult ? 'opacity-70' : ''}`}>
           <span className={`truncate flex-1 ${isWinner ? 'text-emerald-700' : ''} ${isLoser ? 'text-gray-400 line-through' : ''}`}>

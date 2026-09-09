@@ -5340,12 +5340,11 @@ export default function App() {
                   <span className="cert-corner cert-corner-br"></span>
                 </div>
                 <div className="cert-frame-inner">
-                  <p className="cert-eyebrow">{getClassDisplayName(cls)}</p>
                   <h2 className="cert-title">表彰状</h2>
-                  <p className="cert-recipient">{team.p1Name}・{team.p2Name}<span className="cert-hon">殿</span></p>
+                  <p className="cert-recipient">{team.p1Name}・{team.p2Name}{team.club && <span className="cert-club">（{team.club}）</span>}<span className="cert-hon">殿</span></p>
                   <p className="cert-body">
-                    あなたがたは {config.title} {getClassDisplayName(cls)}において<br />
-                    <span className="cert-rank-word">{rankLabel}</span>の栄誉に輝かれました<br />
+                    あなたがたは {config.title}<br />
+                    {getClassDisplayName(cls)}において<span className="cert-rank-word">{rankLabel}</span>の栄誉に輝かれました<br />
                     よってここにこれを表彰します
                   </p>
                   <div className="cert-foot">

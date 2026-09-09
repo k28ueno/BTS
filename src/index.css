@@ -86,10 +86,11 @@
 .cert-corner-br { bottom: -3px; right: -3px; }
 
 .cert-title { font-family: 'Shippori Mincho B1', serif; font-weight: 800; font-size: clamp(22px, 5.4cqw, 80px); letter-spacing: .22em; text-indent: .22em; color: #2B2620; margin: 0 0 2.4cqw; text-align: center; }
+.cert-body-block { flex: 1 0 auto; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .cert-recipient { font-family: 'Shippori Mincho B1', serif; font-weight: 700; font-size: clamp(14px, 2.7cqw, 40px); color: #2B2620; text-align: center; margin: 0 0 2cqw; letter-spacing: .04em; }
 .cert-recipient .cert-club { font-family: 'Noto Serif JP', serif; font-weight: 500; font-size: .42em; margin-left: .5em; color: #7A6B52; }
 .cert-recipient .cert-hon { font-family: 'Noto Serif JP', serif; font-weight: 500; font-size: .55em; margin-left: .5em; color: #7A6B52; }
-.cert-body { font-family: 'Noto Serif JP', serif; font-size: clamp(13px, 1.9cqw, 27px); line-height: 2; color: #2B2620; text-align: center; max-width: 40em; flex: 1 0 auto; }
+.cert-body { font-family: 'Noto Serif JP', serif; font-size: clamp(13px, 1.9cqw, 27px); line-height: 2; color: #2B2620; text-align: center; max-width: 40em; }
 .cert-rank-word { font-family: 'Shippori Mincho B1', serif; font-weight: 800; color: #B7282E; font-size: 1.7em; letter-spacing: .14em; padding: 0 .1em; }
 .cert-foot { width: 100%; display: flex; align-items: flex-end; justify-content: space-between; margin-top: auto; padding-top: 1.6cqw; }
 .cert-tournament { font-family: 'Noto Serif JP', serif; font-size: clamp(10px, 1.4cqw, 20px); color: #7A6B52; line-height: 1.6; }

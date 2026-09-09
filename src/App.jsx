@@ -5341,12 +5341,14 @@ export default function App() {
                 </div>
                 <div className="cert-frame-inner">
                   <h2 className="cert-title">表彰状</h2>
-                  <p className="cert-recipient">{team.p1Name}・{team.p2Name}{team.club && <span className="cert-club">（{team.club}）</span>}<span className="cert-hon">殿</span></p>
-                  <p className="cert-body">
-                    あなたがたは {config.title}<br />
-                    {getClassDisplayName(cls)}において<span className="cert-rank-word">{rankLabel}</span>の栄誉に輝かれました<br />
-                    よってここにこれを表彰します
-                  </p>
+                  <div className="cert-body-block">
+                    <p className="cert-recipient">{team.p1Name}・{team.p2Name}{team.club && <span className="cert-club">（{team.club}）</span>}<span className="cert-hon">殿</span></p>
+                    <p className="cert-body">
+                      あなたがたは {config.title}<br />
+                      {getClassDisplayName(cls)}において<span className="cert-rank-word">{rankLabel}</span>の栄誉に輝かれました<br />
+                      よってここにこれを表彰します
+                    </p>
+                  </div>
                   <div className="cert-foot">
                     <p className="cert-tournament">主催　{config.orgName}<br />会場　{config.venue}</p>
                     <div className="cert-issuer">

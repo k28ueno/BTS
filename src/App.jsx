@@ -449,6 +449,12 @@ export default function App() {
 
     Object.keys(lastCourtReferees).forEach(cNum => {
       if (Number(cNum) !== Number(currentCourtNum)) {
+        // そのコートに、まだ完了していない試合が実際に配置されている場合のみ、
+        // 直近の勝者・敗者を「次の審判として予約済み」とみなして除外する。
+        // 既にそのコートの試合が終わって次が何も配置されていない（空き、または最後の試合が試合済のまま）なら、
+        // その2組は他のコート（決勝など）の審判として使って問題ない
+        const hasPendingMatchOnCourt = matches.some(x => Number(x.courtNumber) === Number(cNum) && x.status !== 'completed');
+        if (!hasPendingMatchOnCourt) return;
         const ref = lastCourtReferees[cNum];
         if (ref && ref.mainId) occupied.add(String(ref.mainId));
         if (ref && ref.lineId) occupied.add(String(ref.lineId));

@@ -4623,6 +4623,9 @@ export default function App() {
               ) : (
                 <div>
                 {(() => {
+                  // 予選が全試合終了していないクラスは、まだ全員0勝0敗などで判定不能なため、
+                  // 同着判定・順位表を出さない（予選進行中に誤って「完全同着」と表示されるのを防ぐ）
+                  if (!isLeagueComplete(drawClass)) return null;
                   const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => entries.some(e => e.cls === drawClass && e.group === g));
                   const groupsWithTies = activeGroups
                     .map(g => ({ group: g, standings: getGroupStandings(drawClass, g), unresolvedClusters: getTieClusters(drawClass, g).filter(c => !c.resolved) }))

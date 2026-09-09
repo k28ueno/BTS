@@ -137,6 +137,8 @@ export default function App() {
     notes: '参加者は当日の8時40分までに受付を済ませる。当日ゴミは各自持ち帰り。昼食等は各自持参。',
     announcement: '',
     contactPhone: '',
+    orgName: '紀北町体育協会',
+    chiefName: '',
     sponsors: [],
     classes: ['1部', '2部', '3部', '4部'],
     courts: 8,
@@ -893,6 +895,8 @@ export default function App() {
             notes: data.notes,
             announcement: data.announcement || '',
             contactPhone: data.contactphone || '',
+            orgName: data.orgname || '紀北町体育協会',
+            chiefName: data.chiefname || '',
             sponsors: data.sponsors || [],
             classes: data.classes || ['1部', '2部', '3部', '4部'],
             courts: data.courts || 8,
@@ -1103,6 +1107,8 @@ export default function App() {
         notes: config.notes,
         announcement: config.announcement,
         contactphone: config.contactPhone,
+        orgname: config.orgName,
+        chiefname: config.chiefName,
         sponsors: config.sponsors,
         classes: config.classes,
         courts: config.courts,
@@ -1425,6 +1431,8 @@ export default function App() {
                 notes: data.config.notes,
                 announcement: data.config.announcement,
                 contactphone: data.config.contactPhone,
+                orgname: data.config.orgName,
+                chiefname: data.config.chiefName,
                 sponsors: data.config.sponsors,
                 classes: data.config.classes,
                 courts: data.config.courts,
@@ -3194,6 +3202,14 @@ export default function App() {
   };
 
   // 決勝が終了しているクラスの優勝・準優勝ペアを求める（新聞掲載用PDFで使用）。未終了ならnull
+  // クラス名の末尾がD/Sの場合、「ダブルス」「シングルス」に置き換えて表示する（表彰状など正式な文書向け）
+  const getClassDisplayName = (cls) => {
+    if (!cls) return cls;
+    if (/D$/.test(cls)) return cls.replace(/D$/, 'ダブルス');
+    if (/S$/.test(cls)) return cls.replace(/S$/, 'シングルス');
+    return cls;
+  };
+
   const getClassFinalResult = (cls) => {
     const finalSlots = getFinalRoundSlots(cls);
     if (!finalSlots) return null;
@@ -3204,7 +3220,16 @@ export default function App() {
     const champion = entries.find(e => e.id === result.winnerId) || null;
     const runnerUp = entries.find(e => e.id === result.loserId) || null;
     if (!champion || !runnerUp) return null;
-    return { champion, runnerUp };
+
+    // 3位決定戦（任意機能）が生成・完了していれば3位も合わせて返す
+    let thirdPlace = null;
+    const thirdPlaceMatch = matches.find(m => m.id === `T3-${cls}`);
+    if (thirdPlaceMatch && thirdPlaceMatch.status === 'completed') {
+      const tpResult = getMatchResult(thirdPlaceMatch);
+      if (tpResult) thirdPlace = entries.find(e => e.id === tpResult.winnerId) || null;
+    }
+
+    return { champion, runnerUp, thirdPlace };
   };
 
   const filteredReceptionEntries = entries.filter(ent => {
@@ -4088,6 +4113,7 @@ export default function App() {
            <button onClick={() => setAdminTab('matches')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'matches' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>コート進行・スコア</button>
            <button onClick={() => setAdminTab('results')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'results' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>試合結果明細</button>
            <button onClick={() => setAdminTab('resultsPdf')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'resultsPdf' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>結果PDF</button>
+           <button onClick={() => setAdminTab('certificates')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'certificates' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>表彰状</button>
            <button onClick={() => setAdminTab('data')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'data' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>データ管理</button>
            <button onClick={() => setAdminTab('manual')} className={`p-2 text-left rounded font-bold whitespace-nowrap shrink-0 ${adminTab === 'manual' ? 'bg-[#2c5f4e] text-white' : 'hover:bg-gray-200'}`}>マニュアル</button>
         </div>
@@ -4239,6 +4265,21 @@ export default function App() {
                 <label className="block font-bold text-sm mb-1 text-gray-700">問い合わせ先電話番号（トップ画面の日付の右に表示）</label>
                 <input type="tel" className="w-full max-w-xs p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.contactPhone} onChange={e=>setConfig({...config, contactPhone: e.target.value})} placeholder="例: 0597-XX-XXXX" />
                 <p className="text-xs text-gray-500 mt-1">※空欄の場合は表示されません。</p>
+              </div>
+
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-bold text-lg text-gray-800 mb-3">表彰状設定</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold text-sm mb-1 text-gray-700">発行団体名</label>
+                    <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.orgName} onChange={e=>setConfig({...config, orgName: e.target.value})} placeholder="例: 紀北町体育協会" />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-sm mb-1 text-gray-700">代表者名（「会長」欄に表示）</label>
+                    <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.chiefName} onChange={e=>setConfig({...config, chiefName: e.target.value})} placeholder="例: ○○ ○○" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">※「表彰状」画面で発行する各クラスの優勝・準優勝・3位の賞状に表示されます。</p>
               </div>
 
               <div className="border-t pt-4 mt-2">
@@ -5084,6 +5125,74 @@ export default function App() {
             );
           })()}
 
+          {adminTab === 'certificates' && (() => {
+            const certList = [];
+            config.classes.forEach(cls => {
+              const result = getClassFinalResult(cls);
+              if (!result) return;
+              certList.push({ cls, rankLabel: '優勝', team: result.champion });
+              certList.push({ cls, rankLabel: '準優勝', team: result.runnerUp });
+              if (result.thirdPlace) certList.push({ cls, rankLabel: '3位', team: result.thirdPlace });
+            });
+
+            const renderCert = ({ cls, rankLabel, team }, idx) => (
+              <div key={`${cls}-${rankLabel}-${idx}`} className="cert-page shadow-md mb-8 mx-auto" style={{ maxWidth: 900 }}>
+                <div className="cert-frame-gold">
+                  <span className="cert-corner cert-corner-tl"></span>
+                  <span className="cert-corner cert-corner-tr"></span>
+                  <span className="cert-corner cert-corner-bl"></span>
+                  <span className="cert-corner cert-corner-br"></span>
+                </div>
+                <div className="cert-frame-inner">
+                  <p className="cert-eyebrow">{getClassDisplayName(cls)}</p>
+                  <h2 className="cert-title">表彰状</h2>
+                  <p className="cert-recipient">{team.p1Name}・{team.p2Name}<span className="cert-hon">殿</span></p>
+                  <p className="cert-body">
+                    あなたがたは {config.title} {getClassDisplayName(cls)}において<br />
+                    <span className="cert-rank-word">{rankLabel}</span>の栄誉に輝かれました<br />
+                    よってここにこれを表彰します
+                  </p>
+                  <div className="cert-foot">
+                    <p className="cert-tournament">主催　{config.orgName}<br />会場　{config.venue}</p>
+                    <div className="cert-issuer">
+                      <p className="cert-date">{config.date}</p>
+                      <p className="cert-org">{config.orgName}</p>
+                      <p className="cert-chief">会長　{config.chiefName || '○○　○○'}</p>
+                      <div className="cert-seal" aria-hidden="true">
+                        <span>協</span><span>会</span><span>長</span><span>印</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+
+            return (
+              <div>
+                <h3 className="text-xl font-bold mb-4">表彰状</h3>
+                <div className="mb-6 flex flex-wrap items-center gap-4">
+                  <button
+                    onClick={() => window.print()}
+                    disabled={certList.length === 0}
+                    className={`font-bold px-5 py-2.5 rounded shadow-sm flex items-center gap-2 ${certList.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
+                  >
+                    🖨️ 印刷 / PDF保存
+                  </button>
+                  {certList.length === 0 ? (
+                    <p className="text-sm text-gray-500">まだ決勝が終了しているクラスがありません。決勝トーナメントの優勝・準優勝が決まると、ここに表示されます（3位決定戦を実施した場合は3位の賞状も追加されます）。</p>
+                  ) : (
+                    <p className="text-sm text-gray-500">A4横向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。</p>
+                  )}
+                </div>
+                <div className="certificate-print-area print-area bg-gray-100 p-6 rounded-lg">
+                  {certList.length === 0 ? (
+                    <p className="text-center text-gray-400 py-16">結果が確定しているクラスはまだありません。</p>
+                  ) : certList.map(renderCert)}
+                </div>
+              </div>
+            );
+          })()}
+
           {adminTab === 'data' && (
             <div className="space-y-8">
               <h3 className="text-3xl font-extrabold border-b pb-3 flex items-center gap-2 text-slate-800">
@@ -5265,6 +5374,7 @@ export default function App() {
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。'],
                       ['結果PDF', '各クラスの優勝・準優勝を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
+                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">

@@ -916,7 +916,8 @@ export default function App() {
             checkedIn: d.checkedin,
             group: d.group,
             tournamentPosition: d.tournamentposition,
-            clubRank: d.club_rank
+            clubRank: d.club_rank,
+            tieRank: d.tie_rank ?? null
           }));
           setEntries(prev => {
             // 通信の一時的な不調等で0件が返ってきた場合に、既存のエントリーデータを全消去してしまわないよう保護する
@@ -1423,7 +1424,8 @@ export default function App() {
                   checkedin: ent.checkedIn,
                   group: ent.group,
                   tournamentposition: ent.tournamentPosition,
-                  club_rank: ent.clubRank ?? null
+                  club_rank: ent.clubRank ?? null,
+                  tie_rank: ent.tieRank ?? null
                 }));
                 await supabase.from('entries').insert(dbEntries);
               }
@@ -2986,15 +2988,41 @@ export default function App() {
       return { ...ent, wins, losses, pointsFor, pointsAgainst, pointDiff: pointsFor - pointsAgainst };
     });
 
-    // 勝ち数→得失点差→総得点→ID の順で決定的に順位付けする。
-    // 勝ち数だけで比較すると同成績の組が並んだ場合の順序が取得タイミング依存になり、
-    // 読み込むたびに決勝進出組が入れ替わってしまうことがあったため
+    // 勝ち数→得失点差→総得点→（全条件が同じ場合のみ）ジャンケン・抽選の結果順位→ID の順で
+    // 決定的に順位付けする。勝ち数だけで比較すると同成績の組が並んだ場合の順序が取得タイミング
+    // 依存になり、読み込むたびに決勝進出組が入れ替わってしまうことがあったため
     return stats.sort((a, b) =>
       b.wins - a.wins ||
       b.pointDiff - a.pointDiff ||
       b.pointsFor - a.pointsFor ||
+      ((a.tieRank ?? Infinity) - (b.tieRank ?? Infinity)) ||
       String(a.id).localeCompare(String(b.id))
     );
+  };
+
+  // 勝敗・得失点差・総得点のすべてが同じ組（＝ジャンケンや抽選で決着をつけるべき組）を
+  // グループごとにまとめて返す。tieRank（ジャンケン・抽選の結果順位）が全員分揃っていて
+  // 重複がなければ「解決済み」とみなし、そうでなければ「未解決」として返す
+  const getTieClusters = (cls, groupName) => {
+    const standings = getGroupStandings(cls, groupName);
+    const clusters = {};
+    standings.forEach(s => {
+      const key = `${s.wins}_${s.pointDiff}_${s.pointsFor}`;
+      (clusters[key] = clusters[key] || []).push(s);
+    });
+    return Object.values(clusters).filter(c => c.length > 1).map(members => {
+      const ranks = members.map(m => m.tieRank).filter(r => r != null);
+      const resolved = ranks.length === members.length && new Set(ranks).size === members.length;
+      return { members, resolved };
+    });
+  };
+
+  const handleSetTieRank = async (entryId, rankValue) => {
+    const tieRank = rankValue === '' ? null : parseInt(rankValue, 10);
+    setEntries(prev => prev.map(e => e.id === entryId ? { ...e, tieRank } : e));
+    if (isSupabaseConfigured) {
+      await supabase.from('entries').update({ tie_rank: tieRank }).eq('id', entryId);
+    }
   };
 
   // 予選リーグの対戦カードが1件以上生成済み、かつ全試合が完了しているか
@@ -3265,6 +3293,7 @@ export default function App() {
           }} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base"><IconSettings /> 修正・取消</button>
           <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconSmartphone /> 当日の進行状況・対戦表</button>
+          <button onClick={() => setCurrentTab('guide')} className="bg-white text-gray-600 hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-gray-300 flex items-center justify-center gap-2 text-base">📖 ご利用ガイド</button>
         </div>
       </div>
 
@@ -3346,6 +3375,66 @@ export default function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+
+  const viewParticipantGuide = (
+    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">📖 ご利用ガイド（参加者向け）</h2>
+        <button onClick={() => setCurrentTab('home')} className="text-sm font-bold text-gray-500 hover:text-gray-800">トップへ戻る</button>
+      </div>
+
+      <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-lg text-gray-800">① 大会にエントリーする</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「大会にエントリー」から、出場クラス・所属クラブ・ペアのお名前（姓・名）とふりがな・連絡先を入力して登録します。メールアドレスの入力は任意です。</p>
+        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+          <li>お名前を漢字で入力すると、ふりがな欄にはひらがなの読みが自動で入ります（自動入力後も自由に修正できます）。</li>
+          <li>エントリーは「申込期間」内のみ受け付けています。期間外は登録できません。</li>
+          <li>登録完了時に表示・発行される合言葉（パスワード）は、内容の修正・取消に必要です。必ず控えてください。</li>
+        </ul>
+      </div>
+
+      <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-lg text-gray-800">② 登録内容を修正・取消する</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「修正・取消」から、エントリー時のID（またはお名前）と合言葉でログインすると、登録内容の修正や取消ができます。</p>
+      </div>
+
+      <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-lg text-gray-800">③ 当日の進行状況・対戦表を見る</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「当日の進行状況・対戦表」から、以下の内容をリアルタイムで確認できます。</p>
+        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+          <li><strong>コート進行</strong>：どのコートで、どの試合が行われているか、スコアを確認できます。</li>
+          <li><strong>予選リーグ表</strong>：グループ内の対戦カードと結果を一覧で確認できます。</li>
+          <li><strong>決勝トーナメント</strong>：予選終了後、グループ順位と決勝トーナメントの組み合わせ・結果を確認できます。</li>
+        </ul>
+      </div>
+
+      <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-lg text-gray-800">④ 試合ルールを確認する</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「試合ルール（クラス別）」欄に、クラスごとの予選・決勝それぞれのルール（セット数・各ゲームの点数・MAX点数・デュースの有無）が表示されます。マスタ設定が変更されても、既に行われた試合・組まれた試合のルールは変わりません。</p>
+      </div>
+
+      <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-lg text-gray-800">⑤ 審判の担当・スコア提出の流れ</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面下部の「審判割り当て＆スコア提出の流れ」をご確認ください。直前の試合の勝者ペアが主審・副審、敗者ペアが線審を担当し、試合終了後は勝者・敗者両ペアの代表者が一緒にスコア用紙を事務局本部へ提出します。</p>
+      </div>
+
+      <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-lg text-gray-800">⑥ よくある質問</h3>
+        <div className="space-y-3">
+          {[
+            ['予選リーグで勝敗・得失点差・総得点まで全く同じ組が出たら？', 'その場合は当日、事務局によるジャンケンまたは抽選で順位を決定します。決定次第、順位表・決勝トーナメントに反映されます。'],
+            ['合言葉（パスワード）を忘れてしまった', '事務局本部までお声がけください。'],
+            ['エントリーしたのに「受付期間外です」と表示される', '申込期間（トップ画面の大会要項に記載）の前後はエントリーできません。期間内に改めてお試しください。'],
+          ].map(([q, a]) => (
+            <div key={q} className="border-l-4 border-[#2c5f4e] bg-gray-50 rounded-r-lg p-3">
+              <div className="font-bold text-sm text-gray-800">Q. {q}</div>
+              <div className="text-xs text-gray-600 mt-1">A. {a}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 
@@ -3552,6 +3641,9 @@ export default function App() {
 
                        const standings = getGroupStandings(selectedClass, group);
                        const hasTiedWins = standings.some((ent, i) => i > 0 && ent.wins === standings[i - 1].wins);
+                       const tieClusters = getTieClusters(selectedClass, group);
+                       const unresolvedClusters = tieClusters.filter(c => !c.resolved);
+                       const unresolvedIds = new Set(unresolvedClusters.flatMap(c => c.members.map(m => m.id)));
 
                        return (
                           <div key={`standings-${group}`} className="bg-white rounded-xl border border-gray-200 p-4">
@@ -3568,12 +3660,13 @@ export default function App() {
                                 <tbody>
                                    {standings.map((ent, i) => {
                                       const isTied = hasTiedWins && standings.some((other, k) => k !== i && other.wins === ent.wins);
+                                      const isUnresolved = unresolvedIds.has(ent.id);
                                       return (
-                                         <tr key={ent.id}>
+                                         <tr key={ent.id} className={isUnresolved ? 'bg-red-50' : ''}>
                                             <td className="border p-2 font-bold">{i + 1}</td>
                                             <td className="border p-2 text-left font-bold truncate max-w-[220px]">{getTeamNameWithClub(ent.id)}</td>
                                             <td className="border p-2 font-bold text-blue-700">{ent.wins}勝{ent.losses}敗</td>
-                                            <td className={`border p-2 font-bold ${isTied ? 'text-orange-600 bg-orange-50' : 'text-gray-600'}`}>
+                                            <td className={`border p-2 font-bold ${isUnresolved ? 'text-red-600 bg-red-50' : isTied ? 'text-orange-600 bg-orange-50' : 'text-gray-600'}`}>
                                                {ent.pointDiff > 0 ? `+${ent.pointDiff}` : ent.pointDiff}
                                             </td>
                                          </tr>
@@ -3583,6 +3676,35 @@ export default function App() {
                              </table>
                              {hasTiedWins && (
                                 <p className="text-xs text-orange-600 font-bold mt-2">※ 勝敗数が同じ組は得失点差で順位を決定しています</p>
+                             )}
+                             {unresolvedClusters.length > 0 && (
+                                <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg space-y-3">
+                                   <p className="text-xs text-red-700 font-bold">⚠️ 勝敗・得失点差・総得点のすべてが同じ組があります。ジャンケンまたは抽選で順位を決定してください。</p>
+                                   {isAdminLoggedIn ? (
+                                      unresolvedClusters.map((cluster, ci) => (
+                                         <div key={ci} className="space-y-1.5">
+                                            {cluster.members.map(m => (
+                                               <div key={m.id} className="flex items-center justify-between gap-2 bg-white border rounded p-1.5">
+                                                  <span className="text-xs font-bold truncate">{getTeamNameWithClub(m.id)}</span>
+                                                  <div className="flex items-center gap-1 shrink-0">
+                                                     <span className="text-[10px] text-gray-500">決定順位</span>
+                                                     <input
+                                                       type="number"
+                                                       min="1"
+                                                       step="1"
+                                                       className="w-14 border rounded p-1 text-xs text-center"
+                                                       value={m.tieRank ?? ''}
+                                                       onChange={(e) => handleSetTieRank(m.id, e.target.value)}
+                                                     />
+                                                  </div>
+                                               </div>
+                                            ))}
+                                         </div>
+                                      ))
+                                   ) : (
+                                      <p className="text-[11px] text-red-600">※ 順位は事務局にて決定次第、更新されます</p>
+                                   )}
+                                </div>
                              )}
                           </div>
                        );
@@ -4873,37 +4995,34 @@ export default function App() {
           {adminTab === 'manual' && (
             <div className="space-y-10">
               <h3 className="text-3xl font-extrabold border-b pb-3 flex items-center gap-2 text-slate-800">
-                 📖 操作マニュアル
+                 📖 操作マニュアル（管理者向け）
               </h3>
+              <p className="text-sm text-gray-500 -mt-6">参加者向けの案内は、トップ画面の「ご利用ガイド」をご覧ください。</p>
 
               {/* 1. 全体の流れ */}
               <div className="bg-white border-2 rounded-xl p-6 shadow-sm">
                  <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">① 大会運営の全体の流れ</h4>
                  <div className="flex flex-wrap items-stretch gap-2">
                     {[
-                      { label: '大会前', desc: 'マスタ設定・エントリー受付', tab: 'settings', color: 'bg-slate-600' },
-                      { label: '当日受付', desc: '来場した組を受付処理', tab: 'reception', color: 'bg-blue-600' },
-                      { label: '予選グループ分け', desc: 'ドロー編成でグループ編成', tab: 'draw', color: 'bg-emerald-600' },
-                      { label: '予選リーグ進行', desc: 'コート進行・スコア入力', tab: 'matches', color: 'bg-emerald-700' },
-                      { label: '決勝トーナメント', desc: 'ドロー編成→コート進行', tab: 'draw', color: 'bg-amber-600' },
-                      { label: '大会終了', desc: '結果確認・データ退避', tab: 'data', color: 'bg-gray-700' },
+                      { label: '大会前', desc: 'マスタ設定・エントリー受付', color: 'bg-slate-600' },
+                      { label: '当日受付', desc: '来場した組を受付処理', color: 'bg-blue-600' },
+                      { label: '予選グループ分け', desc: 'ドロー編成でグループ編成', color: 'bg-emerald-600' },
+                      { label: '予選リーグ進行', desc: 'コート進行・スコア入力', color: 'bg-emerald-700' },
+                      { label: '決勝トーナメント', desc: 'ドロー編成→コート進行', color: 'bg-amber-600' },
+                      { label: '大会終了', desc: '結果確認・データ退避', color: 'bg-gray-700' },
                     ].map((step, i, arr) => (
                       <React.Fragment key={step.label}>
-                         <button
-                           onClick={() => setAdminTab(step.tab)}
-                           className={`${step.color} text-white rounded-lg px-4 py-3 shadow-sm text-left flex-1 min-w-[130px] hover:opacity-90 transition-opacity`}
-                         >
+                         <div className={`${step.color} text-white rounded-lg px-4 py-3 shadow-sm text-left flex-1 min-w-[130px]`}>
                             <div className="text-[10px] font-bold opacity-80 mb-0.5">STEP {i + 1}</div>
                             <div className="font-extrabold text-sm mb-0.5">{step.label}</div>
                             <div className="text-[11px] opacity-90">{step.desc}</div>
-                         </button>
+                         </div>
                          {i < arr.length - 1 && (
                             <div className="flex items-center justify-center text-gray-300 font-black text-xl px-0.5">➔</div>
                          )}
                       </React.Fragment>
                     ))}
                  </div>
-                 <p className="text-xs text-gray-500 mt-3">※各ステップをクリックすると、該当のメニュー画面に移動します。</p>
               </div>
 
               {/* 2. メニューの役割 */}
@@ -4911,12 +5030,12 @@ export default function App() {
                  <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">② 左メニュー各画面の役割</h4>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
-                      ['マスタ設定', '大会名・日程・コート数・決勝進出条件など、大会全体の基本設定を行います。'],
+                      ['マスタ設定', '大会名・日程・コート数・決勝進出条件・出場クラス・エントリー受付開始日/締切・お知らせ・協賛企業・試合ルール（クラス×予選/決勝ごとのゲーム数・点数・MAX点数・デュース）など、大会全体の基本設定を行います。'],
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。'],
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成の対象になるのは受付済の組だけです。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。'],
-                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。'],
+                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。'],
                       ['結果PDF', '各クラスの優勝・準優勝を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。'],
@@ -4989,12 +5108,29 @@ export default function App() {
                  <p className="text-xs text-gray-500 mt-3">コート画面の「審判 ℹ️」バッジをクリック（タップ）すると、割り当て内容の詳細を確認できます。⚠️マークが付いている場合は代役が発生していることを示します。</p>
               </div>
 
-              {/* 5. よくある操作・トラブル対応 */}
+              {/* 5. 試合ルールマスタ */}
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">⑤ 試合ルールマスタ（ゲーム別点数・MAX点数・デュース）</h4>
+                 <p className="text-sm text-gray-600 leading-relaxed">マスタ設定の「試合ルール設定」で、クラス×予選/決勝ごとに、セット数（1セット先取／2セット先取）、各ゲームの点数・MAX点数・デュースの有無を自由な数値で設定できます。</p>
+                 <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+                    <li>対戦カードを生成した時点のルールがその試合に記録されます。生成後にマスタ設定を変更しても、既に生成済み・進行中・終了済みの試合のルールは変わりません（新たに生成する試合から新ルールが適用されます）。</li>
+                    <li>MAX点数に達した場合はデュース中でも即座にその時点の得点が多い側の勝ちとなります。</li>
+                    <li>参加者にはトップ画面の「試合ルール（クラス別）」欄に、設定内容が自動的に文章化されて表示されます。</li>
+                 </ul>
+              </div>
+
+              {/* 6. 予選順位が完全に同着の場合 */}
+              <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">⑥ 予選順位が完全に同着の場合</h4>
+                 <p className="text-sm text-gray-600 leading-relaxed">勝敗数・得失点差・総得点のすべてが同じ組が出た場合、システムでは順位を自動的に決定できません。「当日の進行状況・対戦表」の予選順位表に赤色で同着の組が表示されるので、当日ジャンケンまたは抽選で順位を決定し、その場に表示される入力欄に決定した順位（1位を「1」、2位を「2」…）を入力してください。入力後、順位表・決勝トーナメントの進出組に自動的に反映されます。</p>
+              </div>
+
+              {/* 7. よくある操作・トラブル対応 */}
               <div className="bg-white border-2 rounded-xl p-6 shadow-sm">
-                 <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">⑤ よくある操作・困ったときは</h4>
+                 <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">⑦ よくある操作・困ったときは</h4>
                  <div className="space-y-3">
                     {[
-                      ['スコアを間違えて入力してしまった', '該当試合の「スコア修正」ボタンからいつでも修正できます。'],
+                      ['スコアを間違えて入力してしまった', '該当試合の「スコア修正」ボタンからいつでもゲーム別に修正できます。'],
                       ['グループ分けをやり直したい', '予選リーグが「終了済」になる前であれば、組をドラッグ／タップで別グループへ移動すると対戦カードが自動的に再生成されます。終了済クラスは結果保護のため変更できません。'],
                       ['対戦カードを全部作り直したい', 'データ管理の「試合結果のみ初期化」で、エントリー情報を残したまま試合結果とコート進行状態だけをリセットできます。'],
                       ['決勝トーナメントの枠数がおかしい', '決勝の枠数（2/4/8枠）は「グループ数×決勝進出条件」から自動計算されます。進出条件はマスタ設定の「決勝トーナメント進出条件」で変更できます。'],
@@ -5003,6 +5139,7 @@ export default function App() {
                       ['一方の組が欠場・棄権した', 'コート進行画面のスコア入力から「棄権」を選択すると、出場した側の不戦勝として記録されます（得失点差には反映されません）。誤操作の場合は「スコア解除」で取り消せます。'],
                       ['試合結果を新聞社等に提出したい', '「結果PDF」画面で各クラスの優勝・準優勝をまとめて表示し、ブラウザの印刷機能からPDF保存できます。'],
                       ['試合のスコア用紙（得点用紙）を印刷したい', 'コート進行画面の各試合カードにある「🖨️ スコアシート」ボタンから、その試合専用の記入用紙をA4横向きで印刷できます。'],
+                      ['試合ルールを変更したのに既存の試合に反映されない', '仕様です。ルール変更は、変更後に新しく生成する試合にのみ適用されます。既に生成済みの試合のルールを変えたい場合は、対象試合を含む対戦カードを作り直してください。'],
                     ].map(([q, a]) => (
                       <div key={q} className="border-l-4 border-[#2c5f4e] bg-gray-50 rounded-r-lg p-3">
                          <div className="font-bold text-sm text-gray-800">Q. {q}</div>
@@ -5037,6 +5174,7 @@ export default function App() {
 
       <main className="p-4 md:p-8">
         {currentTab === 'home' && viewHome}
+        {currentTab === 'guide' && viewParticipantGuide}
         {currentTab === 'entry' && viewEntryForm}
         {currentTab === 'editLogin' && viewEditLogin}
         {currentTab === 'dashboard' && viewDashboard}

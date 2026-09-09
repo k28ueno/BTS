@@ -3865,32 +3865,8 @@ export default function App() {
                                 <p className="text-xs text-orange-600 font-bold mt-2">※ 勝敗数が同じ組は得失点差で順位を決定しています</p>
                              )}
                              {unresolvedClusters.length > 0 && (
-                                <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg space-y-3">
-                                   <p className="text-xs text-red-700 font-bold">⚠️ 勝敗・得失点差・総得点のすべてが同じ組があります。ジャンケンまたは抽選で順位を決定してください。</p>
-                                   {isAdminLoggedIn ? (
-                                      unresolvedClusters.map((cluster, ci) => (
-                                         <div key={ci} className="space-y-1.5">
-                                            {cluster.members.map(m => (
-                                               <div key={m.id} className="flex items-center justify-between gap-2 bg-white border rounded p-1.5">
-                                                  <span className="text-xs font-bold truncate">{getTeamNameWithClub(m.id)}</span>
-                                                  <div className="flex items-center gap-1 shrink-0">
-                                                     <span className="text-[10px] text-gray-500">決定順位</span>
-                                                     <input
-                                                       type="number"
-                                                       min="1"
-                                                       step="1"
-                                                       className="w-14 border rounded p-1 text-xs text-center"
-                                                       value={m.tieRank ?? ''}
-                                                       onChange={(e) => handleSetTieRank(m.id, e.target.value)}
-                                                     />
-                                                  </div>
-                                               </div>
-                                            ))}
-                                         </div>
-                                      ))
-                                   ) : (
-                                      <p className="text-[11px] text-red-600">※ 順位は事務局にて決定次第、更新されます</p>
-                                   )}
+                                <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg">
+                                   <p className="text-xs text-red-700 font-bold">⚠️ 勝敗・得失点差・総得点のすべてが同じ組があります。順位は事務局にて決定次第、更新されます。</p>
                                 </div>
                              )}
                           </div>
@@ -4575,6 +4551,38 @@ export default function App() {
                    })}
                 </div>
               ) : (
+                <div>
+                {(() => {
+                  const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => entries.some(e => e.cls === drawClass && e.group === g));
+                  const allUnresolved = activeGroups.flatMap(g => getTieClusters(drawClass, g).filter(c => !c.resolved).map(c => ({ group: g, ...c })));
+                  if (allUnresolved.length === 0) return null;
+                  return (
+                    <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg space-y-3">
+                      <p className="text-sm text-red-700 font-bold">⚠️ 予選順位が勝敗・得失点差・総得点まで完全に同着のグループがあります。ジャンケンまたは抽選で決定した順位を入力してください。</p>
+                      {allUnresolved.map((cluster, ci) => (
+                        <div key={ci} className="space-y-1.5">
+                          <div className="text-xs font-bold text-gray-600">グループ{cluster.group}</div>
+                          {cluster.members.map(m => (
+                            <div key={m.id} className="flex items-center justify-between gap-2 bg-white border rounded p-2">
+                              <span className="text-sm font-bold truncate">{getTeamNameWithClub(m.id)}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-xs text-gray-500">決定順位</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  className="w-16 border rounded p-1.5 text-sm text-center"
+                                  value={m.tieRank ?? ''}
+                                  onChange={(e) => handleSetTieRank(m.id, e.target.value)}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 <div className="flex gap-6">
                    <div
                      className={`w-1/3 rounded-lg p-3 border-2 border-dashed ${tapMoveSelection && tapMoveSelection.kind === 'entry' ? 'bg-orange-50 border-orange-400' : 'bg-gray-100 border-gray-300'}`}
@@ -4612,6 +4620,7 @@ export default function App() {
                    <div className="w-2/3 bg-gray-50 rounded-lg border overflow-x-auto relative p-4">
                       {renderTournamentTree(drawClass, true)}
                    </div>
+                </div>
                 </div>
               )}
             </div>

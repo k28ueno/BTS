@@ -4635,10 +4635,38 @@ export default function App() {
                     <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg space-y-4">
                       <p className="text-sm text-red-700 font-bold">⚠️ 予選順位が勝敗・得失点差・総得点まで完全に同着の組があります。該当する組にジャンケンまたは抽選で決定した順位を入力してください。</p>
                       {groupsWithTies.map(({ group, standings, unresolvedClusters }) => {
-                        const unresolvedIds = new Set(unresolvedClusters.flatMap(c => c.members.map(m => m.id)));
+                        // 同着グループのメンバーは、決め打ちの並び順（作業中の順序）に差し替えて表示する。
+                        // それ以外の組は通常の順位表の並び順のまま
+                        const clusterIndexByMemberId = new Map();
+                        unresolvedClusters.forEach((cluster, ci) => {
+                          cluster.members.forEach(m => clusterIndexByMemberId.set(m.id, ci));
+                        });
+                        const visited = new Set();
+                        const displayRows = [];
+                        standings.forEach(ent => {
+                          if (visited.has(ent.id)) return;
+                          const ci = clusterIndexByMemberId.get(ent.id);
+                          if (ci === undefined) {
+                            visited.add(ent.id);
+                            displayRows.push({ ent });
+                            return;
+                          }
+                          const cluster = unresolvedClusters[ci];
+                          const key = getTieClusterKey(drawClass, group, cluster);
+                          const order = getTieOrder(key, cluster);
+                          const byId = Object.fromEntries(cluster.members.map(m => [m.id, m]));
+                          order.forEach((id, idxInCluster) => {
+                            visited.add(id);
+                            displayRows.push({
+                              ent: byId[id], cluster, key, order, idxInCluster,
+                              isLastOfCluster: idxInCluster === order.length - 1
+                            });
+                          });
+                        });
+
                         return (
                           <div key={group} className="bg-white border rounded-lg p-3">
-                            <div className="text-sm font-bold text-gray-700 mb-2">グループ{group} 順位表</div>
+                            <div className="text-sm font-bold text-gray-700 mb-2">グループ{group} 順位表（同着の組はドラッグまたは▲▼で並べ替えて「この順序で確定」を押してください）</div>
                             <table className="w-full text-sm text-center border-collapse">
                               <thead>
                                 <tr className="text-gray-500">
@@ -4651,65 +4679,60 @@ export default function App() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {standings.map((ent, i) => {
-                                  const isUnresolved = unresolvedIds.has(ent.id);
+                                {displayRows.map((row, i) => {
+                                  const { ent, cluster, key, order, idxInCluster, isLastOfCluster } = row;
+                                  const isUnresolved = !!cluster;
                                   return (
-                                    <tr key={ent.id} className={isUnresolved ? 'bg-red-50' : ''}>
-                                      <td className="border p-2 font-bold">{i + 1}</td>
-                                      <td className="border p-2 text-left font-bold truncate max-w-[220px]">{getTeamNameWithClub(ent.id)}</td>
-                                      <td className="border p-2 font-bold text-blue-700">{ent.wins}勝{ent.losses}敗</td>
-                                      <td className="border p-2 font-bold text-gray-600">{ent.pointDiff > 0 ? `+${ent.pointDiff}` : ent.pointDiff}</td>
-                                      <td className="border p-2 font-bold text-gray-600">{ent.pointsFor}</td>
-                                      <td className="border p-2 font-bold">
-                                        {isUnresolved ? (
-                                          <span className="text-red-500">未決定</span>
-                                        ) : (
-                                          <span className="text-gray-300">-</span>
-                                        )}
-                                      </td>
-                                    </tr>
+                                    <React.Fragment key={ent.id}>
+                                      <tr
+                                        className={isUnresolved ? 'bg-red-50 cursor-move hover:bg-red-100' : ''}
+                                        draggable={isUnresolved}
+                                        onDragStart={isUnresolved ? (e) => e.dataTransfer.setData('text/plain', ent.id) : undefined}
+                                        onDragOver={isUnresolved ? (e) => e.preventDefault() : undefined}
+                                        onDrop={isUnresolved ? (e) => {
+                                          e.preventDefault();
+                                          const draggedId = e.dataTransfer.getData('text/plain');
+                                          if (order.includes(draggedId)) dropTieOrder(key, order, draggedId, ent.id);
+                                        } : undefined}
+                                      >
+                                        <td className="border p-2 font-bold">{i + 1}</td>
+                                        <td className="border p-2 text-left font-bold truncate max-w-[220px]">
+                                          {isUnresolved && <span className="text-gray-400 font-black mr-1" aria-hidden="true">⋮⋮</span>}
+                                          {getTeamNameWithClub(ent.id)}
+                                        </td>
+                                        <td className="border p-2 font-bold text-blue-700">{ent.wins}勝{ent.losses}敗</td>
+                                        <td className="border p-2 font-bold text-gray-600">{ent.pointDiff > 0 ? `+${ent.pointDiff}` : ent.pointDiff}</td>
+                                        <td className="border p-2 font-bold text-gray-600">{ent.pointsFor}</td>
+                                        <td className="border p-2 font-bold">
+                                          {isUnresolved ? (
+                                            <div className="flex items-center justify-center gap-1">
+                                              <span className="text-red-500">未決定</span>
+                                              <button type="button" onClick={() => moveTieOrder(key, order, idxInCluster, idxInCluster - 1)} disabled={idxInCluster === 0} className="text-xs leading-none px-1 py-0.5 border rounded disabled:opacity-30 hover:bg-white">▲</button>
+                                              <button type="button" onClick={() => moveTieOrder(key, order, idxInCluster, idxInCluster + 1)} disabled={idxInCluster === order.length - 1} className="text-xs leading-none px-1 py-0.5 border rounded disabled:opacity-30 hover:bg-white">▼</button>
+                                            </div>
+                                          ) : (
+                                            <span className="text-gray-300">-</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                      {isLastOfCluster && (
+                                        <tr>
+                                          <td colSpan={6} className="border p-2 bg-red-50 text-center">
+                                            <button
+                                              type="button"
+                                              onClick={() => confirmTieOrder(key, order)}
+                                              className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-sm"
+                                            >
+                                              この順序で確定
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </React.Fragment>
                                   );
                                 })}
                               </tbody>
                             </table>
-
-                            {unresolvedClusters.map((cluster, ci) => {
-                              const key = getTieClusterKey(drawClass, group, cluster);
-                              const order = getTieOrder(key, cluster);
-                              const byId = Object.fromEntries(cluster.members.map(m => [m.id, m]));
-                              return (
-                                <div key={ci} className="mt-3 border-t pt-3">
-                                  <div className="text-xs font-bold text-gray-600 mb-2">同着グループ（ドラッグまたは▲▼で並べ替えて「この順序で確定」を押してください）</div>
-                                  <div className="space-y-1.5">
-                                    {order.map((id, idx) => (
-                                      <div
-                                        key={id}
-                                        draggable
-                                        onDragStart={(e) => e.dataTransfer.setData('text/plain', id)}
-                                        onDragOver={(e) => e.preventDefault()}
-                                        onDrop={(e) => { e.preventDefault(); dropTieOrder(key, order, e.dataTransfer.getData('text/plain'), id); }}
-                                        className="flex items-center gap-2 bg-white border rounded p-2 cursor-move hover:border-red-400"
-                                      >
-                                        <span className="text-gray-400 font-black shrink-0" aria-hidden="true">⋮⋮</span>
-                                        <span className="font-bold text-sm text-red-600 w-10 shrink-0">{idx + 1}位</span>
-                                        <span className="flex-1 min-w-0 text-sm font-bold truncate">{getTeamNameWithClub(id)}</span>
-                                        <div className="flex flex-col gap-0.5 shrink-0">
-                                          <button type="button" onClick={() => moveTieOrder(key, order, idx, idx - 1)} disabled={idx === 0} className="text-xs leading-none px-1.5 py-1 border rounded disabled:opacity-30 hover:bg-gray-50">▲</button>
-                                          <button type="button" onClick={() => moveTieOrder(key, order, idx, idx + 1)} disabled={idx === order.length - 1} className="text-xs leading-none px-1.5 py-1 border rounded disabled:opacity-30 hover:bg-gray-50">▼</button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => confirmTieOrder(key, order)}
-                                    className="mt-2 px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-sm"
-                                  >
-                                    この順序で確定
-                                  </button>
-                                </div>
-                              );
-                            })}
                           </div>
                         );
                       })}

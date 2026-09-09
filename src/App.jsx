@@ -2296,6 +2296,64 @@ export default function App() {
     setDialog({ title: "決勝トーナメント対戦カード生成完了", message: `【${cls}】: ${parts.join('、')}しました。`, onClose: () => setDialog(null) });
   };
 
+  // 準決勝で敗れた2組による3位決定戦の対戦カードを生成する（任意機能）。
+  // 時間の都合等で実施しない大会もあるため、決勝トーナメントの自動進行には含めず、
+  // 管理者が必要と判断した時に手動で生成する
+  const generateThirdPlaceMatch = async (cls) => {
+    const slotCount = getTournamentSlotCount(cls);
+    const totalLevels = Math.log2(slotCount);
+    if (!(totalLevels >= 2)) {
+      setDialog({ title: "生成不可", message: `【${cls}】は準決勝が存在する規模の決勝トーナメントではないため、3位決定戦は作成できません。`, onClose: () => setDialog(null) });
+      return;
+    }
+    const thirdPlaceId = `T3-${cls}`;
+    if (matches.some(m => m.id === thirdPlaceId)) {
+      setDialog({ title: "生成済みです", message: "3位決定戦の対戦カードは既に生成されています。", onClose: () => setDialog(null) });
+      return;
+    }
+    const semifinalLevel = totalLevels - 2;
+    const semifinalLabel = tournamentRoundLabel(semifinalLevel, slotCount);
+    const semifinalMatches = matches.filter(m => m.cls === cls && m.matchType === 'tournament' && m.group === semifinalLabel);
+    if (semifinalMatches.length !== 2 || !semifinalMatches.every(m => m.status === 'completed')) {
+      setDialog({ title: "生成不可", message: "準決勝の2試合がまだ両方とも終了していないため、3位決定戦は作成できません。", onClose: () => setDialog(null) });
+      return;
+    }
+    const results = semifinalMatches.map(m => getMatchResult(m));
+    if (results.some(r => !r)) {
+      setDialog({ title: "生成不可", message: "準決勝の勝敗がまだ確定していません。", onClose: () => setDialog(null) });
+      return;
+    }
+    const [loser1, loser2] = results.map(r => r.loserId);
+    const nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls && m.matchType === 'tournament'));
+    const tournamentMatchRule = getMatchRule(cls, 'tournament');
+    const thirdPlaceMatch = {
+      id: thirdPlaceId,
+      cls,
+      group: '3位決定戦',
+      matchType: 'tournament',
+      courtNumber: null,
+      team1Id: loser1,
+      team2Id: loser2,
+      team1Score: null,
+      team2Score: null,
+      matchRule: tournamentMatchRule,
+      gameScores: [],
+      status: 'waiting',
+      matchOrder: 10000 + semifinalLevel * 100 + 50,
+      matchNo: nextMatchNo
+    };
+    setMatches(prev => [...prev, thirdPlaceMatch]);
+    if (isSupabaseConfigured) {
+      await supabase.from('matches').insert([{
+        id: thirdPlaceMatch.id, cls: thirdPlaceMatch.cls, group_name: thirdPlaceMatch.group, match_type: thirdPlaceMatch.matchType,
+        court_number: thirdPlaceMatch.courtNumber, team1_id: thirdPlaceMatch.team1Id, team2_id: thirdPlaceMatch.team2Id,
+        team1_score: thirdPlaceMatch.team1Score, team2_score: thirdPlaceMatch.team2Score, match_rule: thirdPlaceMatch.matchRule,
+        game_scores: thirdPlaceMatch.gameScores, status: thirdPlaceMatch.status, match_order: thirdPlaceMatch.matchOrder, match_no: thirdPlaceMatch.matchNo
+      }]);
+    }
+    setDialog({ title: "3位決定戦 対戦カード生成完了", message: `【${cls}】準決勝で敗れた2組による3位決定戦の対戦カードを生成しました。`, onClose: () => setDialog(null) });
+  };
+
   // 姓・名欄のIME変換から、確定後の漢字ではなく変換前のひらがな読みを対応するふりがな欄へ自動反映する。
   // compositionend時点のデータは変換確定後の文字列（＝漢字）であることが多く読みとして使えないため、
   // compositionupdate中に見えている「まだひらがなのみ」の状態を随時バッファへ保持しておき、
@@ -2877,7 +2935,8 @@ export default function App() {
     }
 
     // 決勝トーナメントの試合なら、勝ち組を次ラウンドの枠へ自動的に勝ち上がらせる
-    if (targetMatch.matchType === 'tournament' && result) {
+    // （3位決定戦は勝ち上がり先が無い独立した試合のため、この処理の対象外とする）
+    if (targetMatch.matchType === 'tournament' && targetMatch.id !== `T3-${targetMatch.cls}` && result) {
       const winnerId = result.winnerId;
       const loserId = result.loserId;
       const winnerEntry = entries.find(e => e.id === winnerId);
@@ -2956,7 +3015,8 @@ export default function App() {
     }
 
     // 決勝トーナメントの試合なら、不戦勝側を次ラウンドの枠へ自動的に勝ち上がらせる
-    if (targetMatch.matchType === 'tournament') {
+    // （3位決定戦は勝ち上がり先が無い独立した試合のため、この処理の対象外とする）
+    if (targetMatch.matchType === 'tournament' && targetMatch.id !== `T3-${targetMatch.cls}`) {
       const winnerEntry = entries.find(e => e.id === winnerId);
       const slotCount = getTournamentSlotCount(targetMatch.cls);
       const totalLevels = Math.log2(slotCount);
@@ -3295,11 +3355,35 @@ export default function App() {
       }
     }
 
+    // 3位決定戦（任意）：準決勝で敗れた2組の対戦。生成されていれば結果を表示する
+    const thirdPlaceMatch = matches.find(m => m.id === `T3-${cls}`);
+    const thirdPlaceResult = thirdPlaceMatch && thirdPlaceMatch.status === 'completed' ? getMatchResult(thirdPlaceMatch) : null;
+    const renderThirdPlaceSlot = (teamId) => {
+      const isWinner = thirdPlaceResult && String(thirdPlaceResult.winnerId) === String(teamId);
+      const isLoser = thirdPlaceResult && !isWinner;
+      const scoreLabel = thirdPlaceResult ? getScoreDisplayTextForTeam(thirdPlaceMatch, teamId) : null;
+      return (
+        <div className={`border rounded-lg px-3 py-2.5 text-sm font-bold w-52 min-h-[48px] flex items-center gap-2 bg-white border-amber-400 shadow-xs ${thirdPlaceResult ? 'opacity-70' : ''}`}>
+          <span className={`truncate flex-1 ${isWinner ? 'text-emerald-700' : ''} ${isLoser ? 'text-gray-400 line-through' : ''}`}>
+            {teamId ? getTeamNameWithClub(teamId) : '未定'}
+          </span>
+          {scoreLabel && (
+            <span className={`shrink-0 font-mono text-xs px-1.5 py-0.5 rounded ${isWinner ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{scoreLabel}</span>
+          )}
+        </div>
+      );
+    };
+
     return (
       <div>
         {champion && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-800 font-extrabold text-base px-4 py-3 rounded-lg mb-4">
              🏆 優勝: {getTeamNameWithClub(champion.id)}
+          </div>
+        )}
+        {thirdPlaceResult && (
+          <div className="flex items-center gap-2 bg-orange-50 border border-orange-300 text-orange-800 font-extrabold text-base px-4 py-3 rounded-lg mb-4">
+             🥉 3位: {getTeamNameWithClub(thirdPlaceResult.winnerId)}
           </div>
         )}
         <div className="flex gap-8 p-4 min-w-max">
@@ -3309,6 +3393,13 @@ export default function App() {
               {slots.map(slot => renderSlot(slot))}
             </div>
           ))}
+          {thirdPlaceMatch && (
+            <div className="flex flex-col justify-center gap-2">
+              <div className="text-xs font-bold text-gray-500 text-center mb-1">3位決定戦</div>
+              {renderThirdPlaceSlot(thirdPlaceMatch.team1Id)}
+              {renderThirdPlaceSlot(thirdPlaceMatch.team2Id)}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -4352,6 +4443,12 @@ export default function App() {
                        className={`px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1 ${isTournamentComplete(drawClass) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                      >
                         <IconRefresh /> 決勝トーナメント対戦カードを生成
+                     </button>
+                     <button
+                       onClick={() => generateThirdPlaceMatch(drawClass)}
+                       className="px-4 py-2 rounded font-bold shadow-sm flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white"
+                     >
+                        🥉 3位決定戦の対戦カードを生成
                      </button>
                      {isTournamentComplete(drawClass) && (
                         <span className="text-xs text-gray-500 font-bold">※ 決勝トーナメントは終了済みのため、誤操作防止のためボタンを無効化しています</span>

@@ -166,6 +166,9 @@ export default function App() {
   const compositionReadingRef = useRef({ p1LastName: '', p1FirstName: '', p2LastName: '', p2FirstName: '' });
   const [editLogin, setEditLogin] = useState({ id: '', password: '' });
   const [editMode, setEditMode] = useState(false);
+  // エントリー確認（名前・所属の曖昧検索）用
+  const [entrySearchName, setEntrySearchName] = useState('');
+  const [entrySearchClub, setEntrySearchClub] = useState('');
   const [currentEditId, setCurrentEditId] = useState(null);
 
   const [receptionClassFilter, setReceptionClassFilter] = useState('all');
@@ -3333,6 +3336,7 @@ export default function App() {
             furiganaDirtyRef.current = { p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false };
             setCurrentTab('entry');
           }} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => { setEntrySearchName(''); setEntrySearchClub(''); setCurrentTab('search'); }} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0">🔍 確認</button>
           <button onClick={() => {
             if (isEntryDeadlinePassed(config)) {
               setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
@@ -3863,6 +3867,65 @@ export default function App() {
           )}
         </div>
       </form>
+    </div>
+  );
+
+  const entrySearchHasQuery = entrySearchName.trim() !== '' || entrySearchClub.trim() !== '';
+  const entrySearchResults = entrySearchHasQuery ? entries.filter(ent => {
+    const nameQ = entrySearchName.trim();
+    const clubQ = entrySearchClub.trim();
+    const nameMatch = !nameQ || `${ent.p1Name || ''}${ent.p2Name || ''}`.includes(nameQ);
+    const clubMatch = !clubQ || (ent.club || '').includes(clubQ);
+    return nameMatch && clubMatch;
+  }) : [];
+
+  const viewEntrySearch = (
+    <div className="max-w-2xl mx-auto bg-white p-6 md:p-8 rounded-xl shadow-md border-t-4 border-[#2c5f4e] animate-fade-in">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">エントリー確認</h2>
+        <button onClick={() => setCurrentTab('home')} className="text-sm text-gray-500 hover:text-gray-800">トップへ戻る</button>
+      </div>
+      <p className="text-sm text-gray-600 mb-4">お名前または所属クラブ名の一部を入力して検索できます（部分一致）。ご自身のエントリーが正しく登録されているかご確認いただけます。</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-1">お名前（一部でも可）</label>
+          <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={entrySearchName} onChange={e => setEntrySearchName(e.target.value)} placeholder="例: 山田" />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-1">所属クラブ名（一部でも可）</label>
+          <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={entrySearchClub} onChange={e => setEntrySearchClub(e.target.value)} placeholder="例: 紀北" />
+        </div>
+      </div>
+      {entrySearchHasQuery && (
+        entrySearchResults.length > 0 ? (
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="bg-gray-100 border-b">
+                <tr className="text-gray-500 font-bold">
+                  <th className="p-3">受付ID</th>
+                  <th className="p-3">クラス</th>
+                  <th className="p-3">ペア</th>
+                  <th className="p-3">所属クラブ</th>
+                  <th className="p-3">受付状態</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entrySearchResults.map(ent => (
+                  <tr key={ent.id} className="border-b last:border-b-0">
+                    <td className="p-3 font-mono font-bold text-[#2c5f4e]">{ent.id}</td>
+                    <td className="p-3">{ent.cls}</td>
+                    <td className="p-3 font-bold">{ent.p1Name}・{ent.p2Name}</td>
+                    <td className="p-3">{ent.club || '-'}</td>
+                    <td className="p-3">{ent.checkedIn ? <span className="text-green-700 font-bold">受付済</span> : <span className="text-gray-400">未受付</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center text-gray-400 py-10 border rounded-lg">該当するエントリーが見つかりませんでした。</div>
+        )
+      )}
     </div>
   );
 
@@ -5222,6 +5285,7 @@ export default function App() {
       <main className="p-4 md:p-8">
         {currentTab === 'home' && viewHome}
         {currentTab === 'guide' && viewParticipantGuide}
+        {currentTab === 'search' && viewEntrySearch}
         {currentTab === 'entry' && viewEntryForm}
         {currentTab === 'editLogin' && viewEditLogin}
         {currentTab === 'dashboard' && viewDashboard}

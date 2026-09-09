@@ -2122,6 +2122,15 @@ export default function App() {
       return;
     }
 
+    if (hasTournamentProgressed(drawClass)) {
+      setDialog({
+        title: "自動反映不可",
+        message: `【${drawClass}】の決勝トーナメントは既に開始されています。この状態で予選順位から自動反映すると、既に勝ち上がった組の枠が消えてしまうため実行できません。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+
     const clsEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => 
       clsEntries.some(e => e.group === g)
@@ -2249,12 +2258,16 @@ export default function App() {
       for (let i = 0; i < levelSize; i += 2) {
         const slotA = level * 100 + i + 1;
         const slotB = level * 100 + i + 2;
+        const matchId = `T-${cls}-${slotA}-${slotB}`;
+        // この枠は既に対戦カードが完了済み＝勝者は既にスコア確定時に次ラウンドへ
+        // 勝ち上がり済みのはず。片方の枠に残ったままの敗者を不戦勝扱いで
+        // 誤って次ラウンドへ進めてしまわないよう、完了済みの枠ペアはスキップする
+        if (matches.some(m => m.id === matchId && m.status === 'completed')) continue;
         const entA = workingEntries.find(e => e.cls === cls && e.tournamentPosition === slotA);
         const entB = workingEntries.find(e => e.cls === cls && e.tournamentPosition === slotB);
         const { nextSlot } = getTournamentSlotInfo(slotA);
 
         if (entA && entB) {
-          const matchId = `T-${cls}-${slotA}-${slotB}`;
           if (!matches.some(m => m.id === matchId)) {
             newMatches.push({
               id: matchId,
@@ -3264,6 +3277,15 @@ export default function App() {
     if (!finalSlots) return false;
     const finalMatch = matches.find(m => m.id === `T-${cls}-${finalSlots[0]}-${finalSlots[1]}`);
     return !!(finalMatch && finalMatch.status === 'completed');
+  };
+
+  // 決勝トーナメントが初期ラウンドより先へ進行しているか（＝いずれかの対戦カードが
+  // 消化済み、またはコートに割り当て済みで進行中か）。
+  // 進行後に「予選順位からトーナメント位置を自動初期反映」を実行すると、
+  // 既に勝ち上がった組の枠まで予選順位で上書き・消去してしまい状態が壊れるため、
+  // この状態では自動反映ボタンを実行させない
+  const hasTournamentProgressed = (cls) => {
+    return matches.some(m => m.cls === cls && m.matchType === 'tournament' && (m.status === 'completed' || m.courtNumber !== null));
   };
 
   // 決勝が終了しているクラスの優勝・準優勝ペアを求める（新聞掲載用PDFで使用）。未終了ならnull
@@ -4543,9 +4565,9 @@ export default function App() {
                    <>
                      <button
                        onClick={handleAutoDrawTournament}
-                       disabled={isTournamentComplete(drawClass)}
-                       title={isTournamentComplete(drawClass) ? `【${drawClass}】の決勝トーナメントは既に終了しています` : undefined}
-                       className={`px-4 py-2 rounded font-bold shadow-sm ${isTournamentComplete(drawClass) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                       disabled={isTournamentComplete(drawClass) || hasTournamentProgressed(drawClass)}
+                       title={isTournamentComplete(drawClass) ? `【${drawClass}】の決勝トーナメントは既に終了しています` : hasTournamentProgressed(drawClass) ? `【${drawClass}】の決勝トーナメントは既に開始されているため、誤操作防止のためボタンを無効化しています` : undefined}
+                       className={`px-4 py-2 rounded font-bold shadow-sm ${(isTournamentComplete(drawClass) || hasTournamentProgressed(drawClass)) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
                      >
                         予選順位からトーナメント位置を自動初期反映
                      </button>
@@ -4565,6 +4587,9 @@ export default function App() {
                      </button>
                      {isTournamentComplete(drawClass) && (
                         <span className="text-xs text-gray-500 font-bold">※ 決勝トーナメントは終了済みのため、誤操作防止のためボタンを無効化しています</span>
+                     )}
+                     {!isTournamentComplete(drawClass) && hasTournamentProgressed(drawClass) && (
+                        <span className="text-xs text-gray-500 font-bold">※ 決勝トーナメントは既に開始されているため、「自動初期反映」ボタンのみ誤操作防止のため無効化しています</span>
                      )}
                    </>
                  )}

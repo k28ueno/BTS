@@ -503,11 +503,24 @@ export default function App() {
     const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber, extraOccupiedIds);
     const label = (e) => getTeamNameWithClub(e.id) + (e.cls !== m.cls ? `（${e.cls}から応援）` : '');
 
+    // 自分自身にまだ消化していない試合（この後控えている試合）があるかどうか。
+    // 決勝トーナメント終盤など、既に敗退して試合が残っていない組が他にいる場面では、
+    // そちらを優先的に審判に充てたいため（完全には除外しない＝予選ラウンドロビンでは
+    // ほぼ全員に次戦があり、除外すると候補がいなくなってしまうため）
+    const hasPendingMatchOfOwn = (entryId) => matches.some(x =>
+      x.cls === m.cls && x.id !== m.id && x.status !== 'completed' &&
+      (String(x.team1Id) === entryId || String(x.team2Id) === entryId)
+    );
+
     const findCandidates = (excludeIds) => {
       const classRank = (e) => (e.cls !== m.cls ? 1 : 0);
       return entries
         .filter(e => e.checkedIn && !excludeIds.has(String(e.id)) && !occupiedRefIds.has(String(e.id)))
-        .sort((a, b) => classRank(a) - classRank(b) || String(a.id).localeCompare(String(b.id)));
+        .sort((a, b) =>
+          classRank(a) - classRank(b) ||
+          Number(hasPendingMatchOfOwn(String(a.id))) - Number(hasPendingMatchOfOwn(String(b.id))) ||
+          String(a.id).localeCompare(String(b.id))
+        );
     };
 
     const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');

@@ -3327,7 +3327,11 @@ export default function App() {
       const { siblingSlot } = getTournamentSlotInfo(slot);
       const lo = Math.min(slot, siblingSlot);
       const pairMatch = matches.find(m => m.id === `T-${cls}-${lo}-${Math.max(slot, siblingSlot)}`);
-      if (!pairMatch) return null;
+      // 対戦カードの記録から参加者を復元するのは、その試合が既に終了している場合のみ。
+      // まだ結果が出ていない（waiting等の）対戦カードにまで適用すると、管理者が
+      // 一度生成した対戦カードから組を外して未配置に戻したくても、この枠の表示が
+      // 消えず操作もできなくなってしまうため
+      if (!pairMatch || pairMatch.status !== 'completed') return null;
       const idAtThisSlot = slot === lo ? pairMatch.team1Id : pairMatch.team2Id;
       return entries.find(e => e.id === idAtThisSlot) || null;
     };

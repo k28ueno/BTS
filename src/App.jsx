@@ -3297,7 +3297,10 @@ export default function App() {
         >
           {config.title}
         </h1>
-        <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
+        <p className="text-xl md:text-2xl font-light mb-8 relative z-10 flex items-center justify-center gap-2 flex-wrap">
+          {config.date}
+          <button onClick={() => setCurrentTab('guide')} className="text-xs md:text-sm font-bold text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap">📖 ご利用ガイド</button>
+        </p>
         <div className="flex flex-col md:flex-row md:flex-wrap justify-center gap-4 relative z-10">
           <button onClick={() => {
             const periodCheck = checkEntryPeriod(config);
@@ -3311,7 +3314,6 @@ export default function App() {
           }} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconUser /> 大会にエントリー</button>
           <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconSettings /> 修正・取消</button>
           <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconSmartphone /> 当日の進行状況・対戦表</button>
-          <button onClick={() => setCurrentTab('guide')} className="bg-white text-gray-600 hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-gray-300 flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0">📖 ご利用ガイド</button>
         </div>
       </div>
 

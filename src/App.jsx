@@ -105,6 +105,17 @@ const checkEntryPeriod = (config) => {
   return { ok: true };
 };
 
+// 申込締切を過ぎているかどうかを判定する（登録内容の修正・取消の受付終了判定に使う）
+const isEntryDeadlinePassed = (config) => {
+  const fallbackYear = (parseJapaneseFullDate(config.date) || new Date()).getFullYear();
+  const deadlineDate = parseJapaneseMonthDay(config.deadline, fallbackYear);
+  if (!deadlineDate) return false;
+  const deadlineEnd = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate(), 23, 59, 59, 999);
+  return new Date() > deadlineEnd;
+};
+
+const ENTRY_DEADLINE_PASSED_MESSAGE = (config) => `申込締切（${config.deadline}）を過ぎたため、登録内容の修正・取消はできません。内容の変更が必要な場合は、大会本部までご連絡ください。`;
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
   const [dashTab, setDashTab] = useState('matches');
@@ -2423,6 +2434,10 @@ export default function App() {
 
   const handleEditLogin = (e) => {
     e.preventDefault();
+    if (isEntryDeadlinePassed(config)) {
+      setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
+      return;
+    }
     if (!/^\d{4}$/.test(editLogin.password)) {
       setDialog({ title: "エラー", message: "パスワードは半角数字4桁で入力してください。", onClose: () => setDialog(null) });
       return;
@@ -2442,6 +2457,10 @@ export default function App() {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    if (isEntryDeadlinePassed(config)) {
+      setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
+      return;
+    }
     const feeCat = entryForm.feeCategory || '一般';
     const clubRankValue = entryForm.clubRank !== '' && entryForm.clubRank != null ? parseInt(entryForm.clubRank, 10) : null;
     // 姓・名は保存時に結合し、従来どおり氏名1本の文字列（p1Name/p2Name）としても保持する
@@ -2484,6 +2503,10 @@ export default function App() {
   };
 
   const handleDeleteSelfEntry = (id, p1Name) => {
+    if (isEntryDeadlinePassed(config)) {
+      setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
+      return;
+    }
     setDialog({
       title: "エントリー取消の確認",
       message: `${p1Name} ペアのエントリーを取り消します（登録が完全に削除されます）。本当によろしいですか？`,
@@ -3310,7 +3333,13 @@ export default function App() {
             furiganaDirtyRef.current = { p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false };
             setCurrentTab('entry');
           }} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconUser /> 大会にエントリー</button>
-          <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconSettings /> 修正・取消</button>
+          <button onClick={() => {
+            if (isEntryDeadlinePassed(config)) {
+              setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
+              return;
+            }
+            setCurrentTab('editLogin');
+          }} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconSettings /> 修正・取消</button>
           <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconSmartphone /> 当日の進行状況・対戦表</button>
         </div>
       </div>

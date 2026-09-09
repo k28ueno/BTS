@@ -3291,16 +3291,14 @@ export default function App() {
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
       <div ref={measureTitleRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
+        <button onClick={() => setCurrentTab('guide')} className="absolute top-4 right-4 z-10 text-xs md:text-sm font-bold text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap">📖 ご利用ガイド</button>
         <h1
           className="font-extrabold mb-4 tracking-wider relative z-10 leading-tight break-words"
           style={{ fontSize: `${titleFontSize}px` }}
         >
           {config.title}
         </h1>
-        <p className="text-xl md:text-2xl font-light mb-8 relative z-10 flex items-center justify-center gap-2 flex-wrap">
-          {config.date}
-          <button onClick={() => setCurrentTab('guide')} className="text-xs md:text-sm font-bold text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap">📖 ご利用ガイド</button>
-        </p>
+        <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
         <div className="flex flex-col md:flex-row md:flex-wrap justify-center gap-4 relative z-10">
           <button onClick={() => {
             const periodCheck = checkEntryPeriod(config);

@@ -5307,7 +5307,7 @@ export default function App() {
                     <div className="space-y-6">
                       {results.map(({ cls, result }) => (
                         <div key={cls}>
-                          <div className="font-bold text-base border-b border-gray-400 pb-1 mb-2">{cls}</div>
+                          <div className="font-bold text-base border-b border-gray-400 pb-1 mb-2">{getClassDisplayName(cls)}</div>
                           <div className="pl-4 space-y-1">
                             <div>優勝　{result.champion.p1Name}・{result.champion.p2Name}（{result.champion.club}）</div>
                             <div>準優勝　{result.runnerUp.p1Name}・{result.runnerUp.p2Name}（{result.runnerUp.club}）</div>

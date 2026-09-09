@@ -337,6 +337,24 @@ export default function App() {
       .join(', ');
   };
 
+  // 予選リーグ表など、スコアの詳細ではなくゲーム勝敗数（例：2-1）だけを表示したい箇所で使う
+  const getGameWinLossText = (match, teamId) => {
+    if (!match) return '';
+    if (match.forfeitWinnerId) {
+      return String(match.forfeitWinnerId) === String(teamId) ? '不戦勝' : '不戦敗';
+    }
+    const isTeam1 = String(match.team1Id) === String(teamId);
+    if (!Array.isArray(match.gameScores) || match.gameScores.length === 0) {
+      // レガシーデータ（ゲーム別データが無い旧形式）は1ゲームの試合として扱う
+      if (match.team1Score === null || match.team1Score === undefined || match.team2Score === null || match.team2Score === undefined) return '';
+      const team1Won = match.team1Score >= match.team2Score;
+      const won = isTeam1 ? team1Won : !team1Won;
+      return won ? '1-0' : '0-1';
+    }
+    const wins = getGameWins(match);
+    return isTeam1 ? `${wins.team1}-${wins.team2}` : `${wins.team2}-${wins.team1}`;
+  };
+
   // 参加者向けの試合ルール告知文を、マスタ設定の値から自動生成する（固定文言・固定点数は書かない）
   const getParticipantAnnouncement = (matchRule) => {
     if (!matchRule || !Array.isArray(matchRule.games) || matchRule.games.length === 0) return '';
@@ -3280,7 +3298,7 @@ export default function App() {
           {config.title}
         </h1>
         <p className="text-xl md:text-2xl font-light mb-8 relative z-10">{config.date}</p>
-        <div className="flex flex-col md:flex-row justify-center gap-4 relative z-10">
+        <div className="flex flex-col md:flex-row md:flex-wrap justify-center gap-4 relative z-10">
           <button onClick={() => {
             const periodCheck = checkEntryPeriod(config);
             if (!periodCheck.ok) {
@@ -3290,10 +3308,10 @@ export default function App() {
             setEditMode(false);
             furiganaDirtyRef.current = { p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false };
             setCurrentTab('entry');
-          }} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconUser /> 大会にエントリー</button>
-          <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base"><IconSettings /> 修正・取消</button>
-          <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base"><IconSmartphone /> 当日の進行状況・対戦表</button>
-          <button onClick={() => setCurrentTab('guide')} className="bg-white text-gray-600 hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-gray-300 flex items-center justify-center gap-2 text-base">📖 ご利用ガイド</button>
+          }} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconUser /> 大会にエントリー</button>
+          <button onClick={() => setCurrentTab('editLogin')} className="bg-white text-[#2c5f4e] hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-[#2c5f4e] flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconSettings /> 修正・取消</button>
+          <button onClick={() => setCurrentTab('dashboard')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0"><IconSmartphone /> 当日の進行状況・対戦表</button>
+          <button onClick={() => setCurrentTab('guide')} className="bg-white text-gray-600 hover:bg-gray-100 font-bold py-4 px-8 rounded-full shadow-lg border-2 border-gray-300 flex items-center justify-center gap-2 text-base whitespace-nowrap md:shrink-0">📖 ご利用ガイド</button>
         </div>
       </div>
 
@@ -3594,7 +3612,7 @@ export default function App() {
                                        const isDecided = match.status === 'completed';
                                        let scoreText = '';
                                        if (isDecided) {
-                                         scoreText = getScoreDisplayTextForTeam(match, ent.id);
+                                         scoreText = getGameWinLossText(match, ent.id);
                                          const result = getMatchResult(match);
                                          if (result) {
                                            if (String(result.winnerId) === String(ent.id)) wins++; else losses++;
@@ -3888,6 +3906,11 @@ export default function App() {
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block font-bold text-sm mb-1 text-gray-700">お知らせ（トップ画面のタイトル下に表示）</label>
+                  <textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-20" value={config.announcement} onChange={e=>setConfig({...config, announcement: e.target.value})} placeholder="例: 荒天時は当日朝7時までにホームページで開催可否をお知らせします。" />
+                  <p className="text-xs text-gray-500 mt-1">※空欄の場合は表示されません。</p>
+                </div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">大会名</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.title} onChange={e=>setConfig({...config, title: e.target.value})} /></div>
                 <div>
                   <label className="block font-bold text-sm mb-1 text-gray-700">開催日</label>
@@ -3943,30 +3966,10 @@ export default function App() {
                   <input type="number" min="5" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgMatchDuration} onChange={e=>setConfig({...config, avgMatchDuration: parseInt(e.target.value) || 15})} placeholder="例: 15" />
                 </div>
 
-                <div className="md:col-span-2 border-t pt-4">
-                  <h4 className="font-bold text-md text-[#2c5f4e] mb-3">管理者ログイン設定</h4>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-sm mb-1 text-gray-700">無操作時の自動ログオフまでの時間 (分)</label>
-                  <input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.adminIdleTimeoutMinutes} onChange={e=>setConfig({...config, adminIdleTimeoutMinutes: parseInt(e.target.value) || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES})} placeholder="例: 10" />
-                  <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。</p>
-                </div>
-
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={classesText} onChange={e=>{ setClassesText(e.target.value); setConfig({...config, classes: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 1部,2部,3部" /><p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。</p></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
-                <div className="md:col-span-2">
-                  <label className="block font-bold text-sm mb-1 text-gray-700">お知らせ（トップ画面のタイトル下に表示）</label>
-                  <textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-20" value={config.announcement} onChange={e=>setConfig({...config, announcement: e.target.value})} placeholder="例: 荒天時は当日朝7時までにホームページで開催可否をお知らせします。" />
-                  <p className="text-xs text-gray-500 mt-1">※空欄の場合は表示されません。</p>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block font-bold text-sm mb-1 text-gray-700">協賛企業（カンマ `,` 区切り、トップ画面の下部に表示）</label>
-                  <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={sponsorsText} onChange={e=>{ setSponsorsText(e.target.value); setConfig({...config, sponsors: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
-                  <p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。空欄の場合は表示されません。</p>
-                </div>
               </div>
 
               <div className="border-t pt-4 mt-2">
@@ -4032,6 +4035,21 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="border-t pt-4 mt-2">
+                <label className="block font-bold text-sm mb-1 text-gray-700">協賛企業（カンマ `,` 区切り、トップ画面の下部に表示）</label>
+                <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={sponsorsText} onChange={e=>{ setSponsorsText(e.target.value); setConfig({...config, sponsors: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
+                <p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。空欄の場合は表示されません。</p>
+              </div>
+
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-bold text-md text-[#2c5f4e] mb-3">管理者ログイン設定</h4>
+                <div className="max-w-sm">
+                  <label className="block font-bold text-sm mb-1 text-gray-700">無操作時の自動ログオフまでの時間 (分)</label>
+                  <input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.adminIdleTimeoutMinutes} onChange={e=>setConfig({...config, adminIdleTimeoutMinutes: parseInt(e.target.value) || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES})} placeholder="例: 10" />
+                  <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。</p>
                 </div>
               </div>
             </div>

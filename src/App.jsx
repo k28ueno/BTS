@@ -4564,7 +4564,12 @@ export default function App() {
                           <div className="text-xs font-bold text-gray-600">グループ{cluster.group}</div>
                           {cluster.members.map(m => (
                             <div key={m.id} className="flex items-center justify-between gap-2 bg-white border rounded p-2">
-                              <span className="text-sm font-bold truncate">{getTeamNameWithClub(m.id)}</span>
+                              <div className="min-w-0">
+                                <div className="text-sm font-bold truncate">{getTeamNameWithClub(m.id)}</div>
+                                <div className="text-xs text-blue-700 font-bold">
+                                  {m.wins}勝{m.losses}敗　得失点差 {m.pointDiff > 0 ? `+${m.pointDiff}` : m.pointDiff}　総得点 {m.pointsFor}
+                                </div>
+                              </div>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <span className="text-xs text-gray-500">決定順位</span>
                                 <input

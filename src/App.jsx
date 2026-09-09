@@ -177,6 +177,9 @@ export default function App() {
 
   const [receptionClassFilter, setReceptionClassFilter] = useState('all');
   const [receptionSearchQuery, setReceptionSearchQuery] = useState('');
+  // 受付処理画面を開いた時点の受付状態を固定しておき、その後チェックを入れても
+  // 表示順が変動しないようにする（画面を離れて再度開いた時にだけ並び順を更新する）
+  const [receptionSortSnapshot, setReceptionSortSnapshot] = useState({});
   const [scoreModal, setScoreModal] = useState(null);
   const [printMatchId, setPrintMatchId] = useState(null); // スコアシート印刷対象の試合ID
 
@@ -2728,6 +2731,15 @@ export default function App() {
     };
   }, [isAdminLoggedIn]);
 
+  // 受付処理画面を開くたびに、その時点の受付状態で「未」を上位に固定した表示順を作り直す
+  useEffect(() => {
+    if (adminTab !== 'reception') return;
+    const snap = {};
+    entries.forEach(e => { snap[e.id] = e.checkedIn; });
+    setReceptionSortSnapshot(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminTab === 'reception']);
+
   // マスタ設定で指定した時間、操作がなければ自動的にログオフする
   useEffect(() => {
     if (!isAdminLoggedIn) return;
@@ -3246,6 +3258,13 @@ export default function App() {
       if (!haystack.includes(q)) return false;
     }
     return true;
+  }).sort((a, b) => {
+    // 画面を開いた時点の受付状態（未を上位）で並べる。その後チェックを入れても、
+    // この画面を離れて再度開くまでは順序を変えない
+    const aChecked = receptionSortSnapshot[a.id] ?? a.checkedIn;
+    const bChecked = receptionSortSnapshot[b.id] ?? b.checkedIn;
+    if (aChecked !== bChecked) return aChecked ? 1 : -1;
+    return String(a.id).localeCompare(String(b.id));
   });
 
   // 予選リーグの残り試合数から、コート数・1試合平均時間をもとに終了予定時刻を試算する

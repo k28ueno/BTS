@@ -3523,18 +3523,21 @@ export default function App() {
         )}
         <div className="flex gap-8 p-4 min-w-max">
           {rounds.map((slots, rIdx) => (
-            <div key={`round-${rIdx}`} className="flex flex-col justify-center" style={{ gap: `${24 * Math.pow(2, rIdx)}px` }}>
-              <div className="text-xs font-bold text-gray-500 text-center mb-1">{roundLabel(rIdx)}</div>
-              {slots.map(slot => renderSlot(slot))}
-            </div>
+            <React.Fragment key={`round-frag-${rIdx}`}>
+              <div className="flex flex-col justify-center" style={{ gap: `${24 * Math.pow(2, rIdx)}px` }}>
+                <div className="text-xs font-bold text-gray-500 text-center mb-1">{roundLabel(rIdx)}</div>
+                {slots.map(slot => renderSlot(slot))}
+              </div>
+              {/* 3位決定戦は準決勝の次、決勝の直前に配置する */}
+              {thirdPlaceMatch && rIdx === rounds.length - 2 && (
+                <div className="flex flex-col justify-center gap-2">
+                  <div className="text-xs font-bold text-gray-500 text-center mb-1">3位決定戦</div>
+                  {renderThirdPlaceSlot(thirdPlaceMatch.team1Id)}
+                  {renderThirdPlaceSlot(thirdPlaceMatch.team2Id)}
+                </div>
+              )}
+            </React.Fragment>
           ))}
-          {thirdPlaceMatch && (
-            <div className="flex flex-col justify-center gap-2">
-              <div className="text-xs font-bold text-gray-500 text-center mb-1">3位決定戦</div>
-              {renderThirdPlaceSlot(thirdPlaceMatch.team1Id)}
-              {renderThirdPlaceSlot(thirdPlaceMatch.team2Id)}
-            </div>
-          )}
         </div>
       </div>
     );

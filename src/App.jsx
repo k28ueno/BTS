@@ -5952,7 +5952,7 @@ export default function App() {
       {(() => {
         // スコアシート1枚分の中身（試合の実データを使う通常印刷と、
         // 手書き用に主要項目を空欄にした予備用紙印刷の両方で共通利用する）
-        const renderScoreSheetBody = ({ team1P1, team1P2, team1Club, team2P1, team2P2, team2Club, clsText, matchNoText, courtText, announcementText, callTimeText }) => {
+        const renderScoreSheetBody = ({ team1P1, team1P2, team1Club, team2P1, team2P2, team2Club, clsText, matchNoText, courtText, announcementText, callTimeText, forcePageBreakAfter }) => {
           // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
           // 縦横とも罫線のある方眼にするため、行×列とも均等分割できるCSS Gridで
           // 実セル（div）を敷き詰め、端が半端な升目にならないようにする
@@ -5986,7 +5986,7 @@ export default function App() {
           );
 
           return (
-            <div className="p-6 bg-white text-black text-sm">
+            <div className="p-6 bg-white text-black text-sm" style={forcePageBreakAfter ? { pageBreakAfter: 'always', breakAfter: 'page' } : undefined}>
               <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
 
               <div className="flex justify-between items-start gap-4 mb-4">
@@ -6030,7 +6030,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="text-[9px] text-gray-500 mb-1">{announcementText}</div>
+              <div className="text-[9px] text-gray-500 mb-1">{announcementText || ' '}</div>
               <div className="space-y-2">
                 {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameBox)}
               </div>
@@ -6068,15 +6068,16 @@ export default function App() {
           return (
             <div className="print-only-area">
               {Array.from({ length: printBlankSheetCount }).map((_, i) => (
-                <div key={i} className="blank-sheet-page">
+                <React.Fragment key={i}>
                   {renderScoreSheetBody({
                     team1P1: '', team1P2: '', team1Club: '',
                     team2P1: '', team2P2: '', team2Club: '',
                     clsText: '', matchNoText: '', courtText: '',
                     announcementText: '',
-                    callTimeText: ''
+                    callTimeText: '',
+                    forcePageBreakAfter: i < printBlankSheetCount - 1
                   })}
-                </div>
+                </React.Fragment>
               ))}
             </div>
           );

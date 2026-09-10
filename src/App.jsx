@@ -5321,6 +5321,9 @@ export default function App() {
                           <div className="pl-4 space-y-1">
                             <div>優勝　{result.champion.p1Name}・{result.champion.p2Name}（{result.champion.club}）</div>
                             <div>準優勝　{result.runnerUp.p1Name}・{result.runnerUp.p2Name}（{result.runnerUp.club}）</div>
+                            {result.thirdPlace && (
+                              <div>3位　{result.thirdPlace.p1Name}・{result.thirdPlace.p2Name}（{result.thirdPlace.club}）</div>
+                            )}
                           </div>
                         </div>
                       ))}

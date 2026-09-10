@@ -5238,11 +5238,12 @@ export default function App() {
                         <th className="p-3 w-16 text-right">開始</th>
                         <th className="p-3 w-16 text-right">終了</th>
                         <th className="p-3 w-16 text-right">所要</th>
+                        <th className="p-3 w-20 text-center">操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {sorted.length === 0 ? (
-                        <tr><td colSpan={8} className="p-6 text-center text-gray-400">まだ開始された試合がありません。</td></tr>
+                        <tr><td colSpan={9} className="p-6 text-center text-gray-400">まだ開始された試合がありません。</td></tr>
                       ) : sorted.map(m => {
                         const duration = getMatchDurationMinutes(m);
                         let resultText = '-';
@@ -5272,6 +5273,16 @@ export default function App() {
                             <td className="p-3 text-right font-mono">{fmtTime(m.inProgressAt)}</td>
                             <td className="p-3 text-right font-mono">{fmtTime(m.completedAt)}</td>
                             <td className="p-3 text-right font-mono">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
+                            <td className="p-3 text-center">
+                              {m.status === 'completed' && (
+                                <button
+                                  onClick={() => openScoreModal(m)}
+                                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs whitespace-nowrap"
+                                >
+                                  スコア修正
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}

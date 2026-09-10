@@ -3471,8 +3471,9 @@ export default function App() {
       return `${idx + 1}回戦`;
     };
 
-    // 決勝（最終ラウンド）の対戦カードが完了していれば、優勝組を求める
+    // 決勝（最終ラウンド）の対戦カードが完了していれば、優勝組・準優勝組を求める
     let champion = null;
+    let runnerUp = null;
     if (rounds.length > 0) {
       const finalSlots = rounds[rounds.length - 1];
       const [finalLo, finalHi] = [Math.min(...finalSlots), Math.max(...finalSlots)];
@@ -3480,6 +3481,7 @@ export default function App() {
       const finalResult = finalMatch && finalMatch.status === 'completed' ? getMatchResult(finalMatch) : null;
       if (finalResult) {
         champion = entries.find(e => e.id === finalResult.winnerId) || null;
+        runnerUp = entries.find(e => e.id === finalResult.loserId) || null;
       }
     }
 
@@ -3507,6 +3509,11 @@ export default function App() {
         {champion && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-800 font-extrabold text-base px-4 py-3 rounded-lg mb-4">
              🏆 優勝: {getTeamNameWithClub(champion.id)}
+          </div>
+        )}
+        {runnerUp && (
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-300 text-gray-700 font-extrabold text-base px-4 py-3 rounded-lg mb-4">
+             🥈 準優勝: {getTeamNameWithClub(runnerUp.id)}
           </div>
         )}
         {thirdPlaceResult && (

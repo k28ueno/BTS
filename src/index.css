@@ -98,7 +98,7 @@
 .cert-rank-word { font-family: 'Shippori Mincho B1', serif; font-weight: 800; color: #B7282E; font-size: 1.7em; letter-spacing: .14em; padding: 0 .1em; }
 .cert-foot { width: 100%; display: flex; align-items: flex-end; justify-content: space-between; margin-top: auto; padding-top: 1.6cqw; }
 .cert-tournament { font-family: 'Noto Serif JP', serif; font-size: clamp(12px, 1.7cqw, 24px); color: #7A6B52; line-height: 1.6; }
-.cert-issuer { position: relative; text-align: right; font-family: 'Shippori Mincho B1', serif; color: #2B2620; padding-right: clamp(30px, 7.4cqw, 110px); }
+.cert-issuer { position: relative; text-align: right; font-family: 'Shippori Mincho B1', serif; color: #2B2620; padding-right: clamp(56px, 10cqw, 148px); }
 .cert-issuer .cert-date { font-family: 'Noto Serif JP', serif; font-weight: 600; font-size: clamp(14px, 2.1cqw, 30px); color: #2B2620; margin: 0 0 5px; font-variant-numeric: tabular-nums; }
 .cert-issuer .cert-org { font-size: clamp(13px, 1.95cqw, 27px); margin: 0 0 3px; font-weight: 600; }
 .cert-issuer .cert-chief { font-size: clamp(16px, 2.8cqw, 38px); font-weight: 700; margin: 0; }

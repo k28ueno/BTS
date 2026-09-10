@@ -98,14 +98,12 @@
 .cert-issuer .cert-date { font-family: 'Noto Serif JP', serif; font-weight: 600; font-size: clamp(14px, 2.1cqw, 30px); color: #2B2620; margin: 0 0 5px; font-variant-numeric: tabular-nums; }
 .cert-issuer .cert-org { font-size: clamp(13px, 1.95cqw, 27px); margin: 0 0 3px; font-weight: 600; }
 .cert-issuer .cert-chief { font-size: clamp(16px, 2.8cqw, 38px); font-weight: 700; margin: 0; }
-.cert-seal {
+.cert-seal-svg {
   position: absolute; right: 0; bottom: -1cqw;
-  width: clamp(38px, 7.4cqw, 110px); height: clamp(38px, 7.4cqw, 110px);
+  width: clamp(46px, 8.6cqw, 128px); height: clamp(46px, 8.6cqw, 128px);
   border-radius: 50%;
-  border: 2px solid #B7282E;
-  box-shadow: 0 0 0 4px #FBF6EC, inset 0 0 0 3px #FBF6EC, inset 0 0 0 4px #B7282E;
-  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
-  place-items: center; transform: rotate(-7deg);
-  color: #B7282E; font-family: 'Shippori Mincho B1', serif; font-weight: 700;
-  font-size: clamp(9px, 1.7cqw, 24px); opacity: .92;
+  background: #FBF6EC;
+  color: #B7282E;
+  transform: rotate(-7deg);
+  opacity: .92;
 }

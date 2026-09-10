@@ -139,6 +139,7 @@ export default function App() {
     contactPhone: '',
     orgName: '紀北町体育協会',
     chiefName: '',
+    sealImageUrl: '',
     sponsors: [],
     classes: ['1部', '2部', '3部', '4部'],
     courts: 8,
@@ -921,6 +922,7 @@ export default function App() {
             contactPhone: data.contactphone || '',
             orgName: data.orgname || '紀北町体育協会',
             chiefName: data.chiefname || '',
+            sealImageUrl: data.sealimageurl || '',
             sponsors: data.sponsors || [],
             classes: data.classes || ['1部', '2部', '3部', '4部'],
             courts: data.courts || 8,
@@ -1110,6 +1112,33 @@ export default function App() {
     });
   };
 
+  // 表彰状に使う印鑑画像をローカルファイルから読み込む。DBの負荷や表示速度のため、
+  // 長辺300pxを上限に縮小してからPNG（透過保持）のdata URLとしてマスタ設定に保存する
+  const handleSealImageSelect = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 300;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        setConfig(prev => ({ ...prev, sealImageUrl: canvas.toDataURL('image/png') }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSaveSettings = async () => {
     if (isSupabaseConfigured) {
       // 出場クラス名を変更した場合、既存のエントリー・試合に保存済みの cls が
@@ -1145,6 +1174,7 @@ export default function App() {
         contactphone: config.contactPhone,
         orgname: config.orgName,
         chiefname: config.chiefName,
+        sealimageurl: config.sealImageUrl,
         sponsors: config.sponsors,
         classes: config.classes,
         courts: config.courts,
@@ -1469,6 +1499,7 @@ export default function App() {
                 contactphone: data.config.contactPhone,
                 orgname: data.config.orgName,
                 chiefname: data.config.chiefName,
+                sealimageurl: data.config.sealImageUrl,
                 sponsors: data.config.sponsors,
                 classes: data.config.classes,
                 courts: data.config.courts,
@@ -4398,6 +4429,25 @@ export default function App() {
                     <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.chiefName} onChange={e=>setConfig({...config, chiefName: e.target.value})} placeholder="例: ○○ ○○" />
                   </div>
                 </div>
+                <div className="mt-4">
+                  <label className="block font-bold text-sm mb-1 text-gray-700">印鑑画像</label>
+                  <div className="flex items-center gap-3">
+                    {config.sealImageUrl && (
+                      <img src={config.sealImageUrl} alt="印鑑プレビュー" className="w-16 h-16 rounded-full border object-contain bg-white" />
+                    )}
+                    <input
+                      type="file" accept="image/*"
+                      onChange={e => handleSealImageSelect(e.target.files && e.target.files[0])}
+                      className="text-sm"
+                    />
+                    {config.sealImageUrl && (
+                      <button onClick={() => setConfig({...config, sealImageUrl: ''})} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold px-2.5 py-1.5 rounded">
+                        画像を削除
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">画像を登録すると、表彰状の印鑑がこの画像に差し替わります。未登録の場合は団体名・代表者名から自動生成した丸印が表示されます。</p>
+                </div>
                 <p className="text-xs text-gray-500 mt-1">※「表彰状」画面で発行する各クラスの優勝・準優勝・3位の賞状に表示されます。</p>
               </div>
 
@@ -5412,6 +5462,46 @@ export default function App() {
               if (result.thirdPlace) certList.push({ cls, rankLabel: '3位', team: result.thirdPlace });
             });
 
+            // 円形の印鑑（丸印）をSVGで描画する。外周に発行団体名、内側の2列に
+            // 「協会長」と代表者名を縦書きで配置する、実物の角印に近い見た目にする。
+            // マスタ設定の団体名・代表者名を変更すれば自動的にこの印影にも反映される
+            const renderSealSvg = () => {
+              const outerText = (config.orgName || '').replace(/\s|　/g, '');
+              const chiefChars = (config.chiefName || '○○○').replace(/\s|　/g, '');
+              const titleChars = '協会長';
+              const cx = 100, cy = 100;
+              const N = outerText.length || 1;
+              const outerChars = outerText.split('').map((ch, i) => {
+                const angleDeg = -90 + (360 / N) * i;
+                const rad = angleDeg * Math.PI / 180;
+                const x = cx + 88 * Math.cos(rad);
+                const y = cy + 88 * Math.sin(rad);
+                return (
+                  <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle"
+                        transform={`rotate(${angleDeg + 90} ${x} ${y})`}
+                        fontSize="15" fontFamily="'Shippori Mincho B1', serif" fontWeight="700" fill="currentColor">
+                    {ch}
+                  </text>
+                );
+              });
+              const renderColumn = (chars, xPos) => chars.split('').map((ch, i) => (
+                <text key={i} x={xPos} y={cy + (i - (chars.length - 1) / 2) * 26} textAnchor="middle" dominantBaseline="middle"
+                      fontSize="24" fontFamily="'Shippori Mincho B1', serif" fontWeight="700" fill="currentColor">
+                  {ch}
+                </text>
+              ));
+              return (
+                <svg viewBox="0 0 200 200" className="cert-seal-svg" aria-hidden="true">
+                  <circle cx={cx} cy={cy} r="94" fill="none" stroke="currentColor" strokeWidth="2.5" />
+                  <circle cx={cx} cy={cy} r="82" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                  {outerChars}
+                  <circle cx={cx} cy={cy} r="58" fill="none" stroke="currentColor" strokeWidth="4" />
+                  {renderColumn(titleChars, 128)}
+                  {renderColumn(chiefChars, 72)}
+                </svg>
+              );
+            };
+
             const renderCert = ({ cls, rankLabel, team }, idx) => (
               <div key={`${cls}-${rankLabel}-${idx}`} className="cert-page shadow-md mb-8 mx-auto" style={{ maxWidth: 900 }}>
                 <div className="cert-frame-gold">
@@ -5436,9 +5526,9 @@ export default function App() {
                       <p className="cert-date">{config.date}</p>
                       <p className="cert-org">{config.orgName}</p>
                       <p className="cert-chief">会長　{config.chiefName || '○○　○○'}</p>
-                      <div className="cert-seal" aria-hidden="true">
-                        <span>協</span><span>会</span><span>長</span><span>印</span>
-                      </div>
+                      {config.sealImageUrl ? (
+                        <img src={config.sealImageUrl} alt="印鑑" className="cert-seal-svg" style={{ objectFit: 'contain' }} />
+                      ) : renderSealSvg()}
                     </div>
                   </div>
                 </div>
@@ -5459,7 +5549,7 @@ export default function App() {
                   {certList.length === 0 ? (
                     <p className="text-sm text-gray-500">まだ決勝が終了しているクラスがありません。決勝トーナメントの優勝・準優勝が決まると、ここに表示されます（3位決定戦を実施した場合は3位の賞状も追加されます）。</p>
                   ) : (
-                    <p className="text-sm text-gray-500">A4横向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。</p>
+                    <p className="text-sm text-gray-500">A4横向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。発行団体名・代表者名・印鑑画像はマスタ設定の「表彰状設定」で変更できます。</p>
                   )}
                 </div>
                 <div className="certificate-print-area print-area bg-gray-100 p-6 rounded-lg">
@@ -5652,7 +5742,7 @@ export default function App() {
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「予備用紙印刷」から、選手名等を空欄にした手書き用スコアシートを複数枚まとめて印刷することもできます。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
-                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。'],
+                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">

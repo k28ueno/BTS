@@ -182,6 +182,8 @@ export default function App() {
   const [receptionSortSnapshot, setReceptionSortSnapshot] = useState({});
   const [scoreModal, setScoreModal] = useState(null);
   const [printMatchId, setPrintMatchId] = useState(null); // スコアシート印刷対象の試合ID
+  const [printBlankSheetCount, setPrintBlankSheetCount] = useState(null); // 予備用紙（白紙スコアシート）の印刷枚数。nullは非表示
+  const [blankSheetPrintQty, setBlankSheetPrintQty] = useState(5); // 予備用紙の印刷枚数入力欄の値
 
   const [testGenCounts, setTestGenCounts] = useState({});
 
@@ -1048,6 +1050,18 @@ export default function App() {
       window.removeEventListener('afterprint', clearOnAfterPrint);
     };
   }, [printMatchId]);
+
+  // 予備用紙（白紙スコアシート）も同じ仕組みで、印刷用DOMが描画された後にダイアログを開く
+  useEffect(() => {
+    if (!printBlankSheetCount) return;
+    const timer = setTimeout(() => window.print(), 50);
+    const clearOnAfterPrint = () => setPrintBlankSheetCount(null);
+    window.addEventListener('afterprint', clearOnAfterPrint);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('afterprint', clearOnAfterPrint);
+    };
+  }, [printBlankSheetCount]);
 
   const handlePrintScoreSheet = (matchId) => {
     setPrintMatchId(matchId);
@@ -4917,6 +4931,23 @@ export default function App() {
             <div>
                <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
                   <h3 className="text-xl font-bold flex items-center gap-2"><IconMatch /> コート進行・ドラッグ＆ドロップ割当</h3>
+                  <div className="flex items-center gap-2 bg-white border rounded-lg px-3 py-1.5 shadow-xs">
+                     <span className="text-xs font-bold text-gray-600 whitespace-nowrap">📄 予備用紙印刷</span>
+                     <input
+                       type="number" min="1" max="50"
+                       value={blankSheetPrintQty}
+                       onChange={e => setBlankSheetPrintQty(Math.max(1, parseInt(e.target.value) || 1))}
+                       className="w-14 border rounded px-1.5 py-1 text-sm text-center"
+                     />
+                     <span className="text-xs text-gray-500">枚</span>
+                     <button
+                       onClick={() => setPrintBlankSheetCount(blankSheetPrintQty)}
+                       className="text-xs bg-gray-700 hover:bg-gray-800 text-white font-bold px-2.5 py-1.5 rounded shadow-xs whitespace-nowrap"
+                       title="選手名・クラス・試合番号などを空欄にした、手書き用のスコアシートを印刷します"
+                     >
+                       印刷
+                     </button>
+                  </div>
                </div>
 
                {tapMoveSelection && tapMoveSelection.kind === 'match' && (
@@ -5618,7 +5649,7 @@ export default function App() {
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成の対象になるのは受付済の組だけです。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。'],
-                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。'],
+                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「予備用紙印刷」から、選手名等を空欄にした手書き用スコアシートを複数枚まとめて印刷することもできます。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。'],
@@ -5724,6 +5755,7 @@ export default function App() {
                       ['一方の組が欠場・棄権した', 'コート進行画面のスコア入力から「棄権」を選択すると、出場した側の不戦勝として記録されます（得失点差には反映されません）。誤操作の場合は「スコア解除」で取り消せます。'],
                       ['試合結果を新聞社等に提出したい', '「結果PDF」画面で各クラスの優勝・準優勝・3位（実施した場合）をまとめて表示し、ブラウザの印刷機能からPDF保存できます。'],
                       ['試合のスコア用紙（得点用紙）を印刷したい', 'コート進行画面の各試合カードにある「🖨️ スコアシート」ボタンから、その試合専用の記入用紙をA4横向きで印刷できます。'],
+                      ['選手名の入っていない予備の用紙を用意しておきたい', 'コート進行画面上部の「予備用紙印刷」に枚数を入力して「印刷」を押すと、選手名・クラス・試合番号・コート番号を空欄にした手書き用のスコアシートを、指定枚数まとめて印刷できます（システムが使えない場合の紙運用の備えとして利用できます）。'],
                       ['試合ルールを変更したのに既存の試合に反映されない', '仕様です。ルール変更は、変更後に新しく生成する試合にのみ適用されます。既に生成済みの試合のルールを変えたい場合は、対象試合を含む対戦カードを作り直してください。'],
                     ].map(([q, a]) => (
                       <div key={q} className="border-l-4 border-[#2c5f4e] bg-gray-50 rounded-r-lg p-3">
@@ -5744,7 +5776,7 @@ export default function App() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-xl text-gray-500">データを読み込み中...</div>;
 
   return (
-    <div className={`min-h-screen font-sans bg-gray-50 text-gray-800 pb-20 ${printMatchId ? 'printing-score-sheet' : ''}`}>
+    <div className={`min-h-screen font-sans bg-gray-50 text-gray-800 pb-20 ${(printMatchId || printBlankSheetCount) ? 'printing-score-sheet' : ''}`}>
       {/* 修正: 右上の「エントリー」「修正・取消」ボタンを削除し、「管理」ボタンのみ配置 */}
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -5917,105 +5949,140 @@ export default function App() {
         </div>
       )}
 
-      {printMatchId && (() => {
-        const m = matches.find(x => x.id === printMatchId);
-        if (!m) return null;
-        const team1 = entries.find(e => e.id === m.team1Id);
-        const team2 = entries.find(e => e.id === m.team2Id);
-        const matchNoText = typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-';
-        const printMatchRule = m.matchRule || getMatchRule(m.cls, m.matchType);
-        const printMaxGames = (printMatchRule.gamesToWin || 1) * 2 - 1;
-        const printGameLabels = ['第一ゲーム', '第二ゲーム', '第三ゲーム'].slice(0, printMaxGames);
-
-        // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
-        // 縦横とも罫線のある方眼にするため、行×列とも均等分割できるCSS Gridで
-        // 実セル（div）を敷き詰め、端が半端な升目にならないようにする
-        const GRID_COLS = 44;
-        const GRID_ROWS = 2;
-        const gridArea = () => (
-          <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}>
-            {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => (
-              <div
-                key={i}
-                className={`${(i + 1) % GRID_COLS !== 0 ? 'border-r' : ''} ${i < GRID_COLS * (GRID_ROWS - 1) ? 'border-b' : ''} border-gray-400`}
-              ></div>
-            ))}
-          </div>
-        );
-        const gameBox = (label) => (
-          <div key={label} className="border-y-2 border-x-[1.5px] border-black flex" style={{ height: '128px' }}>
-            <div className="w-6 border-r-[1.5px] border-black flex items-center justify-center text-[11px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
-            <div className="flex flex-col flex-1">
-              {[0, 1].map(row => (
-                <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
-                  <div className="shrink-0 border-r-[1.5px] border-black flex flex-col" style={{ width: '160px' }}>
-                     <div className="flex-1 border-b border-dashed border-gray-400"></div>
-                     <div className="flex-1"></div>
+      {(() => {
+        // スコアシート1枚分の中身（試合の実データを使う通常印刷と、
+        // 手書き用に主要項目を空欄にした予備用紙印刷の両方で共通利用する）
+        const renderScoreSheetBody = ({ team1P1, team1P2, team1Club, team2P1, team2P2, team2Club, clsText, matchNoText, courtText, announcementText, callTimeText }) => {
+          // 用紙様式に合わせた升目（縦2段×横方眼）1ゲーム分の得点欄
+          // 縦横とも罫線のある方眼にするため、行×列とも均等分割できるCSS Gridで
+          // 実セル（div）を敷き詰め、端が半端な升目にならないようにする
+          const GRID_COLS = 44;
+          const GRID_ROWS = 2;
+          const gridArea = (key) => (
+            <div key={key} className="grid flex-1" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}>
+              {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`${(i + 1) % GRID_COLS !== 0 ? 'border-r' : ''} ${i < GRID_COLS * (GRID_ROWS - 1) ? 'border-b' : ''} border-gray-400`}
+                ></div>
+              ))}
+            </div>
+          );
+          const gameBox = (label) => (
+            <div key={label} className="border-y-2 border-x-[1.5px] border-black flex" style={{ height: '128px' }}>
+              <div className="w-6 border-r-[1.5px] border-black flex items-center justify-center text-[11px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
+              <div className="flex flex-col flex-1">
+                {[0, 1].map(row => (
+                  <div key={row} className={`flex flex-1 ${row === 0 ? 'border-b-2 border-black' : ''}`}>
+                    <div className="shrink-0 border-r-[1.5px] border-black flex flex-col" style={{ width: '160px' }}>
+                       <div className="flex-1 border-b border-dashed border-gray-400"></div>
+                       <div className="flex-1"></div>
+                    </div>
+                    {gridArea(row)}
                   </div>
-                  {gridArea()}
+                ))}
+              </div>
+            </div>
+          );
+
+          return (
+            <div className="p-6 bg-white text-black text-sm">
+              <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
+
+              <div className="flex justify-between items-start gap-4 mb-4">
+                <div className="flex flex-col justify-between shrink-0 whitespace-nowrap" style={{ width: '23%', fontSize: '11px' }}>
+                  <div className="border-b border-black pb-0.5"><div className="text-gray-500">期日：</div>{config.date}</div>
+                  <div className="border-b border-black pb-0.5"><div className="text-gray-500">大会名：</div>{config.title}</div>
+                  <div className="border-b border-black pb-0.5"><div className="text-gray-500">場所：</div>{config.venue}</div>
+                </div>
+
+                <div className="border-y-2 border-x-[1.5px] border-black flex-1">
+                  <div className="flex border-b-2 border-black text-center">
+                    <div className="flex-[3] border-r border-black p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
+                    <div className="shrink-0 border-r border-black p-1" style={{ width: '80px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
+                    <div className="flex-[3] p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
+                  </div>
+                  <div className="flex" style={{ height: '78px' }}>
+                    <div className="w-6 border-r-[1.5px] border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
+                    <div className="flex flex-col flex-1 border-r border-dotted border-black" style={{ minWidth: 0 }}>
+                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1P1}</div>
+                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1P2}</div>
+                       <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team1Club}</div>
+                    </div>
+                    <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '80px' }}>
+                       <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
+                       <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
+                       <div className="flex-1 flex items-center justify-center">－</div>
+                    </div>
+                    <div className="flex flex-col flex-1" style={{ minWidth: 0 }}>
+                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2P1}</div>
+                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2P2}</div>
+                       <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team2Club}</div>
+                    </div>
+                    <div className="w-6 border-l-[1.5px] border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col justify-between shrink-0 whitespace-nowrap" style={{ width: '15%', fontSize: '11px' }}>
+                  <div className="border-b border-black pb-0.5"><div className="text-gray-500">種目：</div>{clsText}</div>
+                  <div className="border-b border-black pb-0.5"><div className="text-gray-500">試合番号：</div>{matchNoText}</div>
+                  <div className="border-b border-black pb-0.5"><div className="text-gray-500">コート番号：</div>{courtText}</div>
+                </div>
+              </div>
+
+              <div className="text-[9px] text-gray-500 mb-1">{announcementText}</div>
+              <div className="space-y-2">
+                {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameBox)}
+              </div>
+
+              <div className="flex justify-between mt-6">
+                <div>勝者署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
+                <div>主審署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
+                <div>コール時間：　{callTimeText}</div>
+              </div>
+            </div>
+          );
+        };
+
+        if (printMatchId) {
+          const m = matches.find(x => x.id === printMatchId);
+          if (!m) return null;
+          const team1 = entries.find(e => e.id === m.team1Id);
+          const team2 = entries.find(e => e.id === m.team2Id);
+          const matchNoText = typeof m.matchNo === 'number' ? `第${m.matchNo}試合（${m.matchType === 'tournament' ? m.group : `グループ${m.group}`}）` : '-';
+          const printMatchRule = m.matchRule || getMatchRule(m.cls, m.matchType);
+          return (
+            <div className="print-only-area">
+              {renderScoreSheetBody({
+                team1P1: team1?.p1Name, team1P2: team1?.p2Name, team1Club: team1?.club,
+                team2P1: team2?.p1Name, team2P2: team2?.p2Name, team2Club: team2?.club,
+                clsText: m.cls, matchNoText, courtText: m.courtNumber ? `第${m.courtNumber}コート` : '-',
+                announcementText: getParticipantAnnouncement(printMatchRule).replace(/\n/g, '　'),
+                callTimeText: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+              })}
+            </div>
+          );
+        }
+
+        if (printBlankSheetCount) {
+          return (
+            <div className="print-only-area">
+              {Array.from({ length: printBlankSheetCount }).map((_, i) => (
+                <div key={i} className="blank-sheet-page">
+                  {renderScoreSheetBody({
+                    team1P1: '', team1P2: '', team1Club: '',
+                    team2P1: '', team2P2: '', team2Club: '',
+                    clsText: '', matchNoText: '', courtText: '',
+                    announcementText: '',
+                    callTimeText: ''
+                  })}
                 </div>
               ))}
             </div>
-          </div>
-        );
+          );
+        }
 
-        return (
-          <div className="print-only-area p-6 bg-white text-black text-sm">
-            <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
-
-            <div className="flex justify-between items-start gap-4 mb-4">
-              <div className="flex flex-col justify-between shrink-0 whitespace-nowrap" style={{ width: '23%', fontSize: '11px' }}>
-                <div className="border-b border-black pb-0.5"><div className="text-gray-500">期日：</div>{config.date}</div>
-                <div className="border-b border-black pb-0.5"><div className="text-gray-500">大会名：</div>{config.title}</div>
-                <div className="border-b border-black pb-0.5"><div className="text-gray-500">場所：</div>{config.venue}</div>
-              </div>
-
-              <div className="border-y-2 border-x-[1.5px] border-black flex-1">
-                <div className="flex border-b-2 border-black text-center">
-                  <div className="flex-[3] border-r border-black p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
-                  <div className="shrink-0 border-r border-black p-1" style={{ width: '80px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
-                  <div className="flex-[3] p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
-                </div>
-                <div className="flex" style={{ height: '78px' }}>
-                  <div className="w-6 border-r-[1.5px] border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
-                  <div className="flex flex-col flex-1 border-r border-dotted border-black" style={{ minWidth: 0 }}>
-                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1?.p1Name}</div>
-                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1?.p2Name}</div>
-                     <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team1?.club}</div>
-                  </div>
-                  <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '80px' }}>
-                     <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
-                     <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
-                     <div className="flex-1 flex items-center justify-center">－</div>
-                  </div>
-                  <div className="flex flex-col flex-1" style={{ minWidth: 0 }}>
-                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2?.p1Name}</div>
-                     <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2?.p2Name}</div>
-                     <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team2?.club}</div>
-                  </div>
-                  <div className="w-6 border-l-[1.5px] border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
-                </div>
-              </div>
-
-              <div className="flex flex-col justify-between shrink-0 whitespace-nowrap" style={{ width: '15%', fontSize: '11px' }}>
-                <div className="border-b border-black pb-0.5"><div className="text-gray-500">種目：</div>{m.cls}</div>
-                <div className="border-b border-black pb-0.5"><div className="text-gray-500">試合番号：</div>{matchNoText}</div>
-                <div className="border-b border-black pb-0.5"><div className="text-gray-500">コート番号：</div>{m.courtNumber ? `第${m.courtNumber}コート` : '-'}</div>
-              </div>
-            </div>
-
-            <div className="text-[9px] text-gray-500 mb-1">{getParticipantAnnouncement(printMatchRule).replace(/\n/g, '　')}</div>
-            <div className="space-y-2">
-              {printGameLabels.map(gameBox)}
-            </div>
-
-            <div className="flex justify-between mt-6">
-              <div>勝者署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
-              <div>主審署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
-              <div>コール時間：　{new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>
-            </div>
-          </div>
-        );
+        return null;
       })()}
     </div>
   );

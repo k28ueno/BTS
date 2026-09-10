@@ -16,6 +16,13 @@
   page: score-sheet-page;
 }
 
+/* 予備用紙（白紙スコアシート）は複数枚を1回の印刷でまとめて出力するため、
+   1枚ごとに改ページする */
+@media print {
+  .blank-sheet-page { page-break-after: always; }
+  .blank-sheet-page:last-child { page-break-after: auto; }
+}
+
 @media print {
   @page { margin: 18mm; }
   body * { visibility: hidden; }

@@ -6059,7 +6059,7 @@ export default function App() {
             </div>
           );
           const gameBox = (label) => (
-            <div key={label} className="border-y-2 border-x-[1.5px] border-black flex" style={{ height: '128px' }}>
+            <div key={label} className="border-y-2 border-x-[1.5px] border-black flex" style={{ height: '116px' }}>
               <div className="w-6 border-r-[1.5px] border-black flex items-center justify-center text-[11px] font-bold shrink-0" style={{ writingMode: 'vertical-rl' }}>{label}</div>
               <div className="flex flex-col flex-1">
                 {[0, 1].map(row => (
@@ -6076,10 +6076,10 @@ export default function App() {
           );
 
           return (
-            <div className="p-6 bg-white text-black text-sm" style={forcePageBreakAfter ? { pageBreakAfter: 'always', breakAfter: 'page' } : undefined}>
-              <h1 className="text-center text-lg font-bold mb-4 tracking-[0.6em]">スコアシート（得点用紙）</h1>
+            <div className="p-5 bg-white text-black text-sm" style={forcePageBreakAfter ? { pageBreakAfter: 'always', breakAfter: 'page' } : undefined}>
+              <h1 className="text-center text-lg font-bold mb-3 tracking-[0.6em]">スコアシート（得点用紙）</h1>
 
-              <div className="flex justify-between items-start gap-4 mb-4">
+              <div className="flex justify-between items-start gap-4 mb-3">
                 <div className="flex flex-col justify-between shrink-0 whitespace-nowrap" style={{ width: '23%', fontSize: '11px' }}>
                   <div className="border-b border-black pb-0.5"><div className="text-gray-500">期日：</div>{config.date}</div>
                   <div className="border-b border-black pb-0.5"><div className="text-gray-500">大会名：</div>{config.title}</div>
@@ -6125,7 +6125,7 @@ export default function App() {
                 {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameBox)}
               </div>
 
-              <div className="flex justify-between mt-6">
+              <div className="flex justify-between mt-4">
                 <div>勝者署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
                 <div>主審署名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿</div>
                 <div>コール時間：　{callTimeText}</div>

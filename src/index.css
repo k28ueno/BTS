@@ -8,16 +8,20 @@
 .print-only-area { display: none; }
 
 /* スコアシートはA4横向きで印刷する（対応ブラウザでは名前付きページで用紙の向きを切り替える） */
-@page score-sheet-page {
-  size: A4 landscape;
-  margin: 10mm;
-}
 .print-only-area {
   page: score-sheet-page;
 }
 
 @media print {
   @page { margin: 18mm; }
+  /* 結果PDF等の汎用ページ余白（18mm）の後にスコアシート専用の名前付きページを
+     宣言することで、ブラウザが名前付きページの優先度を正しく扱わない場合でも
+     こちらの余白（8mm）が確実に適用されるようにする。この余白が広すぎると
+     1枚に収まるはずのスコアシートが2ページに割れてしまうため注意 */
+  @page score-sheet-page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
   body * { visibility: hidden; }
   .print-area, .print-area *,
   .print-only-area, .print-only-area * { visibility: visible; }

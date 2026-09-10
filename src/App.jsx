@@ -2929,6 +2929,17 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
+    // 決勝の対戦カードが既にコール済（〜完了）まで進んでいる場合、予選の結果を
+    // 今さら修正するとグループ順位・決勝トーナメントの枠と食い違ってしまうため禁止する
+    if (targetMatch.matchType === 'league' && isFinalCalled(targetMatch.cls)) {
+      setDialog({
+        title: "修正不可",
+        message: `【${targetMatch.cls}】は決勝の対戦カードが既にコール済のため、予選の試合結果は修正できません。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+
     const matchRule = targetMatch.matchRule || getMatchRule(targetMatch.cls, targetMatch.matchType);
     // 決着がついた時点より後のゲーム（非表示になった第3ゲームの残存データ等）は保存対象から除外し、
     // 空欄のゲームも除外する
@@ -3277,6 +3288,16 @@ export default function App() {
     if (!finalSlots) return false;
     const finalMatch = matches.find(m => m.id === `T-${cls}-${finalSlots[0]}-${finalSlots[1]}`);
     return !!(finalMatch && finalMatch.status === 'completed');
+  };
+
+  // 決勝の対戦カードが「未実施」より先（コール済〜完了）まで進んでいるか。
+  // この状態になった後に予選の試合結果を修正すると、既にグループ順位→決勝トーナメントの
+  // 枠へ反映済みの内容と食い違いが生じてしまうため、予選のスコア修正を禁止する基準として使う
+  const isFinalCalled = (cls) => {
+    const finalSlots = getFinalRoundSlots(cls);
+    if (!finalSlots) return false;
+    const finalMatch = matches.find(m => m.id === `T-${cls}-${finalSlots[0]}-${finalSlots[1]}`);
+    return !!(finalMatch && finalMatch.status !== 'waiting');
   };
 
   // 決勝トーナメントが初期ラウンドより先へ進行しているか（＝いずれかの対戦カードが
@@ -5274,14 +5295,19 @@ export default function App() {
                             <td className="p-3 text-right font-mono">{fmtTime(m.completedAt)}</td>
                             <td className="p-3 text-right font-mono">{duration !== null ? `${duration.toFixed(1)}分` : '-'}</td>
                             <td className="p-3 text-center">
-                              {m.status === 'completed' && (
-                                <button
-                                  onClick={() => openScoreModal(m)}
-                                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs whitespace-nowrap"
-                                >
-                                  スコア修正
-                                </button>
-                              )}
+                              {m.status === 'completed' && (() => {
+                                const locked = m.matchType === 'league' && isFinalCalled(m.cls);
+                                return locked ? (
+                                  <span className="text-xs text-gray-400 font-bold" title={`【${m.cls}】は決勝の対戦カードが既にコール済のため、予選の試合結果は修正できません。`}>修正不可</span>
+                                ) : (
+                                  <button
+                                    onClick={() => openScoreModal(m)}
+                                    className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs whitespace-nowrap"
+                                  >
+                                    スコア修正
+                                  </button>
+                                );
+                              })()}
                             </td>
                           </tr>
                         );

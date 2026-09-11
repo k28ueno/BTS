@@ -3932,7 +3932,7 @@ export default function App() {
                           <div>
                              {typeof activeMatch.matchNo === 'number' && (
                                 <span className="font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded mb-1 inline-flex items-baseline gap-0.5">
-                                   <span className="text-[8px]">第</span><span className="text-sm">{activeMatch.matchNo}</span><span className="text-[8px]">試合</span>
+                                   <span className="text-[8px]">第</span><span className="text-sm text-red-400">{activeMatch.matchNo}</span><span className="text-[8px]">試合</span>
                                 </span>
                              )}
                              <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full mb-2 block ${badgeClass}`}>
@@ -5152,7 +5152,7 @@ export default function App() {
                                     <div className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1.5">
                                        {typeof activeMatch.matchNo === 'number' && (
                                           <span className="font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded inline-flex items-baseline gap-0.5">
-                                             <span className="text-[8px]">第</span><span className="text-sm">{activeMatch.matchNo}</span><span className="text-[8px]">試合</span>
+                                             <span className="text-[8px]">第</span><span className="text-sm text-red-400">{activeMatch.matchNo}</span><span className="text-[8px]">試合</span>
                                           </span>
                                        )}
                                        <span>({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}</span>
@@ -5285,7 +5285,7 @@ export default function App() {
                                          <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
                                          {typeof m.matchNo === 'number' && (
                                             <span className="font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded inline-flex items-baseline gap-0.5">
-                                               <span className="text-[8px]">第</span><span className="text-sm">{m.matchNo}</span><span className="text-[8px]">試合</span>
+                                               <span className="text-[8px]">第</span><span className="text-sm text-red-400">{m.matchNo}</span><span className="text-[8px]">試合</span>
                                             </span>
                                          )}
                                       </div>

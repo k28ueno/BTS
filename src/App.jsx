@@ -954,7 +954,11 @@ export default function App() {
   const fetchEntries = async () => {
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase.from('entries').select('*').order('created_at', { ascending: true });
+        // created_atだけだと、テストデータを一括生成した際などに同一（または僅差）の
+        // タイムスタンプが発生し、同着の行の並び順が取得のたびに変わってしまうことが
+        // あった（対戦カード生成時と後から画面表示する時で組の並びが食い違う原因になる）。
+        // idを第二キーにして、常に同じ順序で取得できるようにする
+        const { data, error } = await supabase.from('entries').select('*').order('created_at', { ascending: true }).order('id', { ascending: true });
         if (!error && data) {
           const formatted = data.map(d => ({
             id: d.id,

@@ -3399,13 +3399,6 @@ export default function App() {
   };
 
   // 決勝が終了しているクラスの優勝・準優勝ペアを求める（新聞掲載用PDFで使用）。未終了ならnull
-  // クラス名の末尾がD/Sの場合、「ダブルス」「シングルス」に置き換えて表示する（表彰状など正式な文書向け）
-  const getClassDisplayName = (cls) => {
-    if (!cls) return cls;
-    if (/D$/.test(cls)) return cls.replace(/D$/, 'ダブルス');
-    if (/S$/.test(cls)) return cls.replace(/S$/, 'シングルス');
-    return cls;
-  };
 
   const getClassFinalResult = (cls) => {
     const finalSlots = getFinalRoundSlots(cls);
@@ -5489,7 +5482,7 @@ export default function App() {
                     <div className="space-y-6">
                       {results.map(({ cls, result }) => (
                         <div key={cls}>
-                          <div className="font-bold text-base border-b border-gray-400 pb-1 mb-2">{getClassDisplayName(cls)}</div>
+                          <div className="font-bold text-base border-b border-gray-400 pb-1 mb-2">{cls}</div>
                           <div className="pl-4 space-y-1">
                             <div>優勝　{result.champion.p1Name}・{result.champion.p2Name}（{result.champion.club}）</div>
                             <div>準優勝　{result.runnerUp.p1Name}・{result.runnerUp.p2Name}（{result.runnerUp.club}）</div>
@@ -5570,7 +5563,7 @@ export default function App() {
                     <p className="cert-recipient">{team.p1Name}・{team.p2Name}{team.club && <span className="cert-club">（{team.club}）</span>}<span className="cert-hon">殿</span></p>
                     <p className="cert-body">
                       あなたがたは {config.title}<br />
-                      {getClassDisplayName(cls)}において<span className="cert-rank-word">{rankLabel}</span>の栄誉に輝かれました<br />
+                      {cls}において<span className="cert-rank-word">{rankLabel}</span>の栄誉に輝かれました<br />
                       よってここにこれを表彰します
                     </p>
                   </div>

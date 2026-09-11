@@ -5273,16 +5273,14 @@ export default function App() {
                                   onClick={!isAnyBusy ? toggleTapSelect('match', m.id, `${getTeamNameWithClub(m.team1Id)} vs ${getTeamNameWithClub(m.team2Id)}`) : undefined}
                                   className={`border p-2.5 rounded-lg shadow-xs transition-all ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-pointer sm:cursor-move hover:shadow-sm'} ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                 >
-                                   <div className="flex justify-between items-center mb-1">
-                                      <div className="flex items-center gap-1.5">
-                                         <span className="text-[10px] font-mono font-bold bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">順序 {displayIndex + 1}</span>
-                                         {typeof m.matchNo === 'number' && (
-                                            <span className="font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded inline-flex items-baseline gap-0.5">
-                                               <span className="text-[8px]">第</span><span className="text-sm text-red-400">{m.matchNo}</span><span className="text-[8px]">試合</span>
-                                            </span>
-                                         )}
-                                      </div>
-                                      <span className="text-xs font-bold text-blue-800">({m.cls}) {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>
+                                   <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                      <span className="text-sm font-mono font-extrabold bg-gray-200 px-1.5 py-0.5 rounded text-gray-700">#{displayIndex + 1}</span>
+                                      <span className="text-xs font-bold text-blue-800">{m.cls} {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>
+                                      {typeof m.matchNo === 'number' && (
+                                         <span className="font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded inline-flex items-baseline gap-0.5">
+                                            <span className="text-[8px]">第</span><span className="text-sm text-red-400">{m.matchNo}</span><span className="text-[8px]">試合</span>
+                                         </span>
+                                      )}
                                    </div>
                                    <div className="grid items-center gap-x-2" style={{ gridTemplateColumns: 'minmax(0,1fr) 5.5rem 1.2rem minmax(0,1fr) 5.5rem' }}>
                                       <div className={`font-bold text-base truncate no-underline-children ${team1Predicted ? 'text-emerald-600' : busyTextClass(team1Busy)}`}>

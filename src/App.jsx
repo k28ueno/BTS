@@ -4092,6 +4092,7 @@ export default function App() {
               className="w-full p-3 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
               value={entryForm.clubRank ?? ''}
               onChange={(e) => setEntryForm({...entryForm, clubRank: e.target.value})}
+              onFocus={(e) => e.target.select()}
             />
             <p className="text-xs text-gray-500 mt-1">※同じ出場クラスに同じ所属から複数ペアが参加する場合のみ、そのクラス内での強さ順（1番手、2番手…）を入力してください。予選リーグのグループ分けの際に、同じ所属同士が同じグループにならないよう配慮します。</p>
           </div>
@@ -4325,7 +4326,7 @@ export default function App() {
                   />
                   {config.deadline && <p className="text-xs text-gray-400 mt-1">表示: {config.deadline}</p>}
                 </div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">コート数（面）</label><input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.courts} onChange={e=>setConfig({...config, courts: parseInt(e.target.value) || 1})} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">コート数（面）</label><input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.courts} onChange={e=>setConfig({...config, courts: parseInt(e.target.value) || 1})} onFocus={e=>e.target.select()} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">開館時間</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeOpen)} onChange={e=>setConfig({...config, timeOpen: e.target.value})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">受付開始</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeReception)} onChange={e=>setConfig({...config, timeReception: e.target.value})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">試合開始</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeStart)} onChange={e=>setConfig({...config, timeStart: e.target.value})} /></div>
@@ -4344,12 +4345,12 @@ export default function App() {
 
                 <div>
                   <label className="block font-bold text-sm mb-1 text-gray-700">1試合の平均所要時間 (分)</label>
-                  <input type="number" min="5" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgMatchDuration} onChange={e=>setConfig({...config, avgMatchDuration: parseInt(e.target.value) || 15})} placeholder="例: 15" />
+                  <input type="number" min="5" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgMatchDuration} onChange={e=>setConfig({...config, avgMatchDuration: parseInt(e.target.value) || 15})} onFocus={e=>e.target.select()} placeholder="例: 15" />
                 </div>
 
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={classesText} onChange={e=>{ setClassesText(e.target.value); setConfig({...config, classes: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 1部,2部,3部" /><p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。</p></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
+                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
               </div>
 
@@ -4389,6 +4390,7 @@ export default function App() {
                                         className="w-14 border rounded p-1"
                                         value={g.points}
                                         onChange={e => updateMatchRuleGame(cls, matchType, i, { points: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                                        onFocus={e => e.target.select()}
                                       />
                                       <span className="text-gray-400">点／MAX</span>
                                       <input
@@ -4396,6 +4398,7 @@ export default function App() {
                                         className="w-14 border rounded p-1"
                                         value={g.maxPoints}
                                         onChange={e => updateMatchRuleGame(cls, matchType, i, { maxPoints: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                                        onFocus={e => e.target.select()}
                                       />
                                       <label className="flex items-center gap-1 ml-1 whitespace-nowrap">
                                         <input
@@ -4469,7 +4472,7 @@ export default function App() {
                 <h4 className="font-bold text-md text-[#2c5f4e] mb-3">管理者ログイン設定</h4>
                 <div className="max-w-sm">
                   <label className="block font-bold text-sm mb-1 text-gray-700">無操作時の自動ログオフまでの時間 (分)</label>
-                  <input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.adminIdleTimeoutMinutes} onChange={e=>setConfig({...config, adminIdleTimeoutMinutes: parseInt(e.target.value) || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES})} placeholder="例: 10" />
+                  <input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.adminIdleTimeoutMinutes} onChange={e=>setConfig({...config, adminIdleTimeoutMinutes: parseInt(e.target.value) || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES})} onFocus={e=>e.target.select()} placeholder="例: 10" />
                   <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。</p>
                 </div>
               </div>
@@ -4995,6 +4998,7 @@ export default function App() {
                        type="number" min="1" max="50"
                        value={blankSheetPrintQty}
                        onChange={e => setBlankSheetPrintQty(Math.max(1, parseInt(e.target.value) || 1))}
+                       onFocus={e => e.target.select()}
                        className="w-14 border rounded px-1.5 py-1 text-sm text-center"
                      />
                      <span className="text-xs text-gray-500">枚</span>
@@ -5641,6 +5645,7 @@ export default function App() {
                                      className="w-20 p-2 border-2 border-gray-300 rounded text-center text-xl font-extrabold bg-white focus:ring-2 focus:ring-[#2c5f4e] outline-none"
                                      value={testGenCounts[cls] !== undefined ? testGenCounts[cls] : 12}
                                      onChange={e => setTestGenCounts({ ...testGenCounts, [cls]: parseInt(e.target.value) || 0 })}
+                                     onFocus={e => e.target.select()}
                                    />
                                    <span className="text-base font-bold text-gray-700">組</span>
                                 </div>
@@ -5967,6 +5972,7 @@ export default function App() {
                               className="w-20 p-2 text-center text-2xl font-extrabold border-2 border-blue-400 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                               value={g.team1}
                               onChange={e => updateGameScore(idx, 'team1', e.target.value)}
+                              onFocus={e => e.target.select()}
                             />
                          </div>
                          <div className="text-center p-2 bg-red-50 rounded border">
@@ -5978,6 +5984,7 @@ export default function App() {
                               className="w-20 p-2 text-center text-2xl font-extrabold border-2 border-red-400 rounded focus:ring-2 focus:ring-red-500 outline-none"
                               value={g.team2}
                               onChange={e => updateGameScore(idx, 'team2', e.target.value)}
+                              onFocus={e => e.target.select()}
                             />
                          </div>
                       </div>

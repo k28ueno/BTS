@@ -2069,9 +2069,11 @@ export default function App() {
 
     const newClassMatches = [];
     let orderCounter = 1;
-    // 試合番号はグループ内で1から連番にする（グループA・グループBはそれぞれ独立して1から始まる）。
-    // このクラスの予選・決勝の対戦カードは全て作り直すため、常に1から採番し直す
-    const nextMatchNoByGroup = {};
+    // 試合番号はクラス全体を通した連番にする（グループA・B・Cで別々に1から始まると、
+    // 「第1試合」が複数のグループに重複して存在してしまい、コールやスコア記入時に
+    // 紛らわしくなるため）。このクラスの予選・決勝の対戦カードは全て作り直すため、
+    // 常に1から採番し直す
+    let nextMatchNo = 0;
     const dbInserts = [];
     let totalGenerated = 0;
 
@@ -2080,7 +2082,7 @@ export default function App() {
         if (groupMatchesMap[groupName] && groupMatchesMap[groupName][round]) {
           totalGenerated++;
           const m = groupMatchesMap[groupName][round];
-          nextMatchNoByGroup[groupName] = (nextMatchNoByGroup[groupName] || 0) + 1;
+          nextMatchNo += 1;
           // 生成時点の試合ルールをこの試合にスナップショット保存する（後からマスタを変更しても
           // この試合のルールは変わらない）
           const leagueMatchRule = getMatchRule(targetCls, 'league');
@@ -2098,7 +2100,7 @@ export default function App() {
             game_scores: [],
             status: 'waiting',
             match_order: orderCounter++,
-            match_no: nextMatchNoByGroup[groupName]
+            match_no: nextMatchNo
           };
           dbInserts.push(matchObj);
           newClassMatches.push({
@@ -2292,8 +2294,9 @@ export default function App() {
     const newMatches = [];
     const advancedUpdates = [];
     let createdCount = 0;
-    // 決勝トーナメントの試合番号は、予選（グループ内連番）とは独立してクラス単位で1から採番する
-    let nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls && m.matchType === 'tournament'));
+    // 決勝トーナメントの試合番号は、予選から続くクラス単位の通し番号にする
+    // （予選が「第1〜第15試合」なら決勝トーナメントは「第16試合〜」から採番する）
+    let nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls && (m.matchType === 'league' || m.matchType === 'tournament')));
     // 生成時点の試合ルールをこのクラスの決勝トーナメント全試合にスナップショット保存する
     const tournamentMatchRule = getMatchRule(cls, 'tournament');
 
@@ -2417,7 +2420,7 @@ export default function App() {
       return;
     }
     const [loser1, loser2] = results.map(r => r.loserId);
-    const nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls && m.matchType === 'tournament'));
+    const nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls && (m.matchType === 'league' || m.matchType === 'tournament')));
     const tournamentMatchRule = getMatchRule(cls, 'tournament');
     const thirdPlaceMatch = {
       id: thirdPlaceId,

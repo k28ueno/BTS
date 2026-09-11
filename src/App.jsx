@@ -3969,7 +3969,12 @@ export default function App() {
                          <thead>
                             <tr className="text-gray-500">
                                <th className="border p-2 bg-gray-50 text-left min-w-[110px]">ペア (所属)</th>
-                               {groupEntries.map((_, i) => <th key={`th-${i}`} className="border p-2 bg-gray-50">{i+1}</th>)}
+                               {groupEntries.map((e2, i) => (
+                                  <th key={`th-${i}`} className="border p-2 bg-gray-50">
+                                     <div>{i + 1}</div>
+                                     <div className="text-[10px] font-normal text-gray-400 truncate max-w-[52px] mx-auto">{e2.p1LastName || e2.p1Name}</div>
+                                  </th>
+                               ))}
                                <th className="border p-2 bg-blue-50">勝敗</th>
                             </tr>
                          </thead>

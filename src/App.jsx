@@ -3972,7 +3972,7 @@ export default function App() {
                                {groupEntries.map((e2, i) => (
                                   <th key={`th-${i}`} className="border p-2 bg-gray-50">
                                      <div>{i + 1}</div>
-                                     <div className="text-[9px] font-normal text-gray-400 truncate max-w-[56px] mx-auto">{e2.p1LastName || e2.p1Name}・{e2.p2LastName || e2.p2Name}</div>
+                                     <div className="text-[9px] font-bold text-gray-400 truncate max-w-[56px] mx-auto">{e2.p1LastName || e2.p1Name}・{e2.p2LastName || e2.p2Name}</div>
                                   </th>
                                ))}
                                <th className="border p-2 bg-blue-50">勝敗</th>

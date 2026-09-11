@@ -1997,49 +1997,81 @@ export default function App() {
     setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
-  // サークル法で総当たり戦の対戦カードを組む。1チームを固定し、残りを回転させることで、
-  // 各ラウンドでは全チームが高々1試合しか対戦しないようにする（奇数チームの場合は不戦枠(BYE)を1つ加える）。
-  // ラウンドの組み合わせ自体は固定だが、ラウンド内の並び順は自由なので、複数パターンを
-  // 試して「隣接する試合番号で同じチームが連続する回数」が最も少ない並びを採用する
+  // 総当たり戦の対戦カードを組む。チーム数が偶数か奇数かで方式を分ける
   const buildRoundRobinPairs = (teams) => {
-    const list = [...teams];
-    if (list.length % 2 !== 0) list.push(null);
-    const n = list.length;
-    const half = n / 2;
-    let arr = list.slice();
-    const rounds = [];
-    for (let r = 0; r < n - 1; r++) {
-      const roundMatches = [];
-      for (let i = 0; i < half; i++) {
-        const a = arr[i];
-        const b = arr[n - 1 - i];
-        if (a != null && b != null) roundMatches.push([a, b]);
-      }
-      rounds.push(roundMatches);
-      arr = [arr[0], arr[n - 1], ...arr.slice(1, n - 1)];
-    }
-
-    // サークル法で作った各ラウンドを逆順にすると、「1-2, 3-4, 1-3, 2-4, 1-4, 2-3」
-    // のような、一般的に馴染みのある総当たり表の並び順になる。
+    const share = (a, b) => !!a && !!b && (a[0] === b[0] || a[0] === b[1] || a[1] === b[0] || a[1] === b[1]);
     // 同じラウンド内の対戦同士はチームが重複しないため、連戦が起こりうるのは
     // 「あるラウンドの最後の試合」と「次のラウンドの最初の試合」の境目だけ。
-    // 総当たり表自体の対戦カードやラウンドの並びはそのままに、その境目でだけ、
-    // 連戦にならない試合が次のラウンド内にあれば先頭に入れ替えて連戦を回避する
-    const orderedRounds = rounds.slice().reverse();
-    const share = (a, b) => !!a && !!b && (a[0] === b[0] || a[0] === b[1] || a[1] === b[0] || a[1] === b[1]);
-    const flat = [];
-    orderedRounds.forEach(roundMatches => {
-      const round = [...roundMatches];
-      const prevMatch = flat[flat.length - 1];
-      if (prevMatch && round.length > 1 && share(prevMatch, round[0])) {
-        const swapIdx = round.findIndex((m, idx) => idx > 0 && !share(prevMatch, m));
-        if (swapIdx !== -1) {
-          [round[0], round[swapIdx]] = [round[swapIdx], round[0]];
+    // ラウンドの組み合わせ自体は変えずに、その境目でだけ、連戦にならない試合が
+    // 次のラウンド内にあれば先頭に入れ替えて連戦を回避する
+    const flattenAvoidingCollisions = (roundsList) => {
+      const flat = [];
+      roundsList.forEach(roundMatches => {
+        const round = [...roundMatches];
+        const prevMatch = flat[flat.length - 1];
+        if (prevMatch && round.length > 1 && share(prevMatch, round[0])) {
+          const swapIdx = round.findIndex((m, idx) => idx > 0 && !share(prevMatch, m));
+          if (swapIdx !== -1) {
+            [round[0], round[swapIdx]] = [round[swapIdx], round[0]];
+          }
         }
+        flat.push(...round);
+      });
+      return flat;
+    };
+
+    if (teams.length % 2 === 0) {
+      // 偶数チーム：1チームを固定し、残りをサークル法で回転させる。
+      // ラウンドを逆順にすると「1-2, 3-4, 1-3, 2-4, 1-4, 2-3」のような、
+      // 一般的に馴染みのある総当たり表の並び順になる
+      const list = teams.slice();
+      const n = list.length;
+      const half = n / 2;
+      let arr = list.slice();
+      const rounds = [];
+      for (let r = 0; r < n - 1; r++) {
+        const roundMatches = [];
+        for (let i = 0; i < half; i++) {
+          roundMatches.push([arr[i], arr[n - 1 - i]]);
+        }
+        rounds.push(roundMatches);
+        arr = [arr[0], arr[n - 1], ...arr.slice(1, n - 1)];
       }
-      flat.push(...round);
-    });
-    return flat;
+      return flattenAvoidingCollisions(rounds.slice().reverse());
+    }
+
+    // 奇数チーム：円卓（サークル）を1つずつ回転させ、末尾に来たチームがその回の
+    // 休み（BYE）になる（例：5チームなら 1-2,3-4[5休み] → 5-1,2-3[4休み] → …）。
+    // 残った4人（以上）は基本は前から順に2人ずつ組むが、既出の対戦カードと
+    // 重複する場合は、まだ対戦していない相手を優先して組み替える
+    const n = teams.length;
+    const usedPairs = new Set();
+    const pairKey = (a, b) => [a.id, b.id].sort().join('__');
+    // 残りメンバーを、既出の組み合わせを避けながら前から順に2人ずつ組む
+    // （その場で組めない場合は別の相手を試す、簡単なバックトラック）
+    const pairUpAvoidingUsed = (list) => {
+      if (list.length === 0) return [];
+      const [first, ...rest] = list;
+      for (let i = 0; i < rest.length; i++) {
+        const partner = rest[i];
+        if (usedPairs.has(pairKey(first, partner))) continue;
+        const remaining = [...rest.slice(0, i), ...rest.slice(i + 1)];
+        const sub = pairUpAvoidingUsed(remaining);
+        if (sub !== null) return [[first, partner], ...sub];
+      }
+      return null;
+    };
+
+    let circle = teams.slice();
+    const rounds = [];
+    for (let r = 0; r < n; r++) {
+      const active = circle.slice(0, n - 1); // 末尾（circleの最後）が今回の休み
+      const roundMatches = pairUpAvoidingUsed(active) || [];
+      roundMatches.forEach(([a, b]) => usedPairs.add(pairKey(a, b)));
+      rounds.push(roundMatches);
+      circle = [circle[circle.length - 1], ...circle.slice(0, circle.length - 1)];
+    }
+    return flattenAvoidingCollisions(rounds);
   };
 
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {

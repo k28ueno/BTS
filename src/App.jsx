@@ -2015,10 +2015,27 @@ export default function App() {
       arr = [arr[0], arr[n - 1], ...arr.slice(1, n - 1)];
     }
 
-    // サークル法で作った各ラウンドを逆順に並べることで、「1-2, 3-4, 1-3, 2-4,
-    // 1-4, 2-3」のような、一般的に馴染みのある総当たり表の並び順に一致させる
-    // （ランダムな連戦回避の並び替えは行わない。番号の並びを一定・予測可能にすることを優先する）
-    return rounds.slice().reverse().flat();
+    // サークル法で作った各ラウンドを逆順にすると、「1-2, 3-4, 1-3, 2-4, 1-4, 2-3」
+    // のような、一般的に馴染みのある総当たり表の並び順になる。
+    // 同じラウンド内の対戦同士はチームが重複しないため、連戦が起こりうるのは
+    // 「あるラウンドの最後の試合」と「次のラウンドの最初の試合」の境目だけ。
+    // 総当たり表自体の対戦カードやラウンドの並びはそのままに、その境目でだけ、
+    // 連戦にならない試合が次のラウンド内にあれば先頭に入れ替えて連戦を回避する
+    const orderedRounds = rounds.slice().reverse();
+    const share = (a, b) => !!a && !!b && (a[0] === b[0] || a[0] === b[1] || a[1] === b[0] || a[1] === b[1]);
+    const flat = [];
+    orderedRounds.forEach(roundMatches => {
+      const round = [...roundMatches];
+      const prevMatch = flat[flat.length - 1];
+      if (prevMatch && round.length > 1 && share(prevMatch, round[0])) {
+        const swapIdx = round.findIndex((m, idx) => idx > 0 && !share(prevMatch, m));
+        if (swapIdx !== -1) {
+          [round[0], round[swapIdx]] = [round[swapIdx], round[0]];
+        }
+      }
+      flat.push(...round);
+    });
+    return flat;
   };
 
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {

@@ -2049,7 +2049,12 @@ export default function App() {
     let maxGroupMatches = 0;
 
     groups.forEach(groupName => {
-      const groupTeams = clsEntries.filter(e => e.group === groupName);
+      // 順位表（getGroupStandings）は無試合時、ID昇順で「1位・2位…」を表示する。
+      // 対戦カードの生成もこの並び順に揃えることで、順位表の「1」「2」が
+      // 実際に「第1試合」で対戦する組と一致するようにする
+      const groupTeams = clsEntries
+        .filter(e => e.group === groupName)
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
       groupMatchesMap[groupName] = [];
       if (groupTeams.length >= 2) {
         buildRoundRobinPairs(groupTeams).forEach(([t1, t2]) => {

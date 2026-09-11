@@ -2015,24 +2015,10 @@ export default function App() {
       arr = [arr[0], arr[n - 1], ...arr.slice(1, n - 1)];
     }
 
-    const share = (a, b) => !!a && !!b && (a[0] === b[0] || a[0] === b[1] || a[1] === b[0] || a[1] === b[1]);
-    const countAdjacentCollisions = (flat) => {
-      let count = 0;
-      for (let i = 0; i < flat.length - 1; i++) if (share(flat[i], flat[i + 1])) count++;
-      return count;
-    };
-
-    let best = rounds.flat();
-    let bestScore = countAdjacentCollisions(best);
-    for (let attempt = 0; attempt < 30 && bestScore > 0; attempt++) {
-      const flat = rounds.flatMap(roundMatches => [...roundMatches].sort(() => Math.random() - 0.5));
-      const score = countAdjacentCollisions(flat);
-      if (score < bestScore) {
-        best = flat;
-        bestScore = score;
-      }
-    }
-    return best;
+    // サークル法で作った各ラウンドを逆順に並べることで、「1-2, 3-4, 1-3, 2-4,
+    // 1-4, 2-3」のような、一般的に馴染みのある総当たり表の並び順に一致させる
+    // （ランダムな連戦回避の並び替えは行わない。番号の並びを一定・予測可能にすることを優先する）
+    return rounds.slice().reverse().flat();
   };
 
   const generateClassLeagueMatches = async (targetCls, currentEntriesList) => {

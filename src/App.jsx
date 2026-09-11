@@ -5273,12 +5273,12 @@ export default function App() {
                                   onClick={!isAnyBusy ? toggleTapSelect('match', m.id, `${getTeamNameWithClub(m.team1Id)} vs ${getTeamNameWithClub(m.team2Id)}`) : undefined}
                                   className={`border p-2.5 rounded-lg shadow-xs transition-all ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-pointer sm:cursor-move hover:shadow-sm'} ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                 >
-                                   <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                      <span className="text-sm font-mono font-extrabold bg-gray-200 px-1.5 py-0.5 rounded text-gray-700">#{displayIndex + 1}</span>
-                                      <span className="text-xs font-bold text-blue-800">{m.cls} {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>
+                                   <div className="flex items-center gap-3 mb-1 flex-wrap">
+                                      <span className="text-base font-mono font-extrabold bg-gray-200 px-1.5 py-0.5 rounded text-gray-700">#{displayIndex + 1}</span>
+                                      <span className="text-sm font-bold text-blue-800">{m.cls} {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>
                                       {typeof m.matchNo === 'number' && (
-                                         <span className="font-mono font-extrabold bg-slate-700 text-white px-1.5 py-0.5 rounded inline-flex items-baseline gap-0.5">
-                                            <span className="text-[8px]">第</span><span className="text-sm text-red-400">{m.matchNo}</span><span className="text-[8px]">試合</span>
+                                         <span className="font-mono font-extrabold inline-flex items-baseline gap-0.5">
+                                            <span className="text-xs">第</span><span className="text-lg text-red-600">{m.matchNo}</span><span className="text-xs">試合</span>
                                          </span>
                                       )}
                                    </div>

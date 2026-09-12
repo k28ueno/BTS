@@ -142,6 +142,7 @@ export default function App() {
     chiefName: '',
     sealImageUrl: '',
     certTemplate: 'simple',
+    certFont: 'gothic',
     sponsors: [],
     classes: ['1部', '2部', '3部', '4部'],
     courts: 8,
@@ -926,6 +927,7 @@ export default function App() {
             chiefName: data.chiefname || '',
             sealImageUrl: data.sealimageurl || '',
             certTemplate: data.certtemplate || 'simple',
+            certFont: data.certfont || 'gothic',
             sponsors: data.sponsors || [],
             classes: data.classes || ['1部', '2部', '3部', '4部'],
             courts: data.courts || 8,
@@ -1183,6 +1185,7 @@ export default function App() {
         chiefname: config.chiefName,
         sealimageurl: config.sealImageUrl,
         certtemplate: config.certTemplate,
+        certfont: config.certFont,
         sponsors: config.sponsors,
         classes: config.classes,
         courts: config.courts,
@@ -1509,6 +1512,7 @@ export default function App() {
                 chiefname: data.config.chiefName,
                 sealimageurl: data.config.sealImageUrl,
                 certtemplate: data.config.certTemplate,
+                certfont: data.config.certFont,
                 sponsors: data.config.sponsors,
                 classes: data.config.classes,
                 courts: data.config.courts,
@@ -4481,6 +4485,19 @@ export default function App() {
                     <option value="badminton">バドミントン記念柄（鳳凰・花柄・A4縦向き）</option>
                   </select>
                 </div>
+                {config.certTemplate === 'badminton' && (
+                  <div className="mb-4">
+                    <label className="block font-bold text-sm mb-1 text-gray-700">書体（バドミントン記念柄）</label>
+                    <select
+                      className="w-full md:w-auto p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                      value={config.certFont || 'gothic'}
+                      onChange={e => setConfig({...config, certFont: e.target.value})}
+                    >
+                      <option value="gothic">ゴシック体</option>
+                      <option value="mincho">明朝体</option>
+                    </select>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-bold text-sm mb-1 text-gray-700">発行団体名</label>
@@ -5575,11 +5592,10 @@ export default function App() {
               <div
                 key={`badmin-${cls}-${rankLabel}-${idx}`}
                 className="cert-page-badmin shadow-md mb-8 mx-auto"
-                style={{ maxWidth: 640, backgroundImage: `url(${certBadmintonBg})` }}
+                style={{ maxWidth: 640, backgroundImage: `url(${certBadmintonBg})`, '--cert-badmin-font': config.certFont === 'mincho' ? "'Noto Serif JP', serif" : "'Noto Sans JP', sans-serif" }}
               >
                 <div className="cert-badmin-class">{cls}</div>
                 <div className="cert-badmin-rank">{rankLabel}</div>
-                <div className="cert-badmin-pair-label">{rankLabel}ペア</div>
                 <div className="cert-badmin-pair-names">{team.p1Name}・{team.p2Name}</div>
                 {team.club && <div className="cert-badmin-club">（{team.club}）</div>}
                 <hr className="cert-badmin-rule" />

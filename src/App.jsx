@@ -135,6 +135,7 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('settings');
   const [selectedClass, setSelectedClass] = useState('4部');
   const [dialog, setDialog] = useState(null);
+  const [callAnnouncement, setCallAnnouncement] = useState(null); // コールボタン押下時のアナウンス文言ダイアログ { match, courtNum }
   const [loading, setLoading] = useState(true);
 
   const [config, setConfig] = useState({
@@ -263,6 +264,45 @@ export default function App() {
         <div className="font-bold text-base truncate">{getTeamNameWithClub(teamId)}</div>
       </div>
     );
+  };
+
+  // コールボタン押下時に読み上げる文言を組み立てる。選手・審判ともに
+  // 「氏名（ふりがな）さん」の形式にすることで、そのまま場内放送で読み上げられるようにする
+  const buildCallAnnouncementText = (m, courtNum) => {
+    const ref = getRefereeForMatch(m);
+    const playerPhrase = (ent, key) => {
+      const name = ent[`${key}Name`];
+      const furigana = `${ent[`${key}LastFurigana`] || ''}${ent[`${key}FirstFurigana`] || ''}`;
+      return furigana ? `${name}（${furigana}）さん` : `${name}さん`;
+    };
+    const teamLine = (teamId) => {
+      const ent = entries.find(e => String(e.id) === String(teamId));
+      if (!ent) return '未定';
+      const clubPrefix = ent.club ? `${ent.club}、` : '';
+      return `${clubPrefix}${playerPhrase(ent, 'p1')}・${playerPhrase(ent, 'p2')}`;
+    };
+    const refLine = (refName, refTeamId) => {
+      const ent = refTeamId != null ? entries.find(e => String(e.id) === String(refTeamId)) : null;
+      return ent ? teamLine(refTeamId) : refName;
+    };
+    const groupLabel = m.matchType === 'tournament' ? m.group : `${m.group}グループ`;
+    const matchNoLabel = typeof m.matchNo === 'number' ? `第${m.matchNo}試合` : '';
+
+    return [
+      '試合コールします。',
+      '',
+      `第${courtNum}コート、${m.cls}、${groupLabel}、${matchNoLabel}。`,
+      '',
+      `${teamLine(m.team1Id)}。`,
+      '',
+      `${teamLine(m.team2Id)}。`,
+      '',
+      `主審・副審、${refLine(ref.main, ref.mainId)}。`,
+      '',
+      `線審、${refLine(ref.line, ref.lineId)}。`,
+      '',
+      `選手、審判の皆さん、第${courtNum}コートへお願いします。`
+    ].join('\n');
   };
 
   // ----------------------------------------------------------------
@@ -5341,7 +5381,7 @@ export default function App() {
 
                                        {activeMatch.status === 'calling' && (
                                           <button
-                                            onClick={() => handleMatchStatusChange(activeMatch.id, 'recepted')}
+                                            onClick={() => setCallAnnouncement({ match: activeMatch, courtNum })}
                                             className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              コール
@@ -6289,6 +6329,31 @@ export default function App() {
                   </button>
                 )}
                 <button onClick={dialog.close || dialog.onClose} className="bg-[#2c5f4e] text-[#ffffff] px-6 py-2 rounded-lg font-bold">閉じる</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {callAnnouncement && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[100] animate-fade-in">
+           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-2xl font-extrabold mb-5 text-gray-800 flex items-center gap-2">📢 コールアナウンス（第{callAnnouncement.courtNum}コート）</h3>
+              <div className="text-gray-800 text-xl leading-relaxed whitespace-pre-line bg-yellow-50 border border-yellow-200 rounded-lg p-5 mb-6">
+                {buildCallAnnouncementText(callAnnouncement.match, callAnnouncement.courtNum)}
+              </div>
+              <div className="flex justify-end gap-2 sticky bottom-0 bg-white pt-2">
+                <button
+                  onClick={() => setCallAnnouncement(null)}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2.5 rounded-lg font-bold"
+                >
+                  閉じる
+                </button>
+                <button
+                  onClick={() => { handleMatchStatusChange(callAnnouncement.match.id, 'recepted'); setCallAnnouncement(null); }}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2.5 rounded-lg font-bold"
+                >
+                  コール完了（試合受付へ）
+                </button>
               </div>
            </div>
         </div>

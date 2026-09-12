@@ -4577,7 +4577,7 @@ export default function App() {
                     >
                       <option value="gothic">ゴシック体（Noto Sans JP）</option>
                       <option value="mincho">明朝体（Noto Serif JP）</option>
-                      <option value="brush">毛筆体（Yuji Boku）</option>
+                      <option value="brush">毛筆体（Yuji Syuku）</option>
                     </select>
                   </div>
                 )}
@@ -5675,7 +5675,7 @@ export default function App() {
             const badmintonCertFontFamily = {
               gothic: "'Noto Sans JP', sans-serif",
               mincho: "'Noto Serif JP', serif",
-              brush: "'Yuji Boku', serif",
+              brush: "'Yuji Syuku', serif",
             }[config.certFont] || "'Noto Sans JP', sans-serif";
 
             // 選択書体は数字（半角）以外の全文字に適用する。装飾書体は数字の字形が

@@ -160,6 +160,8 @@ export default function App() {
     fees: { '一般': 4000, '高校生まで': 2000 },
     advancementCondition: 'top2',
     avgMatchDuration: 15,
+    lunchBreakStart: '',
+    lunchBreakEnd: '',
     adminIdleTimeoutMinutes: DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES,
     matchRules: {} // { [クラス名]: { league: {gamesToWin, games:[{points,maxPoints,deuce}]}, tournament: {...} } }。未設定のクラス/ラウンドは既定値を使用
   });
@@ -963,6 +965,8 @@ export default function App() {
             fees: data.fees || { '一般': 4000, '高校生まで': 2000 },
             advancementCondition: data.advancementcondition || 'top2',
             avgMatchDuration: data.avgmatchduration || 15,
+            lunchBreakStart: data.lunchbreakstart || '',
+            lunchBreakEnd: data.lunchbreakend || '',
             adminIdleTimeoutMinutes: data.adminidletimeoutminutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES,
             matchRules: data.matchrules || {}
           };
@@ -1235,6 +1239,8 @@ export default function App() {
         fees: config.fees,
         advancementcondition: config.advancementCondition,
         avgmatchduration: config.avgMatchDuration,
+        lunchbreakstart: config.lunchBreakStart,
+        lunchbreakend: config.lunchBreakEnd,
         adminidletimeoutminutes: config.adminIdleTimeoutMinutes,
         matchrules: config.matchRules
       };
@@ -1562,6 +1568,8 @@ export default function App() {
                 fees: data.config.fees,
                 advancementcondition: data.config.advancementCondition,
                 avgmatchduration: data.config.avgMatchDuration,
+                lunchbreakstart: data.config.lunchBreakStart,
+                lunchbreakend: data.config.lunchBreakEnd,
                 adminidletimeoutminutes: data.config.adminIdleTimeoutMinutes,
                 matchrules: data.config.matchRules
               };
@@ -3520,7 +3528,27 @@ export default function App() {
     const totalMinutes = Math.ceil((totalRemainingMatches * avgDuration) / courts);
 
     const [baseH, baseM] = (simCurrentTime || '08:50').split(':').map(n => parseInt(n, 10) || 0);
-    const endTotalMin = baseH * 60 + baseM + totalMinutes;
+
+    // 昼休みが設定されている場合、終了予定時刻の試算にその休憩時間を加味する。
+    // ・基準時間が昼休み中であれば、休憩明けから残り試合の消化を開始するとみなす
+    // ・基準時間が昼休み前で、休憩なしの単純計算では休憩時間帯にかかる場合は、
+    //   休憩時間をまるごと上乗せする（休憩中は試合が進行しないため）
+    let effectiveStartMin = baseH * 60 + baseM;
+    let lunchAdjustMinutes = 0;
+    if (config.lunchBreakStart && config.lunchBreakEnd) {
+      const [lsH, lsM] = config.lunchBreakStart.split(':').map(n => parseInt(n, 10) || 0);
+      const [leH, leM] = config.lunchBreakEnd.split(':').map(n => parseInt(n, 10) || 0);
+      const lunchStartMin = lsH * 60 + lsM;
+      const lunchEndMin = leH * 60 + leM;
+      if (lunchEndMin > lunchStartMin) {
+        if (effectiveStartMin >= lunchStartMin && effectiveStartMin < lunchEndMin) {
+          effectiveStartMin = lunchEndMin;
+        } else if (effectiveStartMin < lunchStartMin && effectiveStartMin + totalMinutes >= lunchStartMin) {
+          lunchAdjustMinutes = lunchEndMin - lunchStartMin;
+        }
+      }
+    }
+    const endTotalMin = effectiveStartMin + totalMinutes + lunchAdjustMinutes;
     const endTimeStr = `${(Math.floor(endTotalMin / 60) % 24).toString().padStart(2, '0')}:${(endTotalMin % 60).toString().padStart(2, '0')}`;
 
     return {
@@ -4433,6 +4461,16 @@ export default function App() {
                 <div>
                   <label className="block font-bold text-sm mb-1 text-gray-700">1試合の平均所要時間 (分)</label>
                   <input type="number" min="5" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgMatchDuration} onChange={e=>setConfig({...config, avgMatchDuration: parseInt(e.target.value) || 15})} onFocus={e=>e.target.select()} placeholder="例: 15" />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-sm mb-1 text-gray-700">昼休み（任意）</label>
+                  <div className="flex items-center gap-2">
+                    <input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.lunchBreakStart || ''} onChange={e=>setConfig({...config, lunchBreakStart: e.target.value})} />
+                    <span className="text-gray-500">〜</span>
+                    <input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.lunchBreakEnd || ''} onChange={e=>setConfig({...config, lunchBreakEnd: e.target.value})} />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">※設定すると、終了予定時刻の試算にこの時間帯の休憩を加味します。</p>
                 </div>
 
                 <div className="md:col-span-2">

@@ -61,9 +61,16 @@
 .certificate-print-area {
   page: certificate-page;
 }
+@page certificate-page-portrait {
+  size: A4 portrait;
+  margin: 0;
+}
+.certificate-print-area.cert-portrait {
+  page: certificate-page-portrait;
+}
 @media print {
-  .cert-page { page-break-after: always; }
-  .cert-page:last-child { page-break-after: auto; }
+  .cert-page, .cert-page-badmin { page-break-after: always; }
+  .cert-page:last-child, .cert-page-badmin:last-child { page-break-after: auto; }
 }
 
 .cert-page {
@@ -73,6 +80,34 @@
   position: relative;
   overflow: hidden;
 }
+
+/* ------------------------------------------------------------------
+   表彰状（バドミントン記念柄）：背景画像（1055×1491px, A4縦向き比率）の上に
+   テキストを重ねる。位置・文字サイズは背景画像自身の実寸幅に対する
+   コンテナクエリ（cqw）比率で指定し、印刷時・プレビュー時のサイズによらず
+   常に背景の装飾（鳳凰・花柄・選手シルエット・月桂樹）と揃うようにする。
+   ------------------------------------------------------------------ */
+.cert-page-badmin {
+  container-type: inline-size;
+  aspect-ratio: 1055 / 1491;
+  position: relative;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.cert-badmin-class { position: absolute; top: 26.5%; left: 0; right: 0; text-align: center; font-family: 'Shippori Mincho B1', serif; font-weight: 700; color: #2B2620; font-size: clamp(11px, 3.3cqw, 46px); letter-spacing: .06em; }
+.cert-badmin-rank { position: absolute; top: 32.5%; left: 0; right: 0; text-align: center; font-family: 'Shippori Mincho B1', serif; font-weight: 800; color: #A9792C; font-size: clamp(20px, 6.6cqw, 92px); letter-spacing: .3em; text-indent: .3em; }
+.cert-badmin-pair-label { position: absolute; top: 52.5%; left: 8%; font-family: 'Noto Serif JP', serif; font-weight: 600; color: #2B2620; font-size: clamp(9px, 2cqw, 28px); }
+.cert-badmin-pair-names { position: absolute; top: 55.5%; left: 8%; right: 8%; font-family: 'Shippori Mincho B1', serif; font-weight: 700; color: #2B2620; font-size: clamp(15px, 3.9cqw, 55px); letter-spacing: .04em; }
+.cert-badmin-club { position: absolute; top: 60%; left: 8%; right: 8%; font-family: 'Noto Serif JP', serif; font-weight: 500; color: #7A6B52; font-size: clamp(9px, 2cqw, 28px); }
+.cert-badmin-rule { position: absolute; top: 64.3%; left: 8%; right: 8%; border: none; border-top: 1px solid #C4A661; margin: 0; }
+.cert-badmin-body { position: absolute; top: 66.3%; left: 0; right: 0; text-align: center; font-family: 'Noto Serif JP', serif; color: #2B2620; font-size: clamp(10px, 2.15cqw, 30px); line-height: 1.85; }
+.cert-badmin-date { position: absolute; top: 75.5%; left: 0; right: 0; text-align: center; font-family: 'Noto Serif JP', serif; font-weight: 600; color: #2B2620; font-size: clamp(11px, 2.5cqw, 35px); letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+.cert-badmin-org { position: absolute; top: 79.8%; left: 22%; font-family: 'Shippori Mincho B1', serif; color: #2B2620; font-size: clamp(10px, 2.15cqw, 30px); }
+.cert-badmin-org .cert-badmin-org-label { font-family: 'Noto Serif JP', serif; font-size: .78em; margin-right: .8em; }
+.cert-badmin-chief { position: absolute; top: 83%; left: 22%; font-family: 'Shippori Mincho B1', serif; font-weight: 700; color: #2B2620; font-size: clamp(12px, 2.6cqw, 36px); }
+.cert-badmin-chief .cert-badmin-chief-label { font-family: 'Noto Serif JP', serif; font-weight: 500; font-size: .72em; margin-right: .8em; }
 .cert-frame-gold { position: absolute; inset: 2.4%; border: 2px solid #9C7A32; }
 .cert-frame-inner {
   position: absolute; inset: 3.6%;

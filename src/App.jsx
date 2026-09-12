@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import certBadmintonBg from './assets/cert-badminton-bg.png';
 
 const getEnv = (key) => {
   try { return import.meta.env[key]; } catch (e) { return null; }
@@ -140,6 +141,7 @@ export default function App() {
     orgName: '紀北町体育協会',
     chiefName: '',
     sealImageUrl: '',
+    certTemplate: 'simple',
     sponsors: [],
     classes: ['1部', '2部', '3部', '4部'],
     courts: 8,
@@ -923,6 +925,7 @@ export default function App() {
             orgName: data.orgname || '紀北町体育協会',
             chiefName: data.chiefname || '',
             sealImageUrl: data.sealimageurl || '',
+            certTemplate: data.certtemplate || 'simple',
             sponsors: data.sponsors || [],
             classes: data.classes || ['1部', '2部', '3部', '4部'],
             courts: data.courts || 8,
@@ -1179,6 +1182,7 @@ export default function App() {
         orgname: config.orgName,
         chiefname: config.chiefName,
         sealimageurl: config.sealImageUrl,
+        certtemplate: config.certTemplate,
         sponsors: config.sponsors,
         classes: config.classes,
         courts: config.courts,
@@ -1504,6 +1508,7 @@ export default function App() {
                 orgname: data.config.orgName,
                 chiefname: data.config.chiefName,
                 sealimageurl: data.config.sealImageUrl,
+                certtemplate: data.config.certTemplate,
                 sponsors: data.config.sponsors,
                 classes: data.config.classes,
                 courts: data.config.courts,
@@ -4465,6 +4470,17 @@ export default function App() {
 
               <div className="border-t pt-4 mt-2">
                 <h4 className="font-bold text-lg text-gray-800 mb-3">表彰状設定</h4>
+                <div className="mb-4">
+                  <label className="block font-bold text-sm mb-1 text-gray-700">デザイン</label>
+                  <select
+                    className="w-full md:w-auto p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                    value={config.certTemplate || 'simple'}
+                    onChange={e => setConfig({...config, certTemplate: e.target.value})}
+                  >
+                    <option value="simple">シンプル（金の丸枠・A4横向き）</option>
+                    <option value="badminton">バドミントン記念柄（鳳凰・花柄・A4縦向き）</option>
+                  </select>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-bold text-sm mb-1 text-gray-700">発行団体名</label>
@@ -5547,6 +5563,37 @@ export default function App() {
               );
             };
 
+            // 「令和8年12月6日(日)」形式から曜日を除き、数字の前に全角スペースを挟んだ
+            // 「令和　8年　12月6日」形式に変換する（バドミントン記念柄テンプレート専用の日付表記）
+            const formatBadmintonDate = (dateStr) => {
+              const m = (dateStr || '').match(/令和(\d+)年(\d+)月(\d+)日/);
+              if (!m) return dateStr || '';
+              return `令和　${m[1]}年　${m[2]}月${m[3]}日`;
+            };
+
+            const renderBadmintonCert = ({ cls, rankLabel, team }, idx) => (
+              <div
+                key={`badmin-${cls}-${rankLabel}-${idx}`}
+                className="cert-page-badmin shadow-md mb-8 mx-auto"
+                style={{ maxWidth: 640, backgroundImage: `url(${certBadmintonBg})` }}
+              >
+                <div className="cert-badmin-class">{cls}</div>
+                <div className="cert-badmin-rank">{rankLabel}</div>
+                <div className="cert-badmin-pair-label">{rankLabel}ペア</div>
+                <div className="cert-badmin-pair-names">{team.p1Name}・{team.p2Name}</div>
+                {team.club && <div className="cert-badmin-club">（{team.club}）</div>}
+                <hr className="cert-badmin-rule" />
+                <p className="cert-badmin-body">
+                  あなた方は　{config.title}において<br />
+                  頭著の成績を収められました<br />
+                  よってその栄誉をたたえ　これを賞します
+                </p>
+                <div className="cert-badmin-date">{formatBadmintonDate(config.date)}</div>
+                <div className="cert-badmin-org"><span className="cert-badmin-org-label">主催者</span>{config.orgName}</div>
+                <div className="cert-badmin-chief"><span className="cert-badmin-chief-label">会長</span>{config.chiefName || '○○　○○'}</div>
+              </div>
+            );
+
             const renderCert = ({ cls, rankLabel, team }, idx) => (
               <div key={`${cls}-${rankLabel}-${idx}`} className="cert-page shadow-md mb-8 mx-auto" style={{ maxWidth: 900 }}>
                 <div className="cert-frame-gold">
@@ -5593,14 +5640,16 @@ export default function App() {
                   </button>
                   {certList.length === 0 ? (
                     <p className="text-sm text-gray-500">まだ決勝が終了しているクラスがありません。決勝トーナメントの優勝・準優勝が決まると、ここに表示されます（3位決定戦を実施した場合は3位の賞状も追加されます）。</p>
+                  ) : config.certTemplate === 'badminton' ? (
+                    <p className="text-sm text-gray-500">A4縦向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。デザインはマスタ設定の「表彰状設定」で変更できます。</p>
                   ) : (
                     <p className="text-sm text-gray-500">A4横向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。発行団体名・代表者名・印鑑画像はマスタ設定の「表彰状設定」で変更できます。</p>
                   )}
                 </div>
-                <div className="certificate-print-area print-area bg-gray-100 p-6 rounded-lg">
+                <div className={`certificate-print-area print-area bg-gray-100 p-6 rounded-lg ${config.certTemplate === 'badminton' ? 'cert-portrait' : ''}`}>
                   {certList.length === 0 ? (
                     <p className="text-center text-gray-400 py-16">結果が確定しているクラスはまだありません。</p>
-                  ) : certList.map(renderCert)}
+                  ) : config.certTemplate === 'badminton' ? certList.map(renderBadmintonCert) : certList.map(renderCert)}
                 </div>
               </div>
             );

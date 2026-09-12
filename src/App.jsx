@@ -301,7 +301,9 @@ export default function App() {
       '',
       `線審、${refLine(ref.line, ref.lineId)}。`,
       '',
-      `選手、審判の皆さん、第${courtNum}コートへお願いします。`
+      '審判のペアは、事務局へ、',
+      '',
+      `選手、線審の皆さん、第${courtNum}コートへお願いします。`
     ].join('\n');
   };
 

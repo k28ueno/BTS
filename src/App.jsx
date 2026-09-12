@@ -1188,13 +1188,27 @@ export default function App() {
         .filter(([oldName, newName]) => newName && newName !== oldName);
 
       if (renameMap.length > 0) {
+        // 試合の id には "M-旧クラス名-グループ-...", "T-旧クラス名-枠-枠", "T3-旧クラス名" のように
+        // クラス名がそのまま埋め込まれているため、cls列だけでなく id 自体も新しい名前に
+        // 貼り替えないと、決勝トーナメントの結果参照（表彰状など）が旧クラス名のIDで
+        // 試合を探しに行ってしまい見つからなくなる
+        const renameIdCls = (id, oldName, newName) =>
+          id === `T3-${oldName}` ? `T3-${newName}` : id.replace(`-${oldName}-`, `-${newName}-`);
         for (const [oldName, newName] of renameMap) {
           await supabase.from('entries').update({ cls: newName }).eq('cls', oldName);
-          await supabase.from('matches').update({ cls: newName }).eq('cls', oldName);
+          const { data: clsMatches } = await supabase.from('matches').select('id').eq('cls', oldName);
+          for (const m of (clsMatches || [])) {
+            const newId = renameIdCls(m.id, oldName, newName);
+            await supabase.from('matches').update({ id: newId, cls: newName }).eq('id', m.id);
+          }
         }
         const renameCls = (val) => renameMap.find(([o]) => o === val)?.[1] ?? val;
         setEntries(prev => prev.map(e => ({ ...e, cls: renameCls(e.cls) })));
-        setMatches(prev => prev.map(m => ({ ...m, cls: renameCls(m.cls) })));
+        setMatches(prev => prev.map(m => {
+          const newCls = renameCls(m.cls);
+          if (newCls === m.cls) return m;
+          return { ...m, cls: newCls, id: renameIdCls(m.id, m.cls, newCls) };
+        }));
       }
 
       const payload = {
@@ -5612,7 +5626,7 @@ export default function App() {
             // 円形の印鑑（丸印）をSVGで描画する。外周に発行団体名、内側の2列に
             // 「協会長」と代表者名を縦書きで配置する、実物の角印に近い見た目にする。
             // マスタ設定の団体名・代表者名を変更すれば自動的にこの印影にも反映される
-            const renderSealSvg = () => {
+            const renderSealSvg = (sealClassName = 'cert-seal-svg') => {
               const outerText = (config.orgName || '').replace(/\s|　/g, '');
               const chiefChars = (config.chiefName || '○○○').replace(/\s|　/g, '');
               const titleChars = '協会長';
@@ -5638,7 +5652,7 @@ export default function App() {
                 </text>
               ));
               return (
-                <svg viewBox="0 0 200 200" className="cert-seal-svg" aria-hidden="true">
+                <svg viewBox="0 0 200 200" className={sealClassName} aria-hidden="true">
                   <circle cx={cx} cy={cy} r="94" fill="none" stroke="currentColor" strokeWidth="2.5" />
                   <circle cx={cx} cy={cy} r="82" fill="none" stroke="currentColor" strokeWidth="1.5" />
                   {outerChars}
@@ -5683,6 +5697,9 @@ export default function App() {
                 <div className="cert-badmin-date">{formatBadmintonDate(config.date)}</div>
                 <div className="cert-badmin-org"><span className="cert-badmin-org-label">主催者</span>{config.orgName}</div>
                 <div className="cert-badmin-chief"><span className="cert-badmin-chief-label">会長</span>{config.chiefName || '○○　○○'}</div>
+                {config.sealImageUrl ? (
+                  <img src={config.sealImageUrl} alt="印鑑" className="cert-badmin-seal" style={{ objectFit: 'contain' }} />
+                ) : renderSealSvg('cert-badmin-seal')}
               </div>
             );
 

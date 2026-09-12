@@ -97,17 +97,26 @@
   background-position: center;
   background-repeat: no-repeat;
 }
-.cert-badmin-class { position: absolute; top: 27.2%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(12px, 3.4cqw, 48px); letter-spacing: .04em; }
-.cert-badmin-rank { position: absolute; top: 32.5%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 800; color: #A9792C; font-size: clamp(28px, 9cqw, 126px); letter-spacing: .2em; padding-left: .2em; }
-.cert-badmin-pair-names { position: absolute; top: 56.5%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(16px, 4.1cqw, 57px); letter-spacing: .02em; }
-.cert-badmin-club { position: absolute; top: 60.8%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 400; color: #7A6B52; font-size: clamp(9px, 2cqw, 28px); }
-.cert-badmin-rule { position: absolute; top: 64.5%; left: 8%; right: 8%; border: none; border-top: 1px solid #C4A661; margin: 0; }
-.cert-badmin-body { position: absolute; top: 66.8%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 400; color: #2B2620; font-size: clamp(10px, 2.15cqw, 30px); line-height: 1.9; }
-.cert-badmin-date { position: absolute; top: 76%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(12px, 2.6cqw, 36px); letter-spacing: .1em; font-variant-numeric: tabular-nums; }
-.cert-badmin-org { position: absolute; top: 80%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 400; color: #2B2620; font-size: clamp(10px, 2.15cqw, 30px); }
+.cert-badmin-class { position: absolute; top: 25.8%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(16px, 5.4cqw, 76px); letter-spacing: .04em; }
+.cert-badmin-rank { position: absolute; top: 31%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 800; color: #A9792C; font-size: clamp(34px, 11cqw, 155px); letter-spacing: .2em; padding-left: .2em; }
+.cert-badmin-pair-names { position: absolute; top: 56.5%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(22px, 5.8cqw, 81px); letter-spacing: .02em; }
+.cert-badmin-club { position: absolute; top: 61.8%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 400; color: #7A6B52; font-size: clamp(11px, 2.56cqw, 36px); }
+.cert-badmin-rule { position: absolute; top: 65.2%; left: 8%; right: 8%; border: none; border-top: 1px solid #C4A661; margin: 0; }
+.cert-badmin-body { position: absolute; top: 68%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 400; color: #2B2620; font-size: clamp(10px, 2.15cqw, 30px); line-height: 1.9; }
+.cert-badmin-date { position: absolute; top: 79.1%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(13px, 2.6cqw, 36px); letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+.cert-badmin-org { position: absolute; top: 83.8%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 400; color: #2B2620; font-size: clamp(11px, 2.84cqw, 40px); }
 .cert-badmin-org .cert-badmin-org-label { font-size: .78em; margin-right: .8em; }
-.cert-badmin-chief { position: absolute; top: 83.2%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(13px, 2.7cqw, 38px); }
+.cert-badmin-chief { position: absolute; top: 86.4%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(18px, 4.36cqw, 61px); }
 .cert-badmin-chief .cert-badmin-chief-label { font-weight: 400; font-size: .72em; margin-right: .8em; }
+.cert-badmin-seal {
+  position: absolute;
+  top: 80.5%;
+  left: 71%;
+  width: clamp(34px, 9.5cqw, 106px);
+  height: clamp(34px, 9.5cqw, 106px);
+  color: #B7282E;
+  opacity: .92;
+}
 .cert-frame-gold { position: absolute; inset: 2.4%; border: 2px solid #9C7A32; }
 .cert-frame-inner {
   position: absolute; inset: 3.6%;

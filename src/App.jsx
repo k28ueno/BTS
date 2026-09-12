@@ -4493,8 +4493,9 @@ export default function App() {
                       value={config.certFont || 'gothic'}
                       onChange={e => setConfig({...config, certFont: e.target.value})}
                     >
-                      <option value="gothic">ゴシック体</option>
-                      <option value="mincho">明朝体</option>
+                      <option value="gothic">ゴシック体（Noto Sans JP）</option>
+                      <option value="mincho">明朝体（Noto Serif JP）</option>
+                      <option value="brush">毛筆体（Shippori Mincho B1）</option>
                     </select>
                   </div>
                 )}
@@ -5588,11 +5589,18 @@ export default function App() {
               return `令和　${m[1]}年　${m[2]}月${m[3]}日`;
             };
 
+            // マスタ設定「表彰状設定」の書体選択を、アプリに読み込み済みのWebフォントへ対応させる
+            const badmintonCertFontFamily = {
+              gothic: "'Noto Sans JP', sans-serif",
+              mincho: "'Noto Serif JP', serif",
+              brush: "'Shippori Mincho B1', serif",
+            }[config.certFont] || "'Noto Sans JP', sans-serif";
+
             const renderBadmintonCert = ({ cls, rankLabel, team }, idx) => (
               <div
                 key={`badmin-${cls}-${rankLabel}-${idx}`}
                 className="cert-page-badmin shadow-md mb-8 mx-auto"
-                style={{ maxWidth: 640, backgroundImage: `url(${certBadmintonBg})`, '--cert-badmin-font': config.certFont === 'mincho' ? "'Noto Serif JP', serif" : "'Noto Sans JP', sans-serif" }}
+                style={{ maxWidth: 640, backgroundImage: `url(${certBadmintonBg})`, '--cert-badmin-font': badmintonCertFontFamily }}
               >
                 <div className="cert-badmin-class">{cls}</div>
                 <div className="cert-badmin-rank">{rankLabel}</div>

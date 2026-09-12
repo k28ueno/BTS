@@ -4563,7 +4563,7 @@ export default function App() {
                     >
                       <option value="gothic">ゴシック体（Noto Sans JP）</option>
                       <option value="mincho">明朝体（Noto Serif JP）</option>
-                      <option value="brush">毛筆体（Shippori Mincho B1）</option>
+                      <option value="brush">毛筆体（Yuji Boku）</option>
                     </select>
                   </div>
                 )}
@@ -5661,7 +5661,7 @@ export default function App() {
             const badmintonCertFontFamily = {
               gothic: "'Noto Sans JP', sans-serif",
               mincho: "'Noto Serif JP', serif",
-              brush: "'Shippori Mincho B1', serif",
+              brush: "'Yuji Boku', serif",
             }[config.certFont] || "'Noto Sans JP', sans-serif";
 
             const renderBadmintonCert = ({ cls, rankLabel, team }, idx) => (

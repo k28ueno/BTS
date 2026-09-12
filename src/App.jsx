@@ -5686,7 +5686,7 @@ export default function App() {
               >
                 <div className="cert-badmin-class">{cls}</div>
                 <div className="cert-badmin-rank">{rankLabel}</div>
-                <div className="cert-badmin-pair-names">{team.p1Name}・{team.p2Name}</div>
+                <div className="cert-badmin-pair-names">{team.p1Name}<span className="cert-badmin-honorific">様</span>・{team.p2Name}<span className="cert-badmin-honorific">様</span></div>
                 {team.club && <div className="cert-badmin-club">（{team.club}）</div>}
                 <hr className="cert-badmin-rule" />
                 <p className="cert-badmin-body">

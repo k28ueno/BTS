@@ -42,6 +42,17 @@ function IconPlus() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" 
 function IconClock() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
 function IconDatabase() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>; }
 
+// 出場クラス名（例:「1部ダブルス」「1部D」）を、クラス編集フォームで扱う
+// 「クラス名（1部）」＋「シングル/ダブルス」の組に分解する。末尾がどの
+// 表記にも一致しない場合は、そのまま全体をクラス名としてダブルス扱いにする
+const parseClassSuffix = (str) => {
+  if (str.endsWith('ダブルス')) return { base: str.slice(0, -4), type: 'ダブルス' };
+  if (str.endsWith('シングルス')) return { base: str.slice(0, -5), type: 'シングルス' };
+  if (str.endsWith('D')) return { base: str.slice(0, -1), type: 'ダブルス' };
+  if (str.endsWith('S')) return { base: str.slice(0, -1), type: 'シングルス' };
+  return { base: str, type: 'ダブルス' };
+};
+
 const formatHHMM = (str) => {
   if (!str) return '08:50';
   const parts = str.split(':');
@@ -152,10 +163,28 @@ export default function App() {
     adminIdleTimeoutMinutes: DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES,
     matchRules: {} // { [クラス名]: { league: {gamesToWin, games:[{points,maxPoints,deuce}]}, tournament: {...} } }。未設定のクラス/ラウンドは既定値を使用
   });
-  // 出場クラス・協賛企業のカンマ区切り入力欄は、config側の配列（split/trim/filter済み）を
+  // 出場クラスは「クラス名（例:1部）」＋「シングル/ダブルス」の行の並びとして編集する。
+  // 実データ（config.classes）は従来通り「1部ダブルス」のような結合済み文字列の配列のまま
+  // 保持し、この行データは編集フォーム専用の表示用ステートとして別途持つ
+  const [classRows, setClassRows] = useState(config.classes.map(parseClassSuffix));
+  // クラス編集行（base名＋シングル/ダブルス）が変わるたびに、実データである
+  // config.classes（「1部ダブルス」のような結合済み文字列の配列）を作り直す
+  const applyClassRows = (rows) => {
+    setClassRows(rows);
+    setConfig(prev => ({ ...prev, classes: rows.map(r => `${r.base.trim()}${r.type}`) }));
+  };
+  const updateClassRow = (idx, field, value) => {
+    applyClassRows(classRows.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+  const addClassRow = () => {
+    applyClassRows([...classRows, { base: '', type: 'ダブルス' }]);
+  };
+  const removeClassRow = (idx) => {
+    applyClassRows(classRows.filter((_, i) => i !== idx));
+  };
+  // 協賛企業のカンマ区切り入力欄は、config側の配列（split/trim/filter済み）を
   // そのままvalueに戻すと、入力途中の半角カンマや末尾の空要素が確定前に消えてしまい
   // 入力しづらくなるため、入力中の生のテキストを別途保持しておく
-  const [classesText, setClassesText] = useState(config.classes.join(','));
   const [sponsorsText, setSponsorsText] = useState(config.sponsors.join(','));
 
   const [entries, setEntries] = useState([]);
@@ -938,7 +967,7 @@ export default function App() {
             matchRules: data.matchrules || {}
           };
           setConfig(loadedConfig);
-          setClassesText(loadedConfig.classes.join(','));
+          setClassRows(loadedConfig.classes.map(parseClassSuffix));
           setSponsorsText(loadedConfig.sponsors.join(','));
           const defaultTime = formatHHMM(loadedConfig.timeStart);
           setSimCurrentTime(defaultTime);
@@ -1483,7 +1512,7 @@ export default function App() {
             setLoading(true);
             
             setConfig(data.config);
-            setClassesText((data.config.classes || []).join(','));
+            setClassRows((data.config.classes || []).map(parseClassSuffix));
             setSponsorsText((data.config.sponsors || []).join(','));
             setEntries(data.entries);
             setMatches(data.matches);
@@ -4392,7 +4421,46 @@ export default function App() {
                   <input type="number" min="5" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgMatchDuration} onChange={e=>setConfig({...config, avgMatchDuration: parseInt(e.target.value) || 15})} onFocus={e=>e.target.select()} placeholder="例: 15" />
                 </div>
 
-                <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">出場クラス（カンマ `,` 区切り）</label><input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={classesText} onChange={e=>{ setClassesText(e.target.value); setConfig({...config, classes: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 1部,2部,3部" /><p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。</p></div>
+                <div className="md:col-span-2">
+                  <label className="block font-bold text-sm mb-1 text-gray-700">出場クラス</label>
+                  <div className="space-y-2">
+                    {classRows.map((row, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          className="w-32 p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                          value={row.base}
+                          onChange={e => updateClassRow(idx, 'base', e.target.value)}
+                          placeholder="例: 1部"
+                        />
+                        <select
+                          className="p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                          value={row.type}
+                          onChange={e => updateClassRow(idx, 'type', e.target.value)}
+                        >
+                          <option value="ダブルス">ダブルス</option>
+                          <option value="シングルス">シングルス</option>
+                        </select>
+                        <span className="text-sm text-gray-500">→ {row.base.trim()}{row.type}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeClassRow(idx)}
+                          className="ml-auto text-red-600 hover:text-red-800 p-1"
+                          title="このクラスを削除"
+                        >
+                          <IconTrash />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addClassRow}
+                    className="mt-2 flex items-center gap-1 text-sm font-bold text-[#2c5f4e] hover:text-[#1f4236]"
+                  >
+                    <IconPlus /> クラスを追加
+                  </button>
+                </div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>

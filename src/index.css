@@ -98,7 +98,7 @@
   background-repeat: no-repeat;
 }
 .cert-badmin-class { position: absolute; top: 25.8%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(16px, 5.4cqw, 76px); letter-spacing: .04em; }
-.cert-badmin-rank { position: absolute; top: 31%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 800; color: #A9792C; font-size: clamp(34px, 11cqw, 155px); letter-spacing: .2em; padding-left: .2em; }
+.cert-badmin-rank { position: absolute; top: 28.6%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 800; color: #A9792C; font-size: clamp(34px, 11cqw, 155px); letter-spacing: .2em; padding-left: .2em; }
 .cert-badmin-pair-names { position: absolute; top: 56.5%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(22px, 5.8cqw, 81px); letter-spacing: .02em; }
 .cert-badmin-honorific { font-weight: 500; font-size: .4em; margin-left: .15em; }
 .cert-badmin-club { position: absolute; top: 61.8%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 500; color: #7A6B52; font-size: clamp(13px, 3.1cqw, 44px); }
@@ -112,8 +112,8 @@
 .cert-badmin-standard-num { font-family: 'Noto Sans JP', sans-serif; }
 .cert-badmin-seal {
   position: absolute;
-  top: 84.85%;
-  left: 71%;
+  top: 86.3%;
+  left: 68%;
   transform: translateY(-50%);
   width: clamp(34px, 9.5cqw, 106px);
   height: clamp(34px, 9.5cqw, 106px);

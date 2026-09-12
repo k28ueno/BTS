@@ -5701,8 +5701,8 @@ export default function App() {
                 {team.club && <div className="cert-badmin-club">（{withStandardDigits(team.club)}）</div>}
                 <hr className="cert-badmin-rule" />
                 <p className="cert-badmin-body">
-                  あなた方は{withStandardDigits(config.title)}において<br />
-                  頭著の成績を収められました<br />
+                  貴方は{withStandardDigits(config.title)}<br />
+                  において頭著の成績を収められました<br />
                   よってその栄誉をたたえこれを賞します
                 </p>
                 <div className="cert-badmin-date">{withStandardDigits(formatBadmintonDate(config.date))}</div>

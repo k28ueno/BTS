@@ -6408,27 +6408,27 @@ export default function App() {
                   <div className="border-b border-black pb-0.5"><div className="text-gray-500">場所：</div>{config.venue}</div>
                 </div>
 
-                <div className="border-y-2 border-x-[1.5px] border-black flex-1">
-                  <div className="flex border-b-2 border-black text-center">
-                    <div className="flex-[3] border-r border-black p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
-                    <div className="shrink-0 border-r border-black p-1" style={{ width: '80px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
+                <div className="border-[3px] border-black flex-1">
+                  <div className="flex border-b-[1.5px] border-black text-center">
+                    <div className="flex-[3] border-r-[1.5px] border-black p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
+                    <div className="shrink-0 border-r-[1.5px] border-black p-1" style={{ width: '80px', letterSpacing: '0.2em', textIndent: '0.2em' }}>スコア</div>
                     <div className="flex-[3] p-1" style={{ letterSpacing: '0.4em', textIndent: '0.4em' }}>選手名・所属</div>
                   </div>
                   <div className="flex" style={{ height: '78px' }}>
                     <div className="w-6 border-r-[1.5px] border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>
-                    <div className="flex flex-col flex-1 border-r border-dotted border-black" style={{ minWidth: 0 }}>
-                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1P1}</div>
-                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1P2}</div>
+                    <div className="flex flex-col flex-1 border-r-[1.5px] border-black" style={{ minWidth: 0 }}>
+                       <div className="flex-1 border-b-[1.5px] border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1P1}</div>
+                       <div className="flex-1 border-b-[1.5px] border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team1P2}</div>
                        <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team1Club}</div>
                     </div>
-                    <div className="flex flex-col shrink-0 border-r border-dotted border-black" style={{ width: '80px' }}>
-                       <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
-                       <div className="flex-1 border-b border-dotted border-black flex items-center justify-center">－</div>
+                    <div className="flex flex-col shrink-0 border-r-[1.5px] border-black" style={{ width: '80px' }}>
+                       <div className="flex-1 flex items-center justify-center">－</div>
+                       <div className="flex-1 flex items-center justify-center">－</div>
                        <div className="flex-1 flex items-center justify-center">－</div>
                     </div>
                     <div className="flex flex-col flex-1" style={{ minWidth: 0 }}>
-                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2P1}</div>
-                       <div className="flex-1 border-b border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2P2}</div>
+                       <div className="flex-1 border-b-[1.5px] border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2P1}</div>
+                       <div className="flex-1 border-b-[1.5px] border-black px-2 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">{team2P2}</div>
                        <div className="flex-1 px-2 flex items-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{team2Club}</div>
                     </div>
                     <div className="w-6 border-l-[1.5px] border-black shrink-0 flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>L・R</div>

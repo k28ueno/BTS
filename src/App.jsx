@@ -5678,25 +5678,36 @@ export default function App() {
               brush: "'Yuji Boku', serif",
             }[config.certFont] || "'Noto Sans JP', sans-serif";
 
+            // 選択書体は数字（半角）以外の全文字に適用する。装飾書体は数字の字形が
+            // 崩れて読みにくくなるため、数字部分だけ標準書体のスパンに分けて出力する
+            const withStandardDigits = (text) => {
+              const parts = String(text ?? '').split(/(\d+)/g);
+              return parts.map((part, i) => (
+                /^\d+$/.test(part)
+                  ? <span key={i} className="cert-badmin-standard-num">{part}</span>
+                  : <React.Fragment key={i}>{part}</React.Fragment>
+              ));
+            };
+
             const renderBadmintonCert = ({ cls, rankLabel, team }, idx) => (
               <div
                 key={`badmin-${cls}-${rankLabel}-${idx}`}
                 className="cert-page-badmin shadow-md mb-8 mx-auto"
                 style={{ maxWidth: 640, backgroundImage: `url(${certBadmintonBg})`, '--cert-badmin-font': badmintonCertFontFamily }}
               >
-                <div className="cert-badmin-class">{cls}</div>
+                <div className="cert-badmin-class">{withStandardDigits(cls)}</div>
                 <div className="cert-badmin-rank">{rankLabel}</div>
-                <div className="cert-badmin-pair-names">{team.p1Name}<span className="cert-badmin-honorific">様</span>・{team.p2Name}<span className="cert-badmin-honorific">様</span></div>
-                {team.club && <div className="cert-badmin-club">（{team.club}）</div>}
+                <div className="cert-badmin-pair-names">{withStandardDigits(team.p1Name)}<span className="cert-badmin-honorific">様</span>・{withStandardDigits(team.p2Name)}<span className="cert-badmin-honorific">様</span></div>
+                {team.club && <div className="cert-badmin-club">（{withStandardDigits(team.club)}）</div>}
                 <hr className="cert-badmin-rule" />
                 <p className="cert-badmin-body">
-                  あなた方は　{config.title}において<br />
+                  あなた方は{withStandardDigits(config.title)}において<br />
                   頭著の成績を収められました<br />
-                  よってその栄誉をたたえ　これを賞します
+                  よってその栄誉をたたえこれを賞します
                 </p>
-                <div className="cert-badmin-date">{formatBadmintonDate(config.date)}</div>
-                <div className="cert-badmin-org"><span className="cert-badmin-org-label">主催者</span>{config.orgName}</div>
-                <div className="cert-badmin-chief"><span className="cert-badmin-chief-label">会長</span>{config.chiefName || '○○　○○'}</div>
+                <div className="cert-badmin-date">{withStandardDigits(formatBadmintonDate(config.date))}</div>
+                <div className="cert-badmin-org"><span className="cert-badmin-org-label">主催者</span>{withStandardDigits(config.orgName)}</div>
+                <div className="cert-badmin-chief"><span className="cert-badmin-chief-label">会長</span>{withStandardDigits(config.chiefName || '○○　○○')}</div>
                 {config.sealImageUrl ? (
                   <img src={config.sealImageUrl} alt="印鑑" className="cert-badmin-seal" style={{ objectFit: 'contain' }} />
                 ) : renderSealSvg('cert-badmin-seal')}

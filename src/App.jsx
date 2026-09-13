@@ -5640,41 +5640,6 @@ export default function App() {
                                        </span>
                                     )}
                                  </div>
-
-                                 {activeMatch && (() => {
-                                    const ref = getRefereeForMatch(activeMatch);
-                                    const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
-                                    const tooltipKey = `admin-${courtNum}`;
-                                    const isOpen = refTooltipOpenKey === tooltipKey;
-                                    return (
-                                       <div className="relative group inline-block">
-                                          <span
-                                            onClick={(e) => { e.stopPropagation(); setRefTooltipOpenKey(refTooltipOpenKey === tooltipKey ? null : tooltipKey); }}
-                                            className={`text-xs px-2 py-0.5 rounded cursor-pointer font-bold shadow-xs transition-colors ${hasSub ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-[#2c5f4e] text-white hover:bg-[#1f4236]'}`}
-                                          >
-                                             審判 {hasSub ? '⚠️' : 'ℹ️'}
-                                          </span>
-                                          <div
-                                            className={`absolute right-0 w-64 bg-slate-800 text-white text-[11px] p-2.5 rounded-lg shadow-2xl z-50 pointer-events-none transition-all ${isOpen ? 'block' : 'hidden group-hover:block'}`}
-                                            style={{ bottom: '100%', top: 'auto', marginBottom: '8px' }}
-                                          >
-                                             <div className="font-bold border-b border-slate-600 pb-1 mb-1.5 text-emerald-400 flex justify-between">
-                                                <span>審判割り当て</span>
-                                                <span className="text-[9px] text-slate-300">({activeMatch.cls})</span>
-                                             </div>
-                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">主・副審:</span> {ref.main}</div>
-                                             {getTeamFurigana(ref.mainId) && <div className="text-[9px] text-slate-400 truncate -mt-0.5">{getTeamFurigana(ref.mainId)}</div>}
-                                             <div className="truncate my-0.5"><span className="text-gray-400 font-bold">線審:</span> {ref.line}</div>
-                                             {getTeamFurigana(ref.lineId) && <div className="text-[9px] text-slate-400 truncate -mt-0.5">{getTeamFurigana(ref.lineId)}</div>}
-                                             {hasSub && (
-                                                <div className="mt-1.5 pt-1.5 border-t border-slate-600 text-amber-300 space-y-0.5">
-                                                   {ref.substitutionNotes.map((note, i) => <div key={i} className="leading-snug">⚠️ {note}</div>)}
-                                                </div>
-                                             )}
-                                          </div>
-                                       </div>
-                                    );
-                                 })()}
                               </div>
 
                               {activeMatch ? (

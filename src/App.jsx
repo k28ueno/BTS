@@ -3869,7 +3869,7 @@ export default function App() {
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
                  <div className="font-bold text-emerald-800 text-base">1. 審判の分担</div>
                  <p className="leading-relaxed">直前試合の<strong>【勝者組】が主審・副審</strong>を務め、<strong>【敗者組】が線審</strong>を務めます。</p>
-                 <p className="text-xs text-gray-500 pt-0.5">※予選初戦は、同クラスの空いているペアが審判を担当します（グループは問いません）。</p>
+                 <p className="text-xs text-gray-500 pt-0.5">※予選・決勝トーナメントとも初戦（そのコートで最初の試合）は、同クラスの空いているペアが審判を担当します（グループは問いません）。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
                  <div className="font-bold text-emerald-800 text-base">2. 試合後の受渡</div>
@@ -3974,7 +3974,7 @@ export default function App() {
          <div>
             <span className="font-bold bg-emerald-700 text-white px-2 py-0.5 rounded text-[10px] mr-2">審判ルール</span>
             <strong>直前試合：勝者組 ➔ 主審・副審 ／ 敗者組 ➔ 線審</strong>
-            <span className="text-[11px] text-emerald-800 ml-2">（※予選初戦は同クラスの空きペア、必要に応じて他クラス応援依頼）</span>
+            <span className="text-[11px] text-emerald-800 ml-2">（※予選・決勝とも初戦は同クラスの空きペア、必要に応じて他クラス応援依頼）</span>
          </div>
          <span className="text-[11px] text-emerald-700">※両ペアでスコア用紙を持って事務局へ提出</span>
       </div>
@@ -6092,7 +6092,7 @@ export default function App() {
                  <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">④ 審判の自動割り当てルール</h4>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-gray-50 border rounded-lg p-4">
-                       <div className="font-bold text-sm text-gray-700 mb-2">予選初戦（そのコートで初めての試合）</div>
+                       <div className="font-bold text-sm text-gray-700 mb-2">初戦（予選・決勝とも、そのコートで初めての試合）</div>
                        <div className="flex items-center gap-2 text-xs">
                           <span className="bg-white border px-2 py-1 rounded font-bold">同クラスの空いているペア</span>
                           <span className="text-gray-300 font-black">➔</span>

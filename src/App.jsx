@@ -4289,6 +4289,7 @@ export default function App() {
         <div>
            <label className="block text-sm font-bold text-gray-700 mb-1">代表者連絡先（携帯番号） <span className="text-red-500">*</span></label>
            <input type="tel" placeholder="090-XXXX-XXXX" className="w-full p-2 border rounded" required value={entryForm.contact} onChange={e => setEntryForm({...entryForm, contact: formatMobilePhoneNumber(e.target.value)})} />
+           <p className="text-xs text-gray-500 mt-1">※「-」の入力は不要です。数字だけ入力すると自動的にハイフンが入ります。</p>
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-blue-50">
            <div className="col-span-2 font-bold text-blue-800">選手 1</div>

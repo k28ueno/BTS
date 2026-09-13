@@ -575,6 +575,33 @@ export default function App() {
 
   const STAFF_REFEREE_LABEL = "本部スタッフへ審判を依頼";
 
+  // 決勝トーナメントの試合ID（"T-クラス名-枠A-枠B"）から枠番号を取り出す。
+  // 枠番号は「ラウンド番号×100＋連番」で採番されているため、100で割った商がラウンド番号になる
+  const getTournamentMatchSlots = (matchId) => {
+    const found = String(matchId).match(/-(\d+)-(\d+)$/);
+    if (!found) return null;
+    return [parseInt(found[1], 10), parseInt(found[2], 10)];
+  };
+
+  // 決勝トーナメントの「そのラウンドで審判を担当すべきペアの候補」を返す。
+  // 1回戦（level===0）は予選リーグを勝ち上がれなかった（決勝トーナメントに進出できなかった）ペア、
+  // 2回戦以降は一つ前のラウンドで敗れたペアを対象にする（＝決勝進出者は誰も審判をしなくて済む）
+  const getTournamentEliminatedPool = (cls, level) => {
+    if (level === 0) {
+      const qualifiedIds = new Set(getTournamentQualifiedEntries(cls).map(e => String(e.id)));
+      return entries.filter(e => e.cls === cls && e.checkedIn && !qualifiedIds.has(String(e.id)));
+    }
+    const prevLevelLoserIds = [];
+    matches.forEach(x => {
+      if (x.cls !== cls || x.matchType !== 'tournament' || x.status !== 'completed') return;
+      const slots = getTournamentMatchSlots(x.id);
+      if (!slots || Math.floor(slots[0] / 100) !== level - 1) return;
+      const result = getMatchResult(x);
+      if (result && result.loserId != null) prevLevelLoserIds.push(String(result.loserId));
+    });
+    return entries.filter(e => prevLevelLoserIds.includes(String(e.id)));
+  };
+
   const getRefereeForMatch = (m, extraOccupiedIds, lastRefMapOverride) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null, substitutionNotes: [] };
     const lastRefMap = lastRefMapOverride || lastCourtReferees;
@@ -613,7 +640,32 @@ export default function App() {
         );
     };
 
-    const courtCompletedMatches = matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed');
+    // 決勝トーナメントは、予選リーグ（勝者・敗者が次の審判を務める）とは別の方式にする：
+    // そのラウンドで既に敗退したペアが審判を担当することで、決勝進出者は誰も審判をせず
+    // 自分の試合に集中できるようにする。1回戦は予選敗退ペア、2回戦以降は一つ前のラウンドの
+    // 敗者が対象。候補が見つからない（全員が他で埋まっている等）場合のみ、下の一般ロジック
+    // （同クラスの空いているペア→他クラス→本部スタッフ）にフォールバックする
+    if (m.matchType === 'tournament') {
+      const slots = getTournamentMatchSlots(m.id);
+      const level = slots ? Math.floor(slots[0] / 100) : null;
+      if (level !== null) {
+        const t1Raw = String(m.team1Id);
+        const t2Raw = String(m.team2Id);
+        const pool = getTournamentEliminatedPool(m.cls, level)
+          .filter(e => !occupiedRefIds.has(String(e.id)) && String(e.id) !== t1Raw && String(e.id) !== t2Raw)
+          .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        if (pool.length >= 2) {
+          return { main: label(pool[0]), mainId: pool[0].id, line: label(pool[1]), lineId: pool[1].id, substitutionNotes: [] };
+        } else if (pool.length === 1) {
+          return { main: label(pool[0]), mainId: pool[0].id, line: STAFF_REFEREE_LABEL, lineId: null, substitutionNotes: [`線審の担当が見つからないため、${STAFF_REFEREE_LABEL}してください`] };
+        }
+        // pool.length === 0 の場合はこの下の一般ロジックにフォールバックする
+      }
+    }
+
+    const courtCompletedMatches = m.matchType === 'league'
+      ? matches.filter(x => Number(x.courtNumber) === Number(m.courtNumber) && x.status === 'completed')
+      : [];
 
     if (m.courtNumber !== null && courtCompletedMatches.length > 0 && lastRefMap[m.courtNumber]) {
       const lastRef = lastRefMap[m.courtNumber];
@@ -3863,13 +3915,18 @@ export default function App() {
               🏸 審判割り当て ＆ スコア提出の流れ
            </h3>
            <p className="text-sm text-slate-600 font-bold">
-              ※原則として、審判は同一クラス内の直前試合のペアが担当します。
+              ※原則として、審判は同一クラス内のペアが担当します。予選リーグと決勝トーナメントで分担の決め方が異なります。
            </p>
            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700 pt-1">
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
-                 <div className="font-bold text-emerald-800 text-base">1. 審判の分担</div>
+                 <div className="font-bold text-emerald-800 text-base">1. 予選リーグの審判</div>
                  <p className="leading-relaxed">直前試合の<strong>【勝者組】が主審・副審</strong>を務め、<strong>【敗者組】が線審</strong>を務めます。</p>
-                 <p className="text-xs text-gray-500 pt-0.5">※予選・決勝トーナメントとも初戦（そのコートで最初の試合）は、同クラスの空いているペアが審判を担当します（グループは問いません）。</p>
+                 <p className="text-xs text-gray-500 pt-0.5">※初戦（そのコートで最初の試合）は、同クラスの空いているペアが審判を担当します（グループは問いません）。</p>
+              </div>
+              <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
+                 <div className="font-bold text-emerald-800 text-base">1'. 決勝トーナメントの審判</div>
+                 <p className="leading-relaxed"><strong>そのラウンドで既に敗退したペア</strong>が、次のラウンドの主審・副審／線審を担当します。決勝進出者は審判を担当しません。</p>
+                 <p className="text-xs text-gray-500 pt-0.5">※1回戦は予選リーグを勝ち上がれなかったペア、決勝は準決勝で敗れた2ペアが担当します。</p>
               </div>
               <div className="bg-white p-3 rounded-lg border shadow-2xs space-y-1">
                  <div className="font-bold text-emerald-800 text-base">2. 試合後の受渡</div>
@@ -3973,8 +4030,8 @@ export default function App() {
       <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-lg text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
          <div>
             <span className="font-bold bg-emerald-700 text-white px-2 py-0.5 rounded text-[10px] mr-2">審判ルール</span>
-            <strong>直前試合：勝者組 ➔ 主審・副審 ／ 敗者組 ➔ 線審</strong>
-            <span className="text-[11px] text-emerald-800 ml-2">（※予選・決勝とも初戦は同クラスの空きペア、必要に応じて他クラス応援依頼）</span>
+            <strong>予選：直前試合の勝者組➔主審・副審／敗者組➔線審　決勝T：敗退ペアが次ラウンドを担当</strong>
+            <span className="text-[11px] text-emerald-800 ml-2">（※候補が見つからない場合は他クラス応援→本部スタッフの順で自動フォールバック）</span>
          </div>
          <span className="text-[11px] text-emerald-700">※両ペアでスコア用紙を持って事務局へ提出</span>
       </div>
@@ -6092,17 +6149,7 @@ export default function App() {
                  <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">④ 審判の自動割り当てルール</h4>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-gray-50 border rounded-lg p-4">
-                       <div className="font-bold text-sm text-gray-700 mb-2">初戦（予選・決勝とも、そのコートで初めての試合）</div>
-                       <div className="flex items-center gap-2 text-xs">
-                          <span className="bg-white border px-2 py-1 rounded font-bold">同クラスの空いているペア</span>
-                          <span className="text-gray-300 font-black">➔</span>
-                          <span className="bg-white border px-2 py-1 rounded font-bold">他クラスの空きペア</span>
-                          <span className="text-gray-300 font-black">➔</span>
-                          <span className="bg-white border px-2 py-1 rounded font-bold">本部スタッフ</span>
-                       </div>
-                    </div>
-                    <div className="bg-gray-50 border rounded-lg p-4">
-                       <div className="font-bold text-sm text-gray-700 mb-2">2試合目以降（直前試合がある場合）</div>
+                       <div className="font-bold text-sm text-gray-700 mb-2">予選リーグ</div>
                        <div className="text-xs space-y-1.5">
                           <div className="flex items-center gap-2">
                              <span className="bg-green-100 text-green-700 border border-green-300 px-2 py-1 rounded font-bold">勝者組</span>
@@ -6114,12 +6161,21 @@ export default function App() {
                              <span className="text-gray-300 font-black">➔</span>
                              <span className="bg-white border px-2 py-1 rounded">線審</span>
                           </div>
-                          <div className="text-[11px] text-gray-500 mt-1">※同クラスで出せない場合は他クラス応援→本部スタッフの順で自動的に代役を割り当てます。</div>
+                          <div className="text-[11px] text-gray-500 mt-1">※直前試合が無い（そのコートで初めての試合）場合は、同クラスの空いているペア➔他クラスの空きペア➔本部スタッフ、の順で割り当てます。</div>
                        </div>
+                    </div>
+                    <div className="bg-gray-50 border rounded-lg p-4">
+                       <div className="font-bold text-sm text-gray-700 mb-2">決勝トーナメント</div>
+                       <div className="flex items-center gap-2 text-xs flex-wrap">
+                          <span className="bg-red-50 text-red-700 border border-red-200 px-2 py-1 rounded font-bold">そのラウンドで敗退したペア</span>
+                          <span className="text-gray-300 font-black">➔</span>
+                          <span className="bg-white border px-2 py-1 rounded font-bold">主審・副審／線審</span>
+                       </div>
+                       <div className="text-[11px] text-gray-500 mt-1.5">1回戦は予選リーグを勝ち上がれなかったペアが対象。決勝進出者は審判を担当しません。該当ペアが見つからない場合のみ、予選と同じ「同クラスの空きペア➔他クラス➔本部スタッフ」にフォールバックします。</div>
                     </div>
                  </div>
                  <p className="text-xs text-gray-500 mt-3">コート画面の「審判 ℹ️」バッジをクリック（タップ）すると、割り当て内容の詳細を確認できます。⚠️マークが付いている場合は代役が発生していることを示します。</p>
-                 <p className="text-xs text-gray-500 mt-1">※「同クラスの空いているペア」を選ぶ際は、既に敗退して次の試合が控えていない組を、これから自分の試合がある組より優先します（決勝トーナメント終盤で、まだ試合を控えている組が誤って審判に選ばれるのを防ぐため）。</p>
+                 <p className="text-xs text-gray-500 mt-1">※予選リーグで「同クラスの空いているペア」を選ぶ際は、既に敗退して次の試合が控えていない組を、これから自分の試合がある組より優先します。</p>
               </div>
 
               {/* 5. 試合ルールマスタ */}

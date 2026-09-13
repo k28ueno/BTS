@@ -684,6 +684,22 @@ export default function App() {
       return { main: "本部調整 / 敗者審判", mainId: null, line: "本部調整 / 敗者審判", lineId: null, substitutionNotes: [] };
     }
 
+    const label = (e) => getTeamNameWithClub(e.id) + (e.cls !== m.cls ? `（${e.cls}から応援）` : '');
+
+    // 管理者が「審判変更」画面で手動指定した審判は、自動計算・ロックより最優先で使う。
+    // IDだけ保持し、表示名は毎回entriesから解決するため、クラブ名変更等にも追従する。
+    // 手動指定は管理者の判断を尊重し、代役探索やoccupied判定は行わない
+    if (m.manualReferee) {
+      const resolveManual = (id) => {
+        if (!id || id === 'STAFF') return { text: STAFF_REFEREE_LABEL, id: null };
+        const e = entries.find(x => String(x.id) === String(id));
+        return e ? { text: label(e), id: e.id } : { text: STAFF_REFEREE_LABEL, id: null };
+      };
+      const mainResolved = resolveManual(m.manualReferee.mainId);
+      const lineResolved = resolveManual(m.manualReferee.lineId);
+      return { main: mainResolved.text, mainId: mainResolved.id, line: lineResolved.text, lineId: lineResolved.id, substitutionNotes: [], isManual: true };
+    }
+
     // 実際にコートへ割り当てられた瞬間に確定した審判は、以後の状態変化で再計算・変動させない
     if (lockedReferees[m.id]) return lockedReferees[m.id];
 
@@ -692,7 +708,6 @@ export default function App() {
     // それでも見つからなければ本部スタッフに依頼する
     // （「他に次戦の予定がある」だけでは対象から外さない＝ラウンドロビンでは常にほぼ全員に次戦があるため）
     const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber, extraOccupiedIds);
-    const label = (e) => getTeamNameWithClub(e.id) + (e.cls !== m.cls ? `（${e.cls}から応援）` : '');
 
     // 自分自身にまだ消化していない試合（この後控えている試合）があるかどうか。
     // 決勝トーナメント終盤など、既に敗退して試合が残っていない組が他にいる場面では、
@@ -874,6 +889,32 @@ export default function App() {
   const getBusyTeamIds = () => {
     const busyMap = getBusyTeamDetails();
     return new Set(busyMap.keys());
+  };
+
+  // 「審判変更」画面向け：自動ロジックの候補プール（予選敗退ペアは対象外、等）に縛られず、
+  // チェックイン済みの全ペアを対象に手動選択候補を返す。予選敗退でも会場に残っているペアを
+  // 管理者が状況を見て手動で選べるようにするための一覧で、🟢同クラス・空き／🟡他クラス・空き／
+  // 🔴現在使用中（選択不可・理由表示）の3段階に分類する
+  const getAllRefereeCandidates = (m) => {
+    const busyMap = getBusyTeamDetails();
+    const t1 = String(m.team1Id);
+    const t2 = String(m.team2Id);
+    return entries
+      .filter(e => e.checkedIn && String(e.id) !== t1 && String(e.id) !== t2)
+      .map(e => {
+        const busy = busyMap.get(String(e.id));
+        if (busy) {
+          return { entry: e, tier: 'red', reason: `第${busy.court}コートで${busy.role === '試合進行中' ? '試合中' : '審判担当中'}` };
+        }
+        if (e.cls === m.cls) {
+          return { entry: e, tier: 'green', reason: '同クラス・現在空き' };
+        }
+        return { entry: e, tier: 'yellow', reason: `他クラス（${e.cls}）・現在空き` };
+      })
+      .sort((a, b) => {
+        const order = { green: 0, yellow: 1, red: 2 };
+        return order[a.tier] - order[b.tier] || String(a.entry.id).localeCompare(String(b.entry.id));
+      });
   };
 
   // まだ次の試合が割り当てられていないコートの「予測上の次審判」を情報表示用に返す（ブロックはしない）
@@ -1263,7 +1304,8 @@ export default function App() {
             matchOrder: m.match_order,
             matchNo: m.match_no,
             inProgressAt: m.in_progress_at,
-            completedAt: m.completed_at
+            completedAt: m.completed_at,
+            manualReferee: m.manual_referee || null
           }));
           setMatches(prev => {
             // 通信の一時的な不調等で0件が返ってきた場合に、既存の試合データを全消去してしまわないよう保護する
@@ -1872,6 +1914,51 @@ export default function App() {
     setTapMoveSelection(prev => (prev && prev.kind === kind && prev.id === id) ? null : { kind, id, label });
   };
 
+  // ---- 審判の手動変更 ----
+  // { matchId, role: 'main'|'line' } … どの試合のどの役割を変更中かを保持する
+  const [refereeEditModal, setRefereeEditModal] = useState(null);
+
+  // 手動で選んだ審判をmatchesテーブルに保存する（IDのみ保持し、表示名は毎回解決する）。
+  // lockedRefereesにも即時反映し、他試合の占有判定（getAllOccupiedRefereeIds）に
+  // すぐ反映されるようにする
+  const setManualReferee = async (matchId, role, candidateId) => {
+    const targetMatch = matches.find(m => m.id === matchId);
+    if (!targetMatch) return;
+    // 初めて手動変更する場合は、変更しない側の役割を現在の自動計算値で固定してから
+    // 該当役割だけを差し替える（そうしないと未変更側が「未設定」＝本部スタッフ扱いになってしまう）
+    const current = targetMatch.manualReferee || (() => {
+      const auto = getRefereeForMatch(targetMatch);
+      return { mainId: auto.mainId || 'STAFF', lineId: auto.lineId || 'STAFF' };
+    })();
+    const nextManual = {
+      mainId: role === 'main' ? candidateId : current.mainId,
+      lineId: role === 'line' ? candidateId : current.lineId
+    };
+    const updated = matches.map(m => m.id === matchId ? { ...m, manualReferee: nextManual } : m);
+    setMatches(updated);
+    const resolved = getRefereeForMatch({ ...targetMatch, manualReferee: nextManual });
+    setLockedReferees(prev => ({ ...prev, [matchId]: resolved }));
+    if (isSupabaseConfigured) {
+      await supabase.from('matches').update({ manual_referee: nextManual }).eq('id', matchId);
+    }
+    setRefereeEditModal(null);
+  };
+
+  // 手動変更を解除し、自動計算に戻す
+  const resetManualReferee = async (matchId) => {
+    const updated = matches.map(m => m.id === matchId ? { ...m, manualReferee: null } : m);
+    setMatches(updated);
+    setLockedReferees(prev => {
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
+    if (isSupabaseConfigured) {
+      await supabase.from('matches').update({ manual_referee: null }).eq('id', matchId);
+    }
+    setRefereeEditModal(null);
+  };
+
   const moveEntryToGroup = async (entryId, targetGroup) => {
     if (!entryId) return;
     const targetEntry = entries.find(ent => ent.id === entryId);
@@ -1999,7 +2086,7 @@ export default function App() {
             return { ...m, courtNumber: null };
           }
           displacedIds.push(m.id);
-          return { ...m, courtNumber: null, status: 'waiting' };
+          return { ...m, courtNumber: null, status: 'waiting', manualReferee: null };
         }
         if (m.id === matchId) {
           const isScored = isMatchScored(m);
@@ -2053,7 +2140,7 @@ export default function App() {
 
         try {
           if (courtNum !== null && currentActiveOnCourt && currentActiveOnCourt.status !== 'completed') {
-            await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('id', currentActiveOnCourt.id);
+            await supabase.from('matches').update({ court_number: null, status: 'waiting', manual_referee: null }).eq('id', currentActiveOnCourt.id);
           }
           for (const id of displacedCompleted) {
             await supabase.from('matches').update({ court_number: null }).eq('id', id);
@@ -3154,11 +3241,18 @@ export default function App() {
     let updated = matches.map(m => {
       if (m.courtNumber === courtNum && courtNum !== null) {
         if (m.id === matchId) return { ...m, courtNumber: courtNum, status: isMatchScored(m) ? 'completed' : 'calling' };
-        return { ...m, courtNumber: null, status: isMatchScored(m) ? 'completed' : 'waiting' };
+        return { ...m, courtNumber: null, status: isMatchScored(m) ? 'completed' : 'waiting', ...(isMatchScored(m) ? {} : { manualReferee: null }) };
       }
       if (m.id === matchId) {
         const isScored = isMatchScored(m);
-        return { ...m, courtNumber: courtNum, status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting') };
+        // コート解除時は手動設定した審判もあわせてクリアする（別コートへ再配置した際に、
+        // 状況が変わって不適切になった手動指定がそのまま残ってしまうのを防ぐ）
+        return {
+          ...m,
+          courtNumber: courtNum,
+          status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting'),
+          ...(courtNum === null ? { manualReferee: null } : {})
+        };
       }
       return m;
     });
@@ -3200,13 +3294,14 @@ export default function App() {
       const isScored = isMatchScored(targetMatch);
       await supabase.from('matches').update({
         court_number: courtNum,
-        status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
+        status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting'),
+        ...(courtNum === null ? { manual_referee: null } : {})
       }).eq('id', matchId);
 
       try {
         if (courtNum !== null) {
           // スコア確定済（completed）の試合はDB上でも待機状態に巻き戻さない
-          await supabase.from('matches').update({ court_number: null, status: 'waiting' }).eq('court_number', courtNum).neq('status', 'completed').neq('id', matchId);
+          await supabase.from('matches').update({ court_number: null, status: 'waiting', manual_referee: null }).eq('court_number', courtNum).neq('status', 'completed').neq('id', matchId);
         }
         if (restoredMatchId) {
           await supabase.from('matches').update({ court_number: releasedCourt }).eq('id', restoredMatchId);
@@ -5610,7 +5705,32 @@ export default function App() {
                                     </div>
 
                                     {renderTeamNameWithFurigana(activeMatch.team2Id)}
-                                    
+
+                                    {(() => {
+                                       const ref = getRefereeForMatch(activeMatch);
+                                       const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
+                                       return (
+                                          <div className={`mt-2 pt-2 border-t text-xs space-y-1 ${ref.isManual ? 'bg-indigo-50 -mx-2 px-2 pb-1 rounded-b' : ''}`}>
+                                             <div className="flex justify-between items-start gap-1">
+                                                <div className="min-w-0">
+                                                   <div className="truncate"><span className="text-gray-500 font-bold">👤 主・副審:</span> {ref.main}</div>
+                                                   <div className="truncate"><span className="text-gray-500 font-bold">🚩 線審:</span> {ref.line}</div>
+                                                   {ref.isManual && <div className="text-indigo-600 font-bold">✏️ 手動設定</div>}
+                                                   {hasSub && ref.substitutionNotes.map((note, i) => (
+                                                      <div key={i} className="text-amber-600 font-bold leading-snug">⚠️ {note}</div>
+                                                   ))}
+                                                </div>
+                                                <button
+                                                  onClick={() => setRefereeEditModal({ matchId: activeMatch.id })}
+                                                  className="text-[11px] bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-2 py-1 rounded shadow-xs whitespace-nowrap"
+                                                >
+                                                   審判変更
+                                                </button>
+                                             </div>
+                                          </div>
+                                       );
+                                    })()}
+
                                     <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
                                        {activeMatch.status === 'completed' ? (
                                           <span className="text-xs text-gray-300 font-bold" title="スコア入力済の試合はコート解除できません。次の試合をこのコートへ配置すると自動的に解除されます">
@@ -5747,6 +5867,14 @@ export default function App() {
                                          {team2Predicted && <span className="text-xs px-1.5 py-1 rounded font-bold whitespace-nowrap bg-emerald-100 text-emerald-700">次審判予定(第{team2Predicted.court}C)</span>}
                                       </div>
                                    </div>
+                                   {isAnyBusy && (
+                                      <div className="mt-1.5 pt-1.5 border-t border-gray-200 text-xs font-bold text-red-600">
+                                         ⚠️ {[
+                                            team1Busy && `${getTeamNameWithClub(m.team1Id)}が第${team1Busy.court}コートで${team1Busy.role === '試合進行中' ? '試合中' : '審判担当中'}`,
+                                            team2Busy && `${getTeamNameWithClub(m.team2Id)}が第${team2Busy.court}コートで${team2Busy.role === '試合進行中' ? '試合中' : '審判担当中'}`
+                                         ].filter(Boolean).join('／')}のため配置できません
+                                      </div>
+                                   )}
                                 </div>
                               );
                            })}
@@ -6586,6 +6714,86 @@ export default function App() {
            </div>
         </div>
       )}
+
+      {refereeEditModal && (() => {
+        const targetMatch = matches.find(m => m.id === refereeEditModal.matchId);
+        if (!targetMatch) return null;
+        const ref = getRefereeForMatch(targetMatch);
+        const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
+        const tierStyle = {
+          green: 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100',
+          yellow: 'border-amber-300 bg-amber-50 hover:bg-amber-100',
+          red: 'border-gray-200 bg-gray-100 opacity-60 cursor-not-allowed'
+        };
+        const tierDot = { green: '🟢', yellow: '🟡', red: '🔴' };
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in" onClick={() => setRefereeEditModal(null)}>
+             <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold mb-1 text-gray-800">
+                   {typeof targetMatch.matchNo === 'number' ? `第${targetMatch.matchNo}試合` : ''} 審判変更
+                </h3>
+                <p className="text-xs text-gray-500 mb-4">{getTeamNameWithClub(targetMatch.team1Id)} vs {getTeamNameWithClub(targetMatch.team2Id)}</p>
+
+                {!refereeEditModal.role ? (
+                  <div className="space-y-3">
+                     <div className="bg-gray-50 border rounded-lg p-3 space-y-2">
+                        <div className="flex justify-between items-center gap-2">
+                           <div className="text-sm"><span className="text-gray-500 font-bold">👤 主・副審:</span> {ref.main}</div>
+                           <button onClick={() => setRefereeEditModal({ matchId: targetMatch.id, role: 'main' })} className="text-xs bg-white border px-2 py-1 rounded font-bold hover:bg-gray-50 shrink-0">変更</button>
+                        </div>
+                        <div className="flex justify-between items-center gap-2">
+                           <div className="text-sm"><span className="text-gray-500 font-bold">🚩 線審:</span> {ref.line}</div>
+                           <button onClick={() => setRefereeEditModal({ matchId: targetMatch.id, role: 'line' })} className="text-xs bg-white border px-2 py-1 rounded font-bold hover:bg-gray-50 shrink-0">変更</button>
+                        </div>
+                        {ref.isManual && <div className="text-xs text-indigo-600 font-bold">✏️ 手動設定済み</div>}
+                        {hasSub && ref.substitutionNotes.map((note, i) => <div key={i} className="text-xs text-amber-600 font-bold">⚠️ {note}</div>)}
+                     </div>
+                     {ref.isManual && (
+                        <button
+                          onClick={() => resetManualReferee(targetMatch.id)}
+                          className="w-full text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-3 py-2 rounded-lg"
+                        >
+                           自動割り当てに戻す
+                        </button>
+                     )}
+                     <div className="flex justify-end">
+                        <button onClick={() => setRefereeEditModal(null)} className="text-sm text-gray-500 hover:underline">閉じる</button>
+                     </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                     <button
+                       onClick={() => setRefereeEditModal({ matchId: targetMatch.id, role: null })}
+                       className="text-xs text-gray-500 hover:underline mb-1"
+                     >
+                        ← 戻る
+                     </button>
+                     <div className="text-sm font-bold text-gray-700 mb-2">{refereeEditModal.role === 'main' ? '主・副審' : '線審'}を選択</div>
+                     <button
+                       onClick={() => setManualReferee(targetMatch.id, refereeEditModal.role, 'STAFF')}
+                       className="w-full text-left text-sm border-2 border-dashed border-gray-300 hover:bg-gray-50 rounded-lg px-3 py-2 font-bold text-gray-600"
+                     >
+                        🏢 本部スタッフへ審判を依頼
+                     </button>
+                     <div className="max-h-80 overflow-y-auto space-y-1.5 pt-1">
+                        {getAllRefereeCandidates(targetMatch).map(({ entry, tier, reason }) => (
+                           <button
+                             key={entry.id}
+                             disabled={tier === 'red'}
+                             onClick={() => tier !== 'red' && setManualReferee(targetMatch.id, refereeEditModal.role, entry.id)}
+                             className={`w-full text-left border rounded-lg px-3 py-2 ${tierStyle[tier]}`}
+                           >
+                              <div className="text-sm font-bold text-gray-800">{tierDot[tier]} {getTeamNameWithClub(entry.id)}</div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">{reason}</div>
+                           </button>
+                        ))}
+                     </div>
+                  </div>
+                )}
+             </div>
+          </div>
+        );
+      })()}
 
       {callAnnouncement && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[100] animate-fade-in">

@@ -5705,7 +5705,11 @@ export default function App() {
 
                                        {activeMatch.status === 'recepted' && (
                                           <button
-                                            onClick={() => handleMatchStatusChange(activeMatch.id, 'in_progress')}
+                                            onClick={async () => {
+                                               await handleMatchStatusChange(activeMatch.id, 'in_progress');
+                                               // 試合受付のタイミングでスコアシートを渡す必要があるため、状態遷移とあわせて印刷ダイアログを開く
+                                               handlePrintScoreSheet(activeMatch.id);
+                                            }}
                                             className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              試合受付

@@ -4259,7 +4259,7 @@ export default function App() {
               onChange={(e) => setEntryForm({...entryForm, clubRank: e.target.value})}
             >
               <option value="">未選択（該当しない場合）</option>
-              {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+              {Array.from({ length: 5 }, (_, i) => i + 1).map(n => (
                 <option key={n} value={n}>{n}（{n}番手）</option>
               ))}
             </select>

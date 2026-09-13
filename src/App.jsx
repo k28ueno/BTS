@@ -311,29 +311,6 @@ export default function App() {
     return `${ent.p1Name}・${ent.p2Name}${clubStr}`;
   };
 
-  // コールの際に選手名を正しく読み上げられるよう、ペアのふりがな（「姓＋名・姓＋名」）を返す
-  const getTeamFurigana = (teamId) => {
-    const ent = entries.find(e => String(e.id) === String(teamId));
-    if (!ent) return '';
-    const p1Furigana = `${ent.p1LastFurigana || ''}${ent.p1FirstFurigana || ''}`;
-    const p2Furigana = `${ent.p2LastFurigana || ''}${ent.p2FirstFurigana || ''}`;
-    return [p1Furigana, p2Furigana].filter(Boolean).join('・');
-  };
-
-  // コールの際に選手名を正しく読み上げられるよう、氏名・ふりがなを2段で表示する
-  const renderTeamNameWithFurigana = (teamId) => {
-    const ent = entries.find(e => String(e.id) === String(teamId));
-    if (!ent) return <div className="font-bold text-base truncate">未定</div>;
-    const nameFurigana = getTeamFurigana(teamId);
-    return (
-      <div>
-        {nameFurigana && (
-          <div className="text-[10px] text-gray-400 truncate leading-tight">{nameFurigana}</div>
-        )}
-        <div className="font-bold text-base truncate">{getTeamNameWithClub(teamId)}</div>
-      </div>
-    );
-  };
 
   // コールボタン押下時に読み上げる文言を組み立てる。選手・審判ともに
   // 「氏名（ふりがな）さん」の形式にすることで、そのまま場内放送で読み上げられるようにする
@@ -5657,9 +5634,9 @@ export default function App() {
                                        )}
                                        <span>({activeMatch.cls}) {activeMatch.matchType === 'tournament' ? activeMatch.group : `グループ${activeMatch.group}`}</span>
                                     </div>
-                                    {renderTeamNameWithFurigana(activeMatch.team1Id)}
+                                    <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team1Id)}</div>
 
-                                    <div className="text-sm text-center font-bold my-1">
+                                    <div className="text-sm text-center font-bold my-0.5">
                                        {activeMatch.status === 'completed' ? (
                                           <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded font-extrabold">
                                              {getScoreDisplayText(activeMatch)}
@@ -5669,7 +5646,7 @@ export default function App() {
                                        )}
                                     </div>
 
-                                    {renderTeamNameWithFurigana(activeMatch.team2Id)}
+                                    <div className="font-bold text-base truncate">{getTeamNameWithClub(activeMatch.team2Id)}</div>
 
                                     {(() => {
                                        const ref = getRefereeForMatch(activeMatch);

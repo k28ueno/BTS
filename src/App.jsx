@@ -16,6 +16,20 @@ const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確�
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
 const DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES = 10; // 無操作で自動ログオフするまでの時間の既定値（分）。マスタ設定で変更可能
 
+// クラス別メインコートの色分け表示に使う配色。クラス数が多い場合は先頭から巡回して使い回す
+const CLASS_COURT_COLORS = [
+  { name: 'emerald', ring: 'ring-emerald-500', border: 'border-emerald-500', bg: 'bg-emerald-500', soft: 'bg-emerald-500/10', text: 'text-emerald-700', chipBg: 'bg-emerald-100', chipText: 'text-emerald-800' },
+  { name: 'sky', ring: 'ring-sky-500', border: 'border-sky-500', bg: 'bg-sky-500', soft: 'bg-sky-500/10', text: 'text-sky-700', chipBg: 'bg-sky-100', chipText: 'text-sky-800' },
+  { name: 'amber', ring: 'ring-amber-500', border: 'border-amber-500', bg: 'bg-amber-500', soft: 'bg-amber-500/10', text: 'text-amber-700', chipBg: 'bg-amber-100', chipText: 'text-amber-800' },
+  { name: 'violet', ring: 'ring-violet-500', border: 'border-violet-500', bg: 'bg-violet-500', soft: 'bg-violet-500/10', text: 'text-violet-700', chipBg: 'bg-violet-100', chipText: 'text-violet-800' },
+  { name: 'rose', ring: 'ring-rose-500', border: 'border-rose-500', bg: 'bg-rose-500', soft: 'bg-rose-500/10', text: 'text-rose-700', chipBg: 'bg-rose-100', chipText: 'text-rose-800' },
+  { name: 'teal', ring: 'ring-teal-500', border: 'border-teal-500', bg: 'bg-teal-500', soft: 'bg-teal-500/10', text: 'text-teal-700', chipBg: 'bg-teal-100', chipText: 'text-teal-800' },
+];
+const getClassCourtColor = (classList, cls) => {
+  const idx = Math.max(0, classList.indexOf(cls));
+  return CLASS_COURT_COLORS[idx % CLASS_COURT_COLORS.length];
+};
+
 // 試合ルール（ゲーム数・ゲーム別点数・デュース・MAX点数）の既定値。
 // クラス×ラウンド（予選/決勝）ごとにマスタ設定で上書きできる
 const DEFAULT_LEAGUE_MATCH_RULE = { gamesToWin: 1, games: [{ points: 15, maxPoints: 15, deuce: false }] };
@@ -169,6 +183,7 @@ export default function App() {
     sponsors: [],
     classes: ['1部', '2部', '3部', '4部'],
     courts: 8,
+    mainCourts: {}, // { [クラス名]: [コート番号, ...] }。クラス間でコート番号が重複しないように運用する「原則の担当コート」（強制ではなく表示上のガイド）
     fees: { '一般': 4000, '高校生まで': 2000 },
     advancementCondition: 'top2',
     avgMatchDuration: 15,
@@ -195,6 +210,49 @@ export default function App() {
   };
   const removeClassRow = (idx) => {
     applyClassRows(classRows.filter((_, i) => i !== idx));
+  };
+
+  // クラス別メインコート：あるコートを1クラスのチェックボックスでON/OFFする。
+  // 「クラス間でコートが重複しない」運用を保つため、ONにした際は他クラスの
+  // 同じコート番号を自動的に外す（チェックボックスの表示だけで排他制御する）
+  const toggleMainCourt = (cls, courtNum) => {
+    setConfig(prev => {
+      const mainCourts = { ...(prev.mainCourts || {}) };
+      Object.keys(mainCourts).forEach(c => {
+        if (c !== cls) mainCourts[c] = (mainCourts[c] || []).filter(n => n !== courtNum);
+      });
+      const current = mainCourts[cls] || [];
+      mainCourts[cls] = current.includes(courtNum)
+        ? current.filter(n => n !== courtNum)
+        : [...current, courtNum].sort((a, b) => a - b);
+      return { ...prev, mainCourts };
+    });
+  };
+
+  // 各クラスの受付組数に比例して、コートを大まかに自動配分する（あくまで初期値の目安で、後から手動調整できる）
+  const autoAssignMainCourts = () => {
+    const classes = config.classes;
+    const totalCourts = config.courts;
+    if (classes.length === 0 || totalCourts < 1) return;
+    const counts = classes.map(cls => entries.filter(e => e.cls === cls).length || 1);
+    const total = counts.reduce((a, b) => a + b, 0);
+    let allocations = counts.map(c => Math.floor((c / total) * totalCourts));
+    let assigned = allocations.reduce((a, b) => a + b, 0);
+    const orderDesc = counts.map((_, i) => i).sort((a, b) => counts[b] - counts[a]);
+    let oi = 0;
+    while (assigned < totalCourts) { allocations[orderDesc[oi % orderDesc.length]]++; assigned++; oi++; }
+    while (assigned > totalCourts) {
+      const shrinkIdx = [...orderDesc].reverse().find(i => allocations[i] > 0);
+      if (shrinkIdx === undefined) break;
+      allocations[shrinkIdx]--; assigned--;
+    }
+    let courtNum = 1;
+    const mainCourts = {};
+    classes.forEach((cls, i) => {
+      mainCourts[cls] = [];
+      for (let k = 0; k < allocations[i] && courtNum <= totalCourts; k++) { mainCourts[cls].push(courtNum); courtNum++; }
+    });
+    setConfig(prev => ({ ...prev, mainCourts }));
   };
   // 協賛企業のカンマ区切り入力欄は、config側の配列（split/trim/filter済み）を
   // そのままvalueに戻すと、入力途中の半角カンマや末尾の空要素が確定前に消えてしまい
@@ -1067,6 +1125,7 @@ export default function App() {
             sponsors: data.sponsors || [],
             classes: data.classes || ['1部', '2部', '3部', '4部'],
             courts: data.courts || 8,
+            mainCourts: data.maincourts || {},
             fees: data.fees || { '一般': 4000, '高校生まで': 2000 },
             advancementCondition: data.advancementcondition || 'top2',
             avgMatchDuration: data.avgmatchduration || 15,
@@ -1341,6 +1400,7 @@ export default function App() {
         sponsors: config.sponsors,
         classes: config.classes,
         courts: config.courts,
+        maincourts: config.mainCourts,
         fees: config.fees,
         advancementcondition: config.advancementCondition,
         avgmatchduration: config.avgMatchDuration,
@@ -1670,6 +1730,7 @@ export default function App() {
                 sponsors: data.config.sponsors,
                 classes: data.config.classes,
                 courts: data.config.courts,
+                maincourts: data.config.mainCourts || {},
                 fees: data.config.fees,
                 advancementcondition: data.config.advancementCondition,
                 avgmatchduration: data.config.avgMatchDuration,
@@ -1750,7 +1811,12 @@ export default function App() {
   };
 
   const handleDragStart = (e, entryId) => { e.dataTransfer.setData('text/plain', entryId); };
-  const handleMatchDragStart = (e, matchId) => { e.dataTransfer.setData('text/match-id', matchId); };
+  // ドラッグ中の試合IDを保持しておき、コート枠の「このクラスのメインコートか」の
+  // 色分けハイライトをドラッグ中にリアルタイムで出せるようにする
+  // （HTML5 Drag and DropのdataTransferはセキュリティ上dragover中に中身を読めないため）
+  const [draggingMatchId, setDraggingMatchId] = useState(null);
+  const handleMatchDragStart = (e, matchId) => { e.dataTransfer.setData('text/match-id', matchId); setDraggingMatchId(matchId); };
+  const handleMatchDragEnd = () => setDraggingMatchId(null);
   const handleDragOver = (e) => { e.preventDefault(); };
 
   // ---- タップ操作によるモバイル向け移動（PCのドラッグ&ドロップと並行して利用可能） ----
@@ -1967,6 +2033,7 @@ export default function App() {
   const handleCourtDrop = async (e, courtNum) => {
     e.preventDefault();
     const matchId = e.dataTransfer.getData('text/match-id');
+    setDraggingMatchId(null);
     if (!matchId) return;
     await moveMatchToCourt(matchId, courtNum);
   };
@@ -4625,6 +4692,62 @@ export default function App() {
                     <IconPlus /> クラスを追加
                   </button>
                 </div>
+
+                <div className="md:col-span-2 border-t pt-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                    <label className="block font-bold text-sm text-gray-700">クラス別メインコート（原則の担当コート）</label>
+                    <button
+                      type="button"
+                      onClick={autoAssignMainCourts}
+                      className="text-xs bg-gray-700 hover:bg-gray-800 text-white font-bold px-2.5 py-1.5 rounded shadow-xs whitespace-nowrap"
+                    >
+                      組数に比例して自動配分
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2">クラスごとに「原則使用するコート」を指定すると、コート進行画面でクラスごとに色分け表示されます。強制ではないため、空いていれば他クラスのコートも利用できます。</p>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="text-sm w-full">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left p-2 font-bold text-gray-600 whitespace-nowrap">クラス</th>
+                          {Array.from({ length: config.courts }, (_, i) => i + 1).map(courtNum => (
+                            <th key={courtNum} className="p-2 font-bold text-gray-600 text-center whitespace-nowrap">第{courtNum}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {config.classes.map(cls => {
+                          const color = getClassCourtColor(config.classes, cls);
+                          return (
+                            <tr key={cls} className="border-t">
+                              <td className={`p-2 font-bold whitespace-nowrap ${color.text}`}>
+                                <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle ${color.bg}`}></span>
+                                {cls}
+                              </td>
+                              {Array.from({ length: config.courts }, (_, i) => i + 1).map(courtNum => {
+                                const checked = (config.mainCourts?.[cls] || []).includes(courtNum);
+                                const ownerCls = config.classes.find(c => c !== cls && (config.mainCourts?.[c] || []).includes(courtNum));
+                                return (
+                                  <td key={courtNum} className="p-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      className={`w-4 h-4 cursor-pointer ${color.text}`}
+                                      style={{ accentColor: 'currentColor' }}
+                                      checked={checked}
+                                      onChange={() => toggleMainCourt(cls, courtNum)}
+                                      title={ownerCls ? `現在は${ownerCls}のメインコートです（チェックすると付け替わります）` : ''}
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
@@ -5348,14 +5471,36 @@ export default function App() {
                         }
 
                         const isDropTarget = !activeMatch && tapMoveSelection && tapMoveSelection.kind === 'match';
+                        // このコートの「原則の担当クラス」（クラス別メインコート設定より）
+                        const ownerCls = config.classes.find(c => (config.mainCourts?.[c] || []).includes(courtNum));
+                        const ownerColor = ownerCls ? getClassCourtColor(config.classes, ownerCls) : null;
+                        // ドラッグ中／タップ選択中の試合があれば、そのクラスにとってここが
+                        // 担当コートかどうかで色分けし、オペレーターが配置先を判断しやすくする
+                        const activeSelectedMatchId = draggingMatchId || (tapMoveSelection && tapMoveSelection.kind === 'match' ? tapMoveSelection.id : null);
+                        const activeSelectedMatch = activeSelectedMatchId ? matches.find(x => x.id === activeSelectedMatchId) : null;
+                        let dragHighlightClass = '';
+                        if (!activeMatch && activeSelectedMatch) {
+                           if (ownerCls === activeSelectedMatch.cls) {
+                              dragHighlightClass = `${ownerColor.soft} ${ownerColor.border} ring-4 ${ownerColor.ring} ring-offset-1`;
+                           } else if (ownerCls) {
+                              dragHighlightClass = 'opacity-40';
+                           } else if (isDropTarget) {
+                              dragHighlightClass = 'bg-indigo-50 border-indigo-400';
+                           }
+                        }
                         return (
                            <div
                               key={`court-card-${courtNum}`}
-                              className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between ${cardBgClass} ${isDropTarget ? 'bg-indigo-50 border-indigo-400' : ''}`}
+                              className={`rounded-xl border-2 p-3 transition-all min-h-[180px] flex flex-col justify-between relative ${cardBgClass} ${dragHighlightClass}`}
                               onDragOver={handleDragOver}
                               onDrop={(e) => handleCourtDrop(e, courtNum)}
                               onClick={!activeMatch ? handleCourtZoneTap(courtNum) : undefined}
                            >
+                              {ownerCls && (
+                                 <span className={`absolute -top-2 left-3 text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs ${ownerColor.chipBg} ${ownerColor.chipText}`}>
+                                    {ownerCls} 優先
+                                 </span>
+                              )}
                               <div className="flex justify-between items-center border-b pb-1 mb-2">
                                  <div className="flex items-center gap-2">
                                     <span className="font-extrabold text-base text-gray-700">第 {courtNum} コート</span>
@@ -5406,6 +5551,7 @@ export default function App() {
                                  <div 
                                    draggable={activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted'}
                                    onDragStart={(e) => activeMatch.status !== 'in_progress' && activeMatch.status !== 'recepted' && handleMatchDragStart(e, activeMatch.id)}
+                                   onDragEnd={handleMatchDragEnd}
                                    className={`p-2 rounded border bg-white shadow-xs ${(activeMatch.status === 'in_progress' || activeMatch.status === 'recepted') ? 'cursor-not-allowed border-blue-300' : 'cursor-move'}`}
                                  >
                                     <div className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1.5">
@@ -5536,6 +5682,7 @@ export default function App() {
                                   key={m.id}
                                   draggable={!isAnyBusy}
                                   onDragStart={(e) => !isAnyBusy && handleMatchDragStart(e, m.id)}
+                                  onDragEnd={handleMatchDragEnd}
                                   onClick={!isAnyBusy ? toggleTapSelect('match', m.id, `${getTeamNameWithClub(m.team1Id)} vs ${getTeamNameWithClub(m.team2Id)}`) : undefined}
                                   className={`border p-2.5 rounded-lg shadow-xs transition-all ${isAnyBusy ? 'bg-gray-100 opacity-60 cursor-not-allowed border-gray-300' : 'bg-gray-50 hover:border-blue-400 cursor-pointer sm:cursor-move hover:shadow-sm'} ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                 >

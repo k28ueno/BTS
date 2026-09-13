@@ -5649,12 +5649,42 @@ export default function App() {
                                  </div>
                                  {activeMatch && (
                                     <div className="flex items-center gap-1.5">
-                                       <button
-                                         onClick={() => setRefereeEditModal({ matchId: activeMatch.id })}
-                                         className="text-[11px] bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-2 py-1 rounded shadow-xs whitespace-nowrap"
-                                       >
-                                          審判変更
-                                       </button>
+                                       {activeMatch.status === 'calling' && (
+                                          <button
+                                            onClick={() => setCallAnnouncement({ match: activeMatch, courtNum })}
+                                            className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             コール
+                                          </button>
+                                       )}
+                                       {activeMatch.status === 'recepted' && (
+                                          <button
+                                            onClick={async () => {
+                                               await handleMatchStatusChange(activeMatch.id, 'in_progress');
+                                               // 試合受付のタイミングでスコアシートを渡す必要があるため、状態遷移とあわせて印刷ダイアログを開く
+                                               handlePrintScoreSheet(activeMatch.id);
+                                            }}
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             試合受付
+                                          </button>
+                                       )}
+                                       {activeMatch.status === 'in_progress' && (
+                                          <button
+                                            onClick={() => openScoreModal(activeMatch)}
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             スコア入力
+                                          </button>
+                                       )}
+                                       {activeMatch.status === 'completed' && (
+                                          <button
+                                            onClick={() => openScoreModal(activeMatch)}
+                                            className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                          >
+                                             スコア修正
+                                          </button>
+                                       )}
                                        <button
                                          onClick={() => handleStepBackStatus(activeMatch.id)}
                                          title="ひとつ前の状態に戻す"
@@ -5700,77 +5730,25 @@ export default function App() {
                                        const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
                                        return (
                                           <div className={`mt-2 pt-2 border-t text-sm space-y-1 ${ref.isManual ? 'bg-indigo-50 -mx-2 px-2 pb-1 rounded-b' : ''}`}>
-                                             <div className="truncate"><span className="text-gray-500 font-bold">👤 主・副審:</span> {ref.main}</div>
-                                             <div className="truncate"><span className="text-gray-500 font-bold">🚩 線審:</span> {ref.line}</div>
-                                             {ref.isManual && <div className="text-indigo-600 font-bold text-xs">✏️ 手動設定</div>}
-                                             {hasSub && ref.substitutionNotes.map((note, i) => (
-                                                <div key={i} className="text-amber-600 font-bold text-xs leading-snug">⚠️ {note}</div>
-                                             ))}
+                                             <div className="flex justify-between items-start gap-1">
+                                                <div className="min-w-0">
+                                                   <div className="truncate"><span className="text-gray-500 font-bold">👤 主・副審:</span> {ref.main}</div>
+                                                   <div className="truncate"><span className="text-gray-500 font-bold">🚩 線審:</span> {ref.line}</div>
+                                                   {ref.isManual && <div className="text-indigo-600 font-bold text-xs">✏️ 手動設定</div>}
+                                                   {hasSub && ref.substitutionNotes.map((note, i) => (
+                                                      <div key={i} className="text-amber-600 font-bold text-xs leading-snug">⚠️ {note}</div>
+                                                   ))}
+                                                </div>
+                                                <button
+                                                  onClick={() => setRefereeEditModal({ matchId: activeMatch.id })}
+                                                  className="text-[11px] bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-2 py-1 rounded shadow-xs whitespace-nowrap shrink-0"
+                                                >
+                                                   審判変更
+                                                </button>
+                                             </div>
                                           </div>
                                        );
                                     })()}
-
-                                    <div className="mt-3 pt-2 border-t flex flex-wrap justify-between gap-1 items-center">
-                                       {activeMatch.status === 'completed' ? (
-                                          <span className="text-xs text-gray-300 font-bold" title="スコア入力済の試合はコート解除できません。次の試合をこのコートへ配置すると自動的に解除されます">
-                                             コート解除
-                                          </span>
-                                       ) : (
-                                          <button
-                                            onClick={() => handleAssignCourt(activeMatch.id, null)}
-                                            className="text-xs text-red-500 hover:underline font-bold"
-                                          >
-                                             コート解除
-                                          </button>
-                                       )}
-
-                                       <button
-                                         onClick={() => handlePrintScoreSheet(activeMatch.id)}
-                                         className="text-xs bg-gray-600 hover:bg-gray-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                       >
-                                          🖨️ スコアシート
-                                       </button>
-
-                                       {activeMatch.status === 'calling' && (
-                                          <button
-                                            onClick={() => setCallAnnouncement({ match: activeMatch, courtNum })}
-                                            className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                          >
-                                             コール
-                                          </button>
-                                       )}
-
-                                       {activeMatch.status === 'recepted' && (
-                                          <button
-                                            onClick={async () => {
-                                               await handleMatchStatusChange(activeMatch.id, 'in_progress');
-                                               // 試合受付のタイミングでスコアシートを渡す必要があるため、状態遷移とあわせて印刷ダイアログを開く
-                                               handlePrintScoreSheet(activeMatch.id);
-                                            }}
-                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                          >
-                                             試合受付
-                                          </button>
-                                       )}
-
-                                       {activeMatch.status === 'in_progress' && (
-                                          <button
-                                            onClick={() => openScoreModal(activeMatch)}
-                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                          >
-                                             スコア入力
-                                          </button>
-                                       )}
-
-                                       {activeMatch.status === 'completed' && (
-                                          <button
-                                            onClick={() => openScoreModal(activeMatch)}
-                                            className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
-                                          >
-                                             スコア修正
-                                          </button>
-                                       )}
-                                    </div>
                                  </div>
                               ) : (
                                  <div className="text-center text-sm text-gray-400 py-6 font-medium">

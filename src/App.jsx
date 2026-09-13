@@ -4242,15 +4242,16 @@ export default function App() {
 
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">クラブ内順位（同一所属から同一クラスに複数ペアが出場する場合のみ）</label>
-            <input
-              type="number"
-              min="1"
-              placeholder="例: 1（1番手）、2（2番手）..."
+            <select
               className="w-full p-3 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
               value={entryForm.clubRank ?? ''}
               onChange={(e) => setEntryForm({...entryForm, clubRank: e.target.value})}
-              onFocus={(e) => e.target.select()}
-            />
+            >
+              <option value="">未選択（該当しない場合）</option>
+              {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+                <option key={n} value={n}>{n}（{n}番手）</option>
+              ))}
+            </select>
             <p className="text-xs text-gray-500 mt-1">※同じ出場クラスに同じ所属から複数ペアが参加する場合のみ、そのクラス内での強さ順（1番手、2番手…）を入力してください。予選リーグのグループ分けの際に、同じ所属同士が同じグループにならないよう配慮します。</p>
           </div>
 

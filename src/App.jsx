@@ -51,6 +51,7 @@ function IconSearch() { return <svg xmlns="http://www.w3.org/2000/svg" width="18
 function IconPhone() { return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>; }
 function IconMatch() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
 function IconRefresh() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>; }
+function IconUndo() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>; }
 function IconTrash() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>; }
 function IconPlus() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
 function IconClock() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
@@ -3351,6 +3352,35 @@ export default function App() {
     });
   };
 
+  // コートカードの「戻る」操作：試合の状態をひとつ前の段階に戻す。
+  // 試合済（completed）から戻す場合はスコアの削除を別途行う必要がないよう、
+  // 既存のスコア解除処理（handleResetScore）をそのまま利用してスコアもあわせてクリアする。
+  // それ以外は状態だけをひとつ前へ戻し、コール前（calling）からさらに戻す場合はコート解除として扱う
+  const handleStepBackStatus = async (matchId) => {
+    const targetMatch = matches.find(m => m.id === matchId);
+    if (!targetMatch) return;
+
+    if (targetMatch.status === 'completed') {
+      await handleResetScore(matchId);
+      return;
+    }
+
+    const prevStatus = targetMatch.status === 'in_progress' ? 'recepted'
+      : targetMatch.status === 'recepted' ? 'calling'
+      : null;
+
+    if (!prevStatus) {
+      await handleAssignCourt(matchId, null);
+      return;
+    }
+
+    const updated = matches.map(m => m.id === matchId ? { ...m, status: prevStatus, inProgressAt: null } : m);
+    setMatches(updated);
+    if (isSupabaseConfigured) {
+      await supabase.from('matches').update({ status: prevStatus, in_progress_at: null }).eq('id', matchId);
+    }
+  };
+
   // gameScores: [{team1, team2}, ...]（ゲームごとの得点）。試合ルールに従って勝敗が
   // 確定していない場合は保存しない
   const handleSaveScore = async (matchId, gameScores) => {
@@ -5617,6 +5647,23 @@ export default function App() {
                                        </span>
                                     )}
                                  </div>
+                                 {activeMatch && (
+                                    <div className="flex items-center gap-1.5">
+                                       <button
+                                         onClick={() => setRefereeEditModal({ matchId: activeMatch.id })}
+                                         className="text-[11px] bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-2 py-1 rounded shadow-xs whitespace-nowrap"
+                                       >
+                                          審判変更
+                                       </button>
+                                       <button
+                                         onClick={() => handleStepBackStatus(activeMatch.id)}
+                                         title="ひとつ前の状態に戻す"
+                                         className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded"
+                                       >
+                                          <IconUndo />
+                                       </button>
+                                    </div>
+                                 )}
                               </div>
 
                               {activeMatch ? (
@@ -5652,23 +5699,13 @@ export default function App() {
                                        const ref = getRefereeForMatch(activeMatch);
                                        const hasSub = ref.substitutionNotes && ref.substitutionNotes.length > 0;
                                        return (
-                                          <div className={`mt-2 pt-2 border-t text-xs space-y-1 ${ref.isManual ? 'bg-indigo-50 -mx-2 px-2 pb-1 rounded-b' : ''}`}>
-                                             <div className="flex justify-between items-start gap-1">
-                                                <div className="min-w-0">
-                                                   <div className="truncate"><span className="text-gray-500 font-bold">👤 主・副審:</span> {ref.main}</div>
-                                                   <div className="truncate"><span className="text-gray-500 font-bold">🚩 線審:</span> {ref.line}</div>
-                                                   {ref.isManual && <div className="text-indigo-600 font-bold">✏️ 手動設定</div>}
-                                                   {hasSub && ref.substitutionNotes.map((note, i) => (
-                                                      <div key={i} className="text-amber-600 font-bold leading-snug">⚠️ {note}</div>
-                                                   ))}
-                                                </div>
-                                                <button
-                                                  onClick={() => setRefereeEditModal({ matchId: activeMatch.id })}
-                                                  className="text-[11px] bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-2 py-1 rounded shadow-xs whitespace-nowrap"
-                                                >
-                                                   審判変更
-                                                </button>
-                                             </div>
+                                          <div className={`mt-2 pt-2 border-t text-sm space-y-1 ${ref.isManual ? 'bg-indigo-50 -mx-2 px-2 pb-1 rounded-b' : ''}`}>
+                                             <div className="truncate"><span className="text-gray-500 font-bold">👤 主・副審:</span> {ref.main}</div>
+                                             <div className="truncate"><span className="text-gray-500 font-bold">🚩 線審:</span> {ref.line}</div>
+                                             {ref.isManual && <div className="text-indigo-600 font-bold text-xs">✏️ 手動設定</div>}
+                                             {hasSub && ref.substitutionNotes.map((note, i) => (
+                                                <div key={i} className="text-amber-600 font-bold text-xs leading-snug">⚠️ {note}</div>
+                                             ))}
                                           </div>
                                        );
                                     })()}

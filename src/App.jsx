@@ -53,6 +53,17 @@ const parseClassSuffix = (str) => {
   return { base: str, type: 'ダブルス' };
 };
 
+// 携帯電話番号の入力補助：スマホのテンキー（type="tel"）では機種によって
+// 「-」が入力しづらいことがあるため、数字だけ入力すれば自動でハイフンを
+// 挿入する（090-1234-5678 の3-4-4桁区切り）。既に「-」が含まれていても
+// 一旦数字だけ取り出してから整形し直すので、貼り付け・部分編集にも対応する
+const formatMobilePhoneNumber = (str) => {
+  const digits = (str || '').replace(/[^\d]/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+};
+
 const formatHHMM = (str) => {
   if (!str) return '08:50';
   const parts = str.split(':');
@@ -4277,7 +4288,7 @@ export default function App() {
 
         <div>
            <label className="block text-sm font-bold text-gray-700 mb-1">代表者連絡先（携帯番号） <span className="text-red-500">*</span></label>
-           <input type="tel" placeholder="090-XXXX-XXXX" className="w-full p-2 border rounded" required value={entryForm.contact} onChange={e => setEntryForm({...entryForm, contact: e.target.value})} />
+           <input type="tel" placeholder="090-XXXX-XXXX" className="w-full p-2 border rounded" required value={entryForm.contact} onChange={e => setEntryForm({...entryForm, contact: formatMobilePhoneNumber(e.target.value)})} />
         </div>
         <div className="grid grid-cols-2 gap-4 border p-4 rounded bg-blue-50">
            <div className="col-span-2 font-bold text-blue-800">選手 1</div>

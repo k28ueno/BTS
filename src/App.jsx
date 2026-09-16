@@ -4135,6 +4135,7 @@ export default function App() {
     //   休憩時間をまるごと上乗せする（休憩中は試合が進行しないため）
     let effectiveStartMin = baseH * 60 + baseM;
     let lunchAdjustMinutes = 0;
+    let lunchApplied = false; // 昼休みが終了予定時刻の計算に影響した（差し引く必要があった）かどうか
     if (config.lunchBreakStart && config.lunchBreakEnd) {
       const [lsH, lsM] = config.lunchBreakStart.split(':').map(n => parseInt(n, 10) || 0);
       const [leH, leM] = config.lunchBreakEnd.split(':').map(n => parseInt(n, 10) || 0);
@@ -4143,8 +4144,10 @@ export default function App() {
       if (lunchEndMin > lunchStartMin) {
         if (effectiveStartMin >= lunchStartMin && effectiveStartMin < lunchEndMin) {
           effectiveStartMin = lunchEndMin;
+          lunchApplied = true;
         } else if (effectiveStartMin < lunchStartMin && effectiveStartMin + totalMinutes >= lunchStartMin) {
           lunchAdjustMinutes = lunchEndMin - lunchStartMin;
+          lunchApplied = true;
         }
       }
     }
@@ -4163,7 +4166,8 @@ export default function App() {
       totalMatches: sum('totalMatches'),
       hours: Math.floor(totalMinutes / 60),
       minutes: totalMinutes % 60,
-      endTimeStr
+      endTimeStr,
+      lunchApplied
     };
   })();
 
@@ -5804,14 +5808,22 @@ export default function App() {
                   <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                      <IconClock /> 試合数・終了予定時間 リアルタイムシミュレーション
                   </h3>
-                  <div className="flex items-center gap-3 bg-amber-50 border border-amber-300 px-4 py-2 rounded-xl shadow-sm">
-                     <span className="text-sm font-bold text-amber-900">基準時間（変更可）:</span>
-                     <input
-                       type="time"
-                       className="p-1.5 border-2 border-amber-400 rounded-lg bg-white font-mono font-extrabold text-xl text-amber-900 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
-                       value={simCurrentTime}
-                       onChange={e => setSimCurrentTime(e.target.value)}
-                     />
+                  <div className="flex items-center gap-3 flex-wrap">
+                     <div className="flex items-center gap-3 bg-amber-50 border border-amber-300 px-4 py-2 rounded-xl shadow-sm">
+                        <span className="text-sm font-bold text-amber-900">基準時間（変更可）:</span>
+                        <input
+                          type="time"
+                          className="p-1.5 border-2 border-amber-400 rounded-lg bg-white font-mono font-extrabold text-xl text-amber-900 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
+                          value={simCurrentTime}
+                          onChange={e => setSimCurrentTime(e.target.value)}
+                        />
+                     </div>
+                     {config.lunchBreakStart && config.lunchBreakEnd && (
+                        <div className="flex items-center gap-2 bg-sky-50 border border-sky-300 px-4 py-2 rounded-xl shadow-sm">
+                           <span className="text-sm font-bold text-sky-900">昼休み（マスタ設定）:</span>
+                           <span className="font-mono font-extrabold text-sky-900">{config.lunchBreakStart} 〜 {config.lunchBreakEnd}</span>
+                        </div>
+                     )}
                   </div>
                </div>
 
@@ -5866,6 +5878,9 @@ export default function App() {
                     <div className="text-center">
                        <span className="block text-xs text-slate-400 mb-1">大会予想終了時刻 ({simCurrentTime}時点基準)</span>
                        <span className="text-2xl font-extrabold text-orange-400">{simResult.endTimeStr} 頃</span>
+                       {simResult.lunchApplied && (
+                          <span className="block text-xs text-sky-400 mt-1">（昼休み {config.lunchBreakStart}〜{config.lunchBreakEnd} を考慮済み）</span>
+                       )}
                     </div>
                  </div>
               </div>

@@ -18,7 +18,7 @@ timeout /t 3 /nobreak > nul
 
 :: ブラウザでアプリを開く
 echo ブラウザを開いています...
-start http://localhost:5173/
+start http://localhost:5173/BTS/
 
 echo.
 echo 起動が完了しました！このウィンドウは閉じて構いません。

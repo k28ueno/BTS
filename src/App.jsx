@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx';
 import certBadmintonBg from './assets/cert-badminton-bg.png';
 
 const getEnv = (key) => {
@@ -15,6 +16,14 @@ const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) :
 const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確認間隔
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
 const DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES = 10; // 無操作で自動ログオフするまでの時間の既定値（分）。マスタ設定で変更可能
+
+// エントリー管理のExcelインポート/エクスポートで使う列見出し（この並び順でExcelに出力する）
+const ENTRY_EXCEL_COLUMNS = [
+  'ID', 'パスワード', 'クラス', '所属クラブ', 'クラブ内順位',
+  '選手1_姓', '選手1_名', '選手1_姓ふりがな', '選手1_名ふりがな',
+  '選手2_姓', '選手2_名', '選手2_姓ふりがな', '選手2_名ふりがな',
+  '区分', '連絡先', 'メール', '受付済'
+];
 
 // クラス別メインコートの色分け表示に使う配色。クラス数が多い場合は先頭から巡回して使い回す
 const CLASS_COURT_COLORS = [
@@ -266,6 +275,7 @@ export default function App() {
   const [adminPassword, setAdminPassword] = useState('');
   const adminSessionTokenRef = useRef(null); // このタブが保持している管理者セッションのロックトークン
   const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
+  const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league'); 
   const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1LastFurigana: '', p1FirstFurigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2LastFurigana: '', p2FirstFurigana: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', email: '', clubRank: '' });
@@ -3032,6 +3042,214 @@ export default function App() {
     setCurrentEditId(null);
   };
 
+  // エントリー一覧をExcel（.xlsx）としてダウンロードする
+  const handleExportEntriesExcel = () => {
+    const rows = entries.map(ent => ({
+      'ID': ent.id,
+      'パスワード': ent.password || '',
+      'クラス': ent.cls || '',
+      '所属クラブ': ent.club || '',
+      'クラブ内順位': typeof ent.clubRank === 'number' ? ent.clubRank : '',
+      '選手1_姓': ent.p1LastName || '',
+      '選手1_名': ent.p1FirstName || '',
+      '選手1_姓ふりがな': ent.p1LastFurigana || '',
+      '選手1_名ふりがな': ent.p1FirstFurigana || '',
+      '選手2_姓': ent.p2LastName || '',
+      '選手2_名': ent.p2FirstName || '',
+      '選手2_姓ふりがな': ent.p2LastFurigana || '',
+      '選手2_名ふりがな': ent.p2FirstFurigana || '',
+      '区分': ent.feeCategory || ent.p1Fee || '一般',
+      '連絡先': ent.contact || '',
+      'メール': ent.email || '',
+      '受付済': ent.checkedIn ? 'TRUE' : 'FALSE'
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows, { header: ENTRY_EXCEL_COLUMNS });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'エントリー');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `エントリー一覧_${dateStr}.xlsx`);
+  };
+
+  // インポートしたExcelの各行を検証し、既存IDと一致する行は更新、ID空欄の行は新規作成の対象に振り分ける。
+  // 実際の反映は確認ダイアログでの承認後（applyImportedEntries）に行う
+  const handleImportEntriesFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      let rows;
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      } catch (err) {
+        setDialog({ title: "読み込みエラー", message: "Excelファイルの読み込みに失敗しました。エクスポートしたファイルの形式をご確認ください。", onClose: () => setDialog(null) });
+        return;
+      }
+
+      const errors = [];
+      const toCreate = [];
+      const toUpdate = [];
+      const existingIds = new Set(entries.map(ent => String(ent.id)));
+
+      rows.forEach((row, idx) => {
+        const rowNum = idx + 2; // 1行目は見出し行のため
+        const id = String(row['ID'] ?? '').trim();
+        const cls = String(row['クラス'] ?? '').trim();
+        const club = String(row['所属クラブ'] ?? '').trim();
+        const p1LastName = String(row['選手1_姓'] ?? '').trim();
+        const p1FirstName = String(row['選手1_名'] ?? '').trim();
+        const p2LastName = String(row['選手2_姓'] ?? '').trim();
+        const p2FirstName = String(row['選手2_名'] ?? '').trim();
+
+        if (!cls || !config.classes.includes(cls)) {
+          errors.push(`${rowNum}行目: クラス「${cls}」が出場クラスに見つかりません`);
+          return;
+        }
+        if (!p1LastName || !p1FirstName || !p2LastName || !p2FirstName) {
+          errors.push(`${rowNum}行目: 選手の氏名（姓・名）が不足しています`);
+          return;
+        }
+
+        const record = {
+          cls, club,
+          clubRank: row['クラブ内順位'] !== '' && row['クラブ内順位'] != null ? parseInt(row['クラブ内順位'], 10) : null,
+          p1LastName, p1FirstName,
+          p1LastFurigana: String(row['選手1_姓ふりがな'] ?? '').trim(),
+          p1FirstFurigana: String(row['選手1_名ふりがな'] ?? '').trim(),
+          p2LastName, p2FirstName,
+          p2LastFurigana: String(row['選手2_姓ふりがな'] ?? '').trim(),
+          p2FirstFurigana: String(row['選手2_名ふりがな'] ?? '').trim(),
+          feeCategory: String(row['区分'] ?? '').trim() || '一般',
+          contact: String(row['連絡先'] ?? '').trim(),
+          email: String(row['メール'] ?? '').trim(),
+          checkedIn: /^(true|1|済)$/i.test(String(row['受付済'] ?? '').trim())
+        };
+
+        if (id) {
+          if (!existingIds.has(id)) {
+            errors.push(`${rowNum}行目: ID「${id}」が見つかりません（新規登録する場合はID列を空欄にしてください）`);
+            return;
+          }
+          toUpdate.push({ id, ...record });
+        } else {
+          const password = String(row['パスワード'] ?? '').trim() || Math.floor(1000 + Math.random() * 9000).toString();
+          toCreate.push({ ...record, password });
+        }
+      });
+
+      setDialog({
+        title: "インポート内容の確認",
+        message: (
+          <div className="text-left space-y-2 text-sm">
+            <div>新規作成: <strong>{toCreate.length}件</strong> ／ 更新: <strong>{toUpdate.length}件</strong></div>
+            {errors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700 max-h-40 overflow-y-auto">
+                <div className="font-bold mb-1">スキップされる行（{errors.length}件）:</div>
+                {errors.map((err, i) => <div key={i}>{err}</div>)}
+              </div>
+            )}
+            {(toCreate.length + toUpdate.length) === 0 && <div className="text-gray-500">反映できる行がありませんでした。</div>}
+          </div>
+        ),
+        confirmText: (toCreate.length + toUpdate.length) > 0 ? "この内容で反映する" : undefined,
+        confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
+        onConfirm: (toCreate.length + toUpdate.length) > 0 ? () => applyImportedEntries(toCreate, toUpdate) : undefined,
+        onClose: () => setDialog(null)
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // 確認ダイアログ承認後、実際にSupabase・ローカルstateへ反映する
+  const applyImportedEntries = async (toCreate, toUpdate) => {
+    setDialog(null);
+    setLoading(true);
+
+    for (const rec of toUpdate) {
+      const p1Name = `${rec.p1LastName}${rec.p1FirstName}`;
+      const p2Name = `${rec.p2LastName}${rec.p2FirstName}`;
+      if (isSupabaseConfigured) {
+        await supabase.from('entries').update({
+          cls: rec.cls, contact: rec.contact, email: rec.email, club: rec.club,
+          p1name: p1Name, p1lastname: rec.p1LastName, p1firstname: rec.p1FirstName,
+          p1lastfurigana: rec.p1LastFurigana, p1firstfurigana: rec.p1FirstFurigana,
+          p1club: rec.club, p1fee: rec.feeCategory,
+          p2name: p2Name, p2lastname: rec.p2LastName, p2firstname: rec.p2FirstName,
+          p2lastfurigana: rec.p2LastFurigana, p2firstfurigana: rec.p2FirstFurigana,
+          p2club: rec.club, p2fee: rec.feeCategory,
+          club_rank: rec.clubRank, checkedin: rec.checkedIn
+        }).eq('id', rec.id);
+      }
+    }
+
+    let currentMaxId = entries.reduce((max, ent) => Math.max(max, parseInt(ent.id, 10) || 0), 0);
+    const createdEntries = [];
+    for (const rec of toCreate) {
+      const p1Name = `${rec.p1LastName}${rec.p1FirstName}`;
+      const p2Name = `${rec.p2LastName}${rec.p2FirstName}`;
+      let newId;
+      if (isSupabaseConfigured) {
+        let succeeded = false;
+        for (let attempt = 0; attempt < 5 && !succeeded; attempt++) {
+          const { data: latest } = await supabase.from('entries').select('id').order('id', { ascending: false }).limit(1);
+          const dbMax = (latest && latest[0]) ? (parseInt(latest[0].id, 10) || 0) : 0;
+          currentMaxId = Math.max(currentMaxId, dbMax);
+          newId = (currentMaxId + 1).toString().padStart(4, '0');
+          const { error } = await supabase.from('entries').insert([{
+            id: newId, cls: rec.cls, contact: rec.contact, email: rec.email, club: rec.club,
+            p1name: p1Name, p1lastname: rec.p1LastName, p1firstname: rec.p1FirstName,
+            p1lastfurigana: rec.p1LastFurigana, p1firstfurigana: rec.p1FirstFurigana,
+            p1club: rec.club, p1fee: rec.feeCategory,
+            p2name: p2Name, p2lastname: rec.p2LastName, p2firstname: rec.p2FirstName,
+            p2lastfurigana: rec.p2LastFurigana, p2firstfurigana: rec.p2FirstFurigana,
+            p2club: rec.club, p2fee: rec.feeCategory,
+            password: rec.password, checkedin: rec.checkedIn, group: '未割り当て',
+            tournamentposition: null, club_rank: rec.clubRank
+          }]);
+          if (!error) { succeeded = true; currentMaxId += 1; }
+          else if (error.code !== '23505') break;
+        }
+      } else {
+        currentMaxId += 1;
+        newId = currentMaxId.toString().padStart(4, '0');
+      }
+      createdEntries.push({
+        id: newId, cls: rec.cls, contact: rec.contact, email: rec.email, club: rec.club,
+        p1Name, p1LastName: rec.p1LastName, p1FirstName: rec.p1FirstName,
+        p1LastFurigana: rec.p1LastFurigana, p1FirstFurigana: rec.p1FirstFurigana,
+        p1Club: rec.club, p1Fee: rec.feeCategory,
+        p2Name, p2LastName: rec.p2LastName, p2FirstName: rec.p2FirstName,
+        p2LastFurigana: rec.p2LastFurigana, p2FirstFurigana: rec.p2FirstFurigana,
+        p2Club: rec.club, p2Fee: rec.feeCategory,
+        feeCategory: rec.feeCategory, password: rec.password, checkedIn: rec.checkedIn,
+        group: '未割り当て', tournamentPosition: null, clubRank: rec.clubRank
+      });
+    }
+
+    setEntries(prev => [
+      ...prev.map(ent => {
+        const upd = toUpdate.find(u => u.id === ent.id);
+        if (!upd) return ent;
+        const p1Name = `${upd.p1LastName}${upd.p1FirstName}`;
+        const p2Name = `${upd.p2LastName}${upd.p2FirstName}`;
+        return {
+          ...ent, cls: upd.cls, contact: upd.contact, email: upd.email, club: upd.club,
+          p1Name, p1LastName: upd.p1LastName, p1FirstName: upd.p1FirstName,
+          p1LastFurigana: upd.p1LastFurigana, p1FirstFurigana: upd.p1FirstFurigana,
+          p1Club: upd.club, p1Fee: upd.feeCategory,
+          p2Name, p2LastName: upd.p2LastName, p2FirstName: upd.p2FirstName,
+          p2LastFurigana: upd.p2LastFurigana, p2FirstFurigana: upd.p2FirstFurigana,
+          p2Club: upd.club, p2Fee: upd.feeCategory,
+          feeCategory: upd.feeCategory, clubRank: upd.clubRank, checkedIn: upd.checkedIn
+        };
+      }),
+      ...createdEntries
+    ]);
+
+    setLoading(false);
+    setDialog({ title: "インポート完了", message: `新規作成 ${toCreate.length}件、更新 ${toUpdate.length}件を反映しました。`, onClose: () => setDialog(null) });
+  };
+
   const handleDeleteSelfEntry = (id, p1Name) => {
     if (isEntryDeadlinePassed(config)) {
       setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
@@ -5042,7 +5260,34 @@ export default function App() {
 
           {adminTab === 'entries' && (
             <div>
-              <h3 className="text-xl font-bold mb-4">エントリー管理</h3>
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+                 <h3 className="text-xl font-bold">エントリー管理</h3>
+                 <div className="flex items-center gap-2">
+                    <input
+                      ref={entryImportFileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => {
+                         const file = e.target.files[0];
+                         if (file) handleImportEntriesFile(file);
+                         e.target.value = '';
+                      }}
+                    />
+                    <button
+                      onClick={() => entryImportFileInputRef.current?.click()}
+                      className="text-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-3 py-2 rounded shadow-xs"
+                    >
+                       📥 Excelインポート
+                    </button>
+                    <button
+                      onClick={handleExportEntriesExcel}
+                      className="text-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-3 py-2 rounded shadow-xs"
+                    >
+                       📤 Excelエクスポート
+                    </button>
+                 </div>
+              </div>
               <div className="bg-white rounded border overflow-hidden">
                 <table className="w-full text-sm text-left table-fixed">
                   <thead className="bg-gray-100 border-b">

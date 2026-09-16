@@ -5370,8 +5370,8 @@ export default function App() {
                       <th className="p-3 w-24">クラス</th>
                       <th className="p-3 w-28">所属クラブ</th>
                       <th className="p-3 w-20">クラブ内順位</th>
-                      <th className="p-3">ペア</th>
-                      <th className="p-3 w-16">区分</th>
+                      <th className="p-3 w-32">ペア</th>
+                      <th className="p-3 w-24">区分</th>
                       <th className="p-3 w-32">連絡先</th>
                       <th className="p-3 w-20">操作</th>
                     </tr>
@@ -5388,7 +5388,7 @@ export default function App() {
                            <div>{ent.p1Name}</div>
                            <div>{ent.p2Name}</div>
                         </td>
-                        <td className="p-3 font-bold text-xs">{ent.feeCategory || ent.p1Fee || '一般'}</td>
+                        <td className="p-3 font-bold text-xs whitespace-nowrap">{ent.feeCategory || ent.p1Fee || '一般'}</td>
                         <td className="p-3 whitespace-nowrap">{ent.contact}</td>
                         <td className="p-3 flex flex-col gap-1">
                            <button onClick={() => { setEntryForm({...ent, feeCategory: ent.feeCategory || ent.p1Fee || '一般'}); setCurrentEditId(ent.id); setEditMode(true); setCurrentTab('entry'); }} className="bg-blue-500 text-white px-2 py-1 rounded text-xs">編集</button>

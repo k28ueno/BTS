@@ -25,6 +25,50 @@ const ENTRY_EXCEL_COLUMNS = [
   '区分', '連絡先', 'メール', '受付済'
 ];
 
+// Excelインポート時、列見出しの表記ゆれ（別の言い回し・全角半角・区切り記号の有無等）を
+// 吸収するための別名リスト。normalizeHeaderText()で正規化した上でこの別名（同じく正規化済み）
+// のいずれかに一致すれば、その項目の列とみなす（列の並び順は問わない）
+const ENTRY_IMPORT_FIELD_ALIASES = {
+  id: ['ID', 'エントリーID', 'エントリー番号', '番号', 'No', 'No.'],
+  password: ['パスワード', 'Password', 'PW'],
+  cls: ['クラス', 'Class', '種目', '部門', '出場クラス'],
+  club: ['所属クラブ', 'クラブ', '所属', 'Club', '所属チーム', 'チーム'],
+  clubRank: ['クラブ内順位', '順位', 'クラブ順位', 'クラブ内ランク', 'Rank'],
+  p1LastName: ['選手1_姓', '選手1姓', '選手1の姓', '氏名1_姓', '氏名1姓', '姓1', 'Player1LastName', '選手1姓名'],
+  p1FirstName: ['選手1_名', '選手1名', '選手1の名', '氏名1_名', '氏名1名', '名1', 'Player1FirstName'],
+  p1LastFurigana: ['選手1_姓ふりがな', '選手1姓ふりがな', '姓ふりがな1', 'せい1', 'Player1LastFurigana'],
+  p1FirstFurigana: ['選手1_名ふりがな', '選手1名ふりがな', '名ふりがな1', 'めい1', 'Player1FirstFurigana'],
+  p2LastName: ['選手2_姓', '選手2姓', '選手2の姓', '氏名2_姓', '氏名2姓', '姓2', 'Player2LastName'],
+  p2FirstName: ['選手2_名', '選手2名', '選手2の名', '氏名2_名', '氏名2名', '名2', 'Player2FirstName'],
+  p2LastFurigana: ['選手2_姓ふりがな', '選手2姓ふりがな', '姓ふりがな2', 'せい2', 'Player2LastFurigana'],
+  p2FirstFurigana: ['選手2_名ふりがな', '選手2名ふりがな', '名ふりがな2', 'めい2', 'Player2FirstFurigana'],
+  feeCategory: ['区分', '参加区分', 'Fee', 'Category', '料金区分'],
+  contact: ['連絡先', '電話', '電話番号', '携帯', '携帯番号', 'Tel', 'Phone', 'TEL'],
+  email: ['メール', 'Email', 'E-mail', 'メールアドレス', 'Mail'],
+  checkedIn: ['受付済', 'チェックイン', 'CheckedIn', '受付', '受付状況']
+};
+
+// 列見出し比較用の正規化：前後の空白除去・小文字化・全角英数を半角化し、
+// 区切りに使われがちな記号（アンダースコア・中黒・スペース・スラッシュ等）を取り除く
+const normalizeHeaderText = (s) => String(s ?? '')
+  .trim()
+  .toLowerCase()
+  .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+  .replace(/[_\-\s／/・.]+/g, '');
+
+// アップロードされたExcelの実際の見出し行（headerRow）から、各項目名（ENTRY_IMPORT_FIELD_ALIASESの
+// キー）がどの実列に対応するかを判定し、{ 項目名: 実際の見出し文字列 } のマップを返す
+const resolveImportColumnMap = (headerRow) => {
+  const normalizedHeaders = headerRow.map(h => ({ raw: h, normalized: normalizeHeaderText(h) }));
+  const map = {};
+  Object.entries(ENTRY_IMPORT_FIELD_ALIASES).forEach(([field, aliases]) => {
+    const normalizedAliases = aliases.map(normalizeHeaderText);
+    const found = normalizedHeaders.find(h => h.normalized && normalizedAliases.includes(h.normalized));
+    if (found) map[field] = found.raw;
+  });
+  return map;
+};
+
 // クラス別メインコートの色分け表示に使う配色。クラス数が多い場合は先頭から巡回して使い回す
 const CLASS_COURT_COLORS = [
   { name: 'emerald', ring: 'ring-emerald-500', border: 'border-emerald-500', bg: 'bg-emerald-500', soft: 'bg-emerald-500/10', text: 'text-emerald-700', chipBg: 'bg-emerald-100', chipText: 'text-emerald-800' },
@@ -3075,16 +3119,42 @@ export default function App() {
   const handleImportEntriesFile = (file) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      let rows;
+      let rows, columnMap, headerRow;
       try {
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array' });
         const sheet = wb.Sheets[wb.SheetNames[0]];
+        headerRow = (XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || []).map(h => String(h ?? ''));
+        columnMap = resolveImportColumnMap(headerRow);
         rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       } catch (err) {
         setDialog({ title: "読み込みエラー", message: "Excelファイルの読み込みに失敗しました。エクスポートしたファイルの形式をご確認ください。", onClose: () => setDialog(null) });
         return;
       }
+
+      // 列名・列順が多少違っても取り込めるよう、項目名の表記ゆれをresolveImportColumnMapで
+      // 吸収している。ただし判定に必須の項目（クラス・選手1/2の姓名）に対応する列が
+      // 1つも見つからない場合は、行ごとの判定に進む前にまとめてエラーを案内する
+      const requiredFields = { cls: 'クラス', p1LastName: '選手1_姓', p1FirstName: '選手1_名', p2LastName: '選手2_姓', p2FirstName: '選手2_名' };
+      const missingRequired = Object.entries(requiredFields).filter(([field]) => !columnMap[field]);
+      if (missingRequired.length > 0) {
+        setDialog({
+          title: "読み込みエラー",
+          message: (
+            <div className="text-left space-y-2 text-sm">
+              <div>以下の項目に対応する列が見つかりませんでした。列見出しをご確認ください。</div>
+              <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700">
+                {missingRequired.map(([, label]) => <div key={label}>・{label}</div>)}
+              </div>
+              <div className="text-xs text-gray-500">検出した見出し: {headerRow.join('、') || '（見出し行が空です）'}</div>
+            </div>
+          ),
+          onClose: () => setDialog(null)
+        });
+        return;
+      }
+
+      const getCell = (row, field) => columnMap[field] ? row[columnMap[field]] : undefined;
 
       const errors = [];
       const toCreate = [];
@@ -3093,13 +3163,13 @@ export default function App() {
 
       rows.forEach((row, idx) => {
         const rowNum = idx + 2; // 1行目は見出し行のため
-        const id = String(row['ID'] ?? '').trim();
-        const cls = String(row['クラス'] ?? '').trim();
-        const club = String(row['所属クラブ'] ?? '').trim();
-        const p1LastName = String(row['選手1_姓'] ?? '').trim();
-        const p1FirstName = String(row['選手1_名'] ?? '').trim();
-        const p2LastName = String(row['選手2_姓'] ?? '').trim();
-        const p2FirstName = String(row['選手2_名'] ?? '').trim();
+        const id = String(getCell(row, 'id') ?? '').trim();
+        const cls = String(getCell(row, 'cls') ?? '').trim();
+        const club = String(getCell(row, 'club') ?? '').trim();
+        const p1LastName = String(getCell(row, 'p1LastName') ?? '').trim();
+        const p1FirstName = String(getCell(row, 'p1FirstName') ?? '').trim();
+        const p2LastName = String(getCell(row, 'p2LastName') ?? '').trim();
+        const p2FirstName = String(getCell(row, 'p2FirstName') ?? '').trim();
 
         if (!cls || !config.classes.includes(cls)) {
           errors.push(`${rowNum}行目: クラス「${cls}」が出場クラスに見つかりません`);
@@ -3110,19 +3180,20 @@ export default function App() {
           return;
         }
 
+        const clubRankCell = getCell(row, 'clubRank');
         const record = {
           cls, club,
-          clubRank: row['クラブ内順位'] !== '' && row['クラブ内順位'] != null ? parseInt(row['クラブ内順位'], 10) : null,
+          clubRank: clubRankCell !== '' && clubRankCell != null ? parseInt(clubRankCell, 10) : null,
           p1LastName, p1FirstName,
-          p1LastFurigana: String(row['選手1_姓ふりがな'] ?? '').trim(),
-          p1FirstFurigana: String(row['選手1_名ふりがな'] ?? '').trim(),
+          p1LastFurigana: String(getCell(row, 'p1LastFurigana') ?? '').trim(),
+          p1FirstFurigana: String(getCell(row, 'p1FirstFurigana') ?? '').trim(),
           p2LastName, p2FirstName,
-          p2LastFurigana: String(row['選手2_姓ふりがな'] ?? '').trim(),
-          p2FirstFurigana: String(row['選手2_名ふりがな'] ?? '').trim(),
-          feeCategory: String(row['区分'] ?? '').trim() || '一般',
-          contact: String(row['連絡先'] ?? '').trim(),
-          email: String(row['メール'] ?? '').trim(),
-          checkedIn: /^(true|1|済)$/i.test(String(row['受付済'] ?? '').trim())
+          p2LastFurigana: String(getCell(row, 'p2LastFurigana') ?? '').trim(),
+          p2FirstFurigana: String(getCell(row, 'p2FirstFurigana') ?? '').trim(),
+          feeCategory: String(getCell(row, 'feeCategory') ?? '').trim() || '一般',
+          contact: String(getCell(row, 'contact') ?? '').trim(),
+          email: String(getCell(row, 'email') ?? '').trim(),
+          checkedIn: /^(true|1|済)$/i.test(String(getCell(row, 'checkedIn') ?? '').trim())
         };
 
         if (id) {
@@ -3132,7 +3203,7 @@ export default function App() {
           }
           toUpdate.push({ id, ...record });
         } else {
-          const password = String(row['パスワード'] ?? '').trim() || Math.floor(1000 + Math.random() * 9000).toString();
+          const password = String(getCell(row, 'password') ?? '').trim() || Math.floor(1000 + Math.random() * 9000).toString();
           toCreate.push({ ...record, password });
         }
       });

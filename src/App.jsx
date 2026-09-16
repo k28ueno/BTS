@@ -5367,11 +5367,12 @@ export default function App() {
                     <tr className="text-gray-500 font-bold">
                       <th className="p-3 w-16">ID</th>
                       <th className="p-3 w-20">パスワード</th>
-                      <th className="p-3">所属クラブ</th>
+                      <th className="p-3 w-24">クラス</th>
+                      <th className="p-3 w-28">所属クラブ</th>
                       <th className="p-3 w-20">クラブ内順位</th>
                       <th className="p-3">ペア</th>
                       <th className="p-3 w-16">区分</th>
-                      <th className="p-3 w-28">連絡先</th>
+                      <th className="p-3 w-32">連絡先</th>
                       <th className="p-3 w-20">操作</th>
                     </tr>
                   </thead>
@@ -5380,11 +5381,15 @@ export default function App() {
                       <tr key={ent.id} className="border-b align-top">
                         <td className="p-3 font-mono font-bold text-[#2c5f4e] break-all">{ent.id}</td>
                         <td className="p-3 font-mono font-bold text-orange-600 break-all">{ent.password}</td>
+                        <td className="p-3 break-words">{ent.cls}</td>
                         <td className="p-3 break-words">{ent.club || '-'}</td>
                         <td className="p-3 text-center">{typeof ent.clubRank === 'number' ? `${ent.clubRank}番手` : '-'}</td>
-                        <td className="p-3 font-bold break-words">({ent.cls}) {getTeamNameWithClub(ent.id)}</td>
+                        <td className="p-3 font-bold break-words">
+                           <div>{ent.p1Name}</div>
+                           <div>{ent.p2Name}</div>
+                        </td>
                         <td className="p-3 font-bold text-xs">{ent.feeCategory || ent.p1Fee || '一般'}</td>
-                        <td className="p-3 break-words">{ent.contact}</td>
+                        <td className="p-3 whitespace-nowrap">{ent.contact}</td>
                         <td className="p-3 flex flex-col gap-1">
                            <button onClick={() => { setEntryForm({...ent, feeCategory: ent.feeCategory || ent.p1Fee || '一般'}); setCurrentEditId(ent.id); setEditMode(true); setCurrentTab('entry'); }} className="bg-blue-500 text-white px-2 py-1 rounded text-xs">編集</button>
                            <button onClick={() => handleDeleteEntry(ent.id, ent.p1Name)} className="bg-red-500 text-white px-2 py-1 rounded text-xs">削除</button>

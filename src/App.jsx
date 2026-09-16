@@ -69,6 +69,15 @@ const resolveImportColumnMap = (headerRow) => {
   return map;
 };
 
+// 「列の対応確認」画面に表示する項目ラベルと、必須項目の一覧
+const ENTRY_IMPORT_FIELD_LABELS = {
+  id: 'ID', password: 'パスワード', cls: 'クラス', club: '所属クラブ', clubRank: 'クラブ内順位',
+  p1LastName: '選手1_姓', p1FirstName: '選手1_名', p1LastFurigana: '選手1_姓ふりがな', p1FirstFurigana: '選手1_名ふりがな',
+  p2LastName: '選手2_姓', p2FirstName: '選手2_名', p2LastFurigana: '選手2_姓ふりがな', p2FirstFurigana: '選手2_名ふりがな',
+  feeCategory: '区分', contact: '連絡先', email: 'メール', checkedIn: '受付済'
+};
+const ENTRY_IMPORT_REQUIRED_FIELDS = ['cls', 'p1LastName', 'p1FirstName', 'p2LastName', 'p2FirstName'];
+
 // クラス別メインコートの色分け表示に使う配色。クラス数が多い場合は先頭から巡回して使い回す
 const CLASS_COURT_COLORS = [
   { name: 'emerald', ring: 'ring-emerald-500', border: 'border-emerald-500', bg: 'bg-emerald-500', soft: 'bg-emerald-500/10', text: 'text-emerald-700', chipBg: 'bg-emerald-100', chipText: 'text-emerald-800' },
@@ -1950,6 +1959,11 @@ export default function App() {
   // { matchId, role: 'main'|'line' } … どの試合のどの役割を変更中かを保持する
   const [refereeEditModal, setRefereeEditModal] = useState(null);
 
+  // ---- エントリー管理のExcelインポート：列の対応確認 ----
+  // { headerRow, rows, columnMap } … アップロードされたExcelの見出し行・データ行・
+  // 自動判定した（または管理者が修正した）列の対応表を保持する
+  const [importMapping, setImportMapping] = useState(null);
+
   // 手動で選んだ審判をmatchesテーブルに保存する（IDのみ保持し、表示名は毎回解決する）。
   // lockedRefereesにも即時反映し、他試合の占有判定（getAllOccupiedRefereeIds）に
   // すぐ反映されるようにする
@@ -3114,8 +3128,9 @@ export default function App() {
     XLSX.writeFile(wb, `エントリー一覧_${dateStr}.xlsx`);
   };
 
-  // インポートしたExcelの各行を検証し、既存IDと一致する行は更新、ID空欄の行は新規作成の対象に振り分ける。
-  // 実際の反映は確認ダイアログでの承認後（applyImportedEntries）に行う
+  // Excelファイルを読み込み、列の対応関係を自動判定した上で「列の対応確認」画面を開く。
+  // 実際の行ごとの検証・反映は、その画面で内容を確認（必要なら修正）した後に
+  // proceedImportWithMappingで行う
   const handleImportEntriesFile = (file) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -3131,104 +3146,91 @@ export default function App() {
         setDialog({ title: "読み込みエラー", message: "Excelファイルの読み込みに失敗しました。エクスポートしたファイルの形式をご確認ください。", onClose: () => setDialog(null) });
         return;
       }
+      setImportMapping({ headerRow, rows, columnMap });
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
-      // 列名・列順が多少違っても取り込めるよう、項目名の表記ゆれをresolveImportColumnMapで
-      // 吸収している。ただし判定に必須の項目（クラス・選手1/2の姓名）に対応する列が
-      // 1つも見つからない場合は、行ごとの判定に進む前にまとめてエラーを案内する
-      const requiredFields = { cls: 'クラス', p1LastName: '選手1_姓', p1FirstName: '選手1_名', p2LastName: '選手2_姓', p2FirstName: '選手2_名' };
-      const missingRequired = Object.entries(requiredFields).filter(([field]) => !columnMap[field]);
-      if (missingRequired.length > 0) {
-        setDialog({
-          title: "読み込みエラー",
-          message: (
-            <div className="text-left space-y-2 text-sm">
-              <div>以下の項目に対応する列が見つかりませんでした。列見出しをご確認ください。</div>
-              <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700">
-                {missingRequired.map(([, label]) => <div key={label}>・{label}</div>)}
-              </div>
-              <div className="text-xs text-gray-500">検出した見出し: {headerRow.join('、') || '（見出し行が空です）'}</div>
-            </div>
-          ),
-          onClose: () => setDialog(null)
-        });
+  // 「列の対応確認」画面で承認された対応表（columnMap）を使って、実際に各行を検証し、
+  // 既存IDと一致する行は更新、ID空欄の行は新規作成の対象に振り分ける。
+  // 実際の反映はその次の確認ダイアログでの承認後（applyImportedEntries）に行う
+  const proceedImportWithMapping = () => {
+    const { rows, columnMap } = importMapping;
+    setImportMapping(null);
+
+    const getCell = (row, field) => columnMap[field] ? row[columnMap[field]] : undefined;
+
+    const errors = [];
+    const toCreate = [];
+    const toUpdate = [];
+    const existingIds = new Set(entries.map(ent => String(ent.id)));
+
+    rows.forEach((row, idx) => {
+      const rowNum = idx + 2; // 1行目は見出し行のため
+      const id = String(getCell(row, 'id') ?? '').trim();
+      const cls = String(getCell(row, 'cls') ?? '').trim();
+      const club = String(getCell(row, 'club') ?? '').trim();
+      const p1LastName = String(getCell(row, 'p1LastName') ?? '').trim();
+      const p1FirstName = String(getCell(row, 'p1FirstName') ?? '').trim();
+      const p2LastName = String(getCell(row, 'p2LastName') ?? '').trim();
+      const p2FirstName = String(getCell(row, 'p2FirstName') ?? '').trim();
+
+      if (!cls || !config.classes.includes(cls)) {
+        errors.push(`${rowNum}行目: クラス「${cls}」が出場クラスに見つかりません`);
+        return;
+      }
+      if (!p1LastName || !p1FirstName || !p2LastName || !p2FirstName) {
+        errors.push(`${rowNum}行目: 選手の氏名（姓・名）が不足しています`);
         return;
       }
 
-      const getCell = (row, field) => columnMap[field] ? row[columnMap[field]] : undefined;
+      const clubRankCell = getCell(row, 'clubRank');
+      const record = {
+        cls, club,
+        clubRank: clubRankCell !== '' && clubRankCell != null ? parseInt(clubRankCell, 10) : null,
+        p1LastName, p1FirstName,
+        p1LastFurigana: String(getCell(row, 'p1LastFurigana') ?? '').trim(),
+        p1FirstFurigana: String(getCell(row, 'p1FirstFurigana') ?? '').trim(),
+        p2LastName, p2FirstName,
+        p2LastFurigana: String(getCell(row, 'p2LastFurigana') ?? '').trim(),
+        p2FirstFurigana: String(getCell(row, 'p2FirstFurigana') ?? '').trim(),
+        feeCategory: String(getCell(row, 'feeCategory') ?? '').trim() || '一般',
+        contact: String(getCell(row, 'contact') ?? '').trim(),
+        email: String(getCell(row, 'email') ?? '').trim(),
+        checkedIn: /^(true|1|済)$/i.test(String(getCell(row, 'checkedIn') ?? '').trim())
+      };
 
-      const errors = [];
-      const toCreate = [];
-      const toUpdate = [];
-      const existingIds = new Set(entries.map(ent => String(ent.id)));
-
-      rows.forEach((row, idx) => {
-        const rowNum = idx + 2; // 1行目は見出し行のため
-        const id = String(getCell(row, 'id') ?? '').trim();
-        const cls = String(getCell(row, 'cls') ?? '').trim();
-        const club = String(getCell(row, 'club') ?? '').trim();
-        const p1LastName = String(getCell(row, 'p1LastName') ?? '').trim();
-        const p1FirstName = String(getCell(row, 'p1FirstName') ?? '').trim();
-        const p2LastName = String(getCell(row, 'p2LastName') ?? '').trim();
-        const p2FirstName = String(getCell(row, 'p2FirstName') ?? '').trim();
-
-        if (!cls || !config.classes.includes(cls)) {
-          errors.push(`${rowNum}行目: クラス「${cls}」が出場クラスに見つかりません`);
+      if (id) {
+        if (!existingIds.has(id)) {
+          errors.push(`${rowNum}行目: ID「${id}」が見つかりません（新規登録する場合はID列を空欄にしてください）`);
           return;
         }
-        if (!p1LastName || !p1FirstName || !p2LastName || !p2FirstName) {
-          errors.push(`${rowNum}行目: 選手の氏名（姓・名）が不足しています`);
-          return;
-        }
+        toUpdate.push({ id, ...record });
+      } else {
+        const password = String(getCell(row, 'password') ?? '').trim() || Math.floor(1000 + Math.random() * 9000).toString();
+        toCreate.push({ ...record, password });
+      }
+    });
 
-        const clubRankCell = getCell(row, 'clubRank');
-        const record = {
-          cls, club,
-          clubRank: clubRankCell !== '' && clubRankCell != null ? parseInt(clubRankCell, 10) : null,
-          p1LastName, p1FirstName,
-          p1LastFurigana: String(getCell(row, 'p1LastFurigana') ?? '').trim(),
-          p1FirstFurigana: String(getCell(row, 'p1FirstFurigana') ?? '').trim(),
-          p2LastName, p2FirstName,
-          p2LastFurigana: String(getCell(row, 'p2LastFurigana') ?? '').trim(),
-          p2FirstFurigana: String(getCell(row, 'p2FirstFurigana') ?? '').trim(),
-          feeCategory: String(getCell(row, 'feeCategory') ?? '').trim() || '一般',
-          contact: String(getCell(row, 'contact') ?? '').trim(),
-          email: String(getCell(row, 'email') ?? '').trim(),
-          checkedIn: /^(true|1|済)$/i.test(String(getCell(row, 'checkedIn') ?? '').trim())
-        };
-
-        if (id) {
-          if (!existingIds.has(id)) {
-            errors.push(`${rowNum}行目: ID「${id}」が見つかりません（新規登録する場合はID列を空欄にしてください）`);
-            return;
-          }
-          toUpdate.push({ id, ...record });
-        } else {
-          const password = String(getCell(row, 'password') ?? '').trim() || Math.floor(1000 + Math.random() * 9000).toString();
-          toCreate.push({ ...record, password });
-        }
-      });
-
-      setDialog({
-        title: "インポート内容の確認",
-        message: (
-          <div className="text-left space-y-2 text-sm">
-            <div>新規作成: <strong>{toCreate.length}件</strong> ／ 更新: <strong>{toUpdate.length}件</strong></div>
-            {errors.length > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700 max-h-40 overflow-y-auto">
-                <div className="font-bold mb-1">スキップされる行（{errors.length}件）:</div>
-                {errors.map((err, i) => <div key={i}>{err}</div>)}
-              </div>
-            )}
-            {(toCreate.length + toUpdate.length) === 0 && <div className="text-gray-500">反映できる行がありませんでした。</div>}
-          </div>
-        ),
-        confirmText: (toCreate.length + toUpdate.length) > 0 ? "この内容で反映する" : undefined,
-        confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
-        onConfirm: (toCreate.length + toUpdate.length) > 0 ? () => applyImportedEntries(toCreate, toUpdate) : undefined,
-        onClose: () => setDialog(null)
-      });
-    };
-    reader.readAsArrayBuffer(file);
+    setDialog({
+      title: "インポート内容の確認",
+      message: (
+        <div className="text-left space-y-2 text-sm">
+          <div>新規作成: <strong>{toCreate.length}件</strong> ／ 更新: <strong>{toUpdate.length}件</strong></div>
+          {errors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700 max-h-40 overflow-y-auto">
+              <div className="font-bold mb-1">スキップされる行（{errors.length}件）:</div>
+              {errors.map((err, i) => <div key={i}>{err}</div>)}
+            </div>
+          )}
+          {(toCreate.length + toUpdate.length) === 0 && <div className="text-gray-500">反映できる行がありませんでした。</div>}
+        </div>
+      ),
+      confirmText: (toCreate.length + toUpdate.length) > 0 ? "この内容で反映する" : undefined,
+      confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
+      onConfirm: (toCreate.length + toUpdate.length) > 0 ? () => applyImportedEntries(toCreate, toUpdate) : undefined,
+      onClose: () => setDialog(null)
+    });
   };
 
   // 確認ダイアログ承認後、実際にSupabase・ローカルstateへ反映する
@@ -6991,6 +6993,53 @@ export default function App() {
            </div>
         </div>
       )}
+
+      {importMapping && (() => {
+        const missingRequired = ENTRY_IMPORT_REQUIRED_FIELDS.filter(f => !importMapping.columnMap[f]);
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] animate-fade-in" onClick={() => setImportMapping(null)}>
+             <div className="bg-white rounded-xl shadow-2xl p-6 max-w-2xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold mb-1 text-gray-800">列の対応確認</h3>
+                <p className="text-xs text-gray-500 mb-4">アップロードされたExcelの列見出しから自動で判定しました。違っていれば右側のプルダウンで選び直してください。</p>
+                <div className="space-y-1.5">
+                   {Object.entries(ENTRY_IMPORT_FIELD_LABELS).map(([field, label]) => (
+                      <div key={field} className="flex items-center gap-2">
+                         <div className="w-40 text-sm font-bold text-gray-700 shrink-0">
+                            {label}{ENTRY_IMPORT_REQUIRED_FIELDS.includes(field) && <span className="text-red-500 ml-0.5">*</span>}
+                         </div>
+                         <select
+                           className="flex-1 p-1.5 border rounded text-sm bg-white"
+                           value={importMapping.columnMap[field] || ''}
+                           onChange={e => {
+                              const value = e.target.value || undefined;
+                              setImportMapping(prev => ({ ...prev, columnMap: { ...prev.columnMap, [field]: value } }));
+                           }}
+                         >
+                            <option value="">（対応列なし）</option>
+                            {importMapping.headerRow.map((h, i) => <option key={i} value={h}>{h}</option>)}
+                         </select>
+                      </div>
+                   ))}
+                </div>
+                {missingRequired.length > 0 && (
+                   <div className="mt-3 bg-red-50 border border-red-200 rounded p-2 text-red-700 text-xs">
+                      必須項目（<span className="font-bold">*</span>）に対応する列を選んでください: {missingRequired.map(f => ENTRY_IMPORT_FIELD_LABELS[f]).join('、')}
+                   </div>
+                )}
+                <div className="flex justify-end gap-2 mt-4">
+                   <button onClick={() => setImportMapping(null)} className="text-sm text-gray-500 hover:underline px-3 py-2">キャンセル</button>
+                   <button
+                     disabled={missingRequired.length > 0}
+                     onClick={proceedImportWithMapping}
+                     className={`text-sm font-bold px-4 py-2 rounded shadow-xs ${missingRequired.length > 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
+                   >
+                      次へ（内容を確認）
+                   </button>
+                </div>
+             </div>
+          </div>
+        );
+      })()}
 
       {refereeEditModal && (() => {
         const targetMatch = matches.find(m => m.id === refereeEditModal.matchId);

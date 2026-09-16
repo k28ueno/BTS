@@ -4113,8 +4113,15 @@ export default function App() {
       const tournamentTotal = Math.max(getTournamentSlotCount(cls) - 1, 0);
       const tournamentRemaining = tournamentTotal;
 
+      // 決勝トーナメントは勝ち上がり式のため、コートがいくら空いていても
+      // 「1回戦→準決勝→決勝」のように前の回戦の結果が出るまで次の回戦が始められない。
+      // その待ち時間（ラウンド数分の直列所要時間）の下限を、枠数から求める
+      // （例：8枠なら3回戦分＝準々決勝・準決勝・決勝は必ず順番に行う必要がある）
+      const tournamentRoundsRemaining = tournamentTotal > 0 ? Math.ceil(Math.log2(getTournamentSlotCount(cls))) : 0;
+
       return {
         cls, count, leagueTotal, leagueRemaining, tournamentTotal, tournamentRemaining,
+        tournamentRoundsRemaining,
         completedMatches,
         remainingMatches: leagueRemaining + tournamentRemaining,
         totalMatches: leagueTotal + tournamentTotal
@@ -4125,7 +4132,23 @@ export default function App() {
     const totalRemainingMatches = sum('remainingMatches');
     const courts = Math.max(config.courts || 1, 1);
     const avgDuration = config.avgMatchDuration || 15;
-    const totalMinutes = Math.ceil((totalRemainingMatches * avgDuration) / courts);
+
+    // 予選リーグはクラス・グループを問わずどの組み合わせでも自由な順序で消化できるため、
+    // 単純に「残り試合数 ÷ コート数」で所要時間を見積もる
+    const leagueMinutes = Math.ceil((sum('leagueRemaining') * avgDuration) / courts);
+
+    // 決勝トーナメントは、コート数で割った単純計算（スループット）と、
+    // 一番ラウンド数が多いクラスの直列進行にかかる最短時間（待ち時間の下限）の
+    // どちらか大きい方を採用する。各クラスの決勝Tは並行して進むため、全体の
+    // 待ち時間はラウンド数が最も多いクラス（＝枠数が最大のクラス）に律速される
+    const tournamentThroughputMinutes = Math.ceil((sum('tournamentRemaining') * avgDuration) / courts);
+    const maxTournamentRounds = Math.max(0, ...classStats.map(s => s.tournamentRoundsRemaining));
+    const tournamentRoundsMinutes = maxTournamentRounds * avgDuration;
+    const tournamentMinutes = Math.max(tournamentThroughputMinutes, tournamentRoundsMinutes);
+
+    // 予選が残っているクラスがある間は決勝トーナメントの組み合わせが確定しないため、
+    // 予選消化→決勝トーナメントの順に直列で進むものとして見積もる（安全側＝長めの試算になる）
+    const totalMinutes = leagueMinutes + tournamentMinutes;
 
     const [baseH, baseM] = (simCurrentTime || '08:50').split(':').map(n => parseInt(n, 10) || 0);
 
@@ -4167,7 +4190,12 @@ export default function App() {
       hours: Math.floor(totalMinutes / 60),
       minutes: totalMinutes % 60,
       endTimeStr,
-      lunchApplied
+      lunchApplied,
+      leagueMinutes,
+      tournamentMinutes,
+      tournamentRoundsMinutes,
+      tournamentThroughputMinutes,
+      maxTournamentRounds
     };
   })();
 
@@ -5874,6 +5902,12 @@ export default function App() {
                     <div className="text-center border-b md:border-b-0 md:border-r border-slate-700 pb-3 md:pb-0">
                        <span className="block text-xs text-slate-400 mb-1">残り総所要時間 (1試合{config.avgMatchDuration}分換算)</span>
                        <span className="text-2xl font-extrabold text-emerald-400">約 {simResult.hours}時間 {simResult.minutes}分</span>
+                       <span className="block text-xs text-slate-400 mt-1">
+                          内訳: 予選 {simResult.leagueMinutes}分 + 決勝T {simResult.tournamentMinutes}分
+                          {simResult.tournamentRoundsMinutes > simResult.tournamentThroughputMinutes && (
+                             <span className="text-sky-400">（{simResult.maxTournamentRounds}回戦の勝ち上がり待ちが律速）</span>
+                          )}
+                       </span>
                     </div>
                     <div className="text-center">
                        <span className="block text-xs text-slate-400 mb-1">大会予想終了時刻 ({simCurrentTime}時点基準)</span>

@@ -6689,6 +6689,8 @@ export default function App() {
                     </h4>
                     <p className="text-base text-gray-600 mb-4 font-medium">
                        現在登録されている「すべてのエントリーデータ」および「全試合結果・コート進行状態」を一括削除します。大会やり直し時やテスト終了時に使用してください。
+                       <br />
+                       <span className="text-sm text-gray-500">※「マスタ設定」（クラス・コート数・昼休み等の大会設定）は削除されず、そのまま残ります。</span>
                     </p>
                     <div className="bg-red-50 border-2 border-red-200 p-5 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                        <span className="text-base font-bold text-red-800">⚠️ 削除実行後はデータを元に戻せません</span>

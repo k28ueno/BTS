@@ -6060,9 +6060,9 @@ export default function App() {
                                        <button
                                          onClick={() => handleStepBackStatus(activeMatch.id)}
                                          title="ひとつ前の状態に戻す"
-                                         className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded"
+                                         className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold px-2.5 py-1 rounded shadow-xs flex items-center gap-1"
                                        >
-                                          <IconUndo />
+                                          <IconUndo /> 戻る
                                        </button>
                                     </div>
                                  )}

@@ -3369,10 +3369,31 @@ export default function App() {
 
   const toggleCheckIn = async (id, currentStatus) => {
     const newStatus = !currentStatus;
-    setEntries(entries.map(e => e.id === id ? {...e, checkedIn: newStatus} : e));
-    if (isSupabaseConfigured) {
-      await supabase.from('entries').update({ checkedin: newStatus }).eq('id', id);
+    const applyChange = async () => {
+      setEntries(entries.map(e => e.id === id ? {...e, checkedIn: newStatus} : e));
+      if (isSupabaseConfigured) {
+        await supabase.from('entries').update({ checkedin: newStatus }).eq('id', id);
+      }
+    };
+
+    // 「済」→「未」への変更は受付取消にあたるため、誤タップ防止にダイアログで確認する
+    if (currentStatus && !newStatus) {
+      setDialog({
+        title: "受付を取り消しますか？",
+        message: (
+          <div className="text-left text-sm text-gray-600">
+            ID {id} の受付状態を「済」から「未」に戻します。よろしいですか？
+          </div>
+        ),
+        confirmText: "受付を取り消す",
+        confirmBg: "bg-orange-500 hover:bg-orange-600",
+        onConfirm: () => { setDialog(null); applyChange(); },
+        onClose: () => setDialog(null)
+      });
+      return;
     }
+
+    await applyChange();
   };
 
   // ロックを保持していれば解放する（ログアウト・自動ログオフ時に呼ぶ）。

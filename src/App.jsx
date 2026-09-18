@@ -485,6 +485,15 @@ export default function App() {
     const matchRule = m.matchRule || getMatchRule(m.cls, m.matchType);
     const { team1, team2 } = getGameWins(m);
     const gamesToWin = matchRule.gamesToWin || 1;
+    const maxGames = gamesToWin * 2 - 1;
+    if (matchRule.forceAllGames && maxGames > 1) {
+      // 先取が決まっても最後まで消化する設定の場合、最終ゲームのスコアが確定するまで勝敗を確定しない
+      const lastGame = Array.isArray(m.gameScores) ? m.gameScores[maxGames - 1] : null;
+      if (!lastGame || !getGameWinner(lastGame.team1, lastGame.team2, getGameRule(matchRule, maxGames - 1))) return null;
+      if (team1 > team2) return { winnerId: m.team1Id, loserId: m.team2Id, isForfeit: false };
+      if (team2 > team1) return { winnerId: m.team2Id, loserId: m.team1Id, isForfeit: false };
+      return null;
+    }
     if (team1 >= gamesToWin) return { winnerId: m.team1Id, loserId: m.team2Id, isForfeit: false };
     if (team2 >= gamesToWin) return { winnerId: m.team2Id, loserId: m.team1Id, isForfeit: false };
     return null;
@@ -563,24 +572,25 @@ export default function App() {
   const getParticipantAnnouncement = (matchRule) => {
     if (!matchRule || !Array.isArray(matchRule.games) || matchRule.games.length === 0) return '';
     const gamesToWin = matchRule.gamesToWin || 1;
-    const setLabel = gamesToWin <= 1 ? '1セット先取' : `${gamesToWin}セット先取`;
+    const maxGames = gamesToWin * 2 - 1;
+    const setLabel = gamesToWin <= 1 ? '1ゲームのみ' : (matchRule.forceAllGames ? `${maxGames}ゲーム（先取なし・全消化）` : `${gamesToWin}セット先取`);
     if (gamesToWin <= 1) {
       const g = matchRule.games[0];
       return `${setLabel}・${g.points}点・デュース${g.deuce ? 'あり' : 'なし'}・MAX${g.maxPoints}点`;
     }
-    const maxGames = gamesToWin * 2 - 1;
     const lines = matchRule.games.slice(0, maxGames).map((g, i) => `第${i + 1}ゲーム：${g.points}点・デュース${g.deuce ? 'あり' : 'なし'}・MAX${g.maxPoints}点`);
     return `${setLabel}\n${lines.join('\n')}`;
   };
 
   // スコア入力中のgameScores配列から、今どのゲームまで入力欄を表示すべきかを求める。
   // 直前のゲームが確定するまで次のゲームは表示せず、勝敗が決した時点でそれ以上は表示しない
+  // （forceAllGamesが設定されている場合は、勝敗が決していても最終ゲームまで表示し続ける）
   const getVisibleGameCount = (matchRule, gameScoresSoFar) => {
     const gamesToWin = matchRule.gamesToWin || 1;
     const maxGames = gamesToWin * 2 - 1;
     let team1Wins = 0, team2Wins = 0;
     for (let i = 0; i < maxGames; i++) {
-      if (team1Wins >= gamesToWin || team2Wins >= gamesToWin) return i;
+      if (!matchRule.forceAllGames && (team1Wins >= gamesToWin || team2Wins >= gamesToWin)) return i;
       const g = gameScoresSoFar[i];
       if (!g || g.team1 === '' || g.team2 === '' || g.team1 == null || g.team2 == null) return i + 1;
       const gameRule = getGameRule(matchRule, i);
@@ -1398,11 +1408,29 @@ export default function App() {
       while (games.length < neededGames) {
         games.push({ ...(games[games.length - 1] || fallback.games[0]) });
       }
+      // 1ゲームのみに戻す場合、「先取が決まっても最後まで消化する」は意味を持たないため解除する
+      const forceAllGames = gamesToWin > 1 ? !!current.forceAllGames : false;
       return {
         ...prev,
         matchRules: {
           ...prev.matchRules,
-          [cls]: { ...(prev.matchRules && prev.matchRules[cls]), [matchType]: { gamesToWin, games } }
+          [cls]: { ...(prev.matchRules && prev.matchRules[cls]), [matchType]: { gamesToWin, games, forceAllGames } }
+        }
+      };
+    });
+  };
+
+  // 試合ルール設定：先取（2セット先取等）が決まった後も、残りのゲームを必ず消化させるかどうかを切り替える。
+  // trueの場合、getMatchResult/getVisibleGameCountは全ゲーム分のスコアが揃うまで試合を「未確定」として扱う
+  const setMatchRuleForceAllGames = (cls, matchType, forceAllGames) => {
+    setConfig(prev => {
+      const fallback = matchType === 'tournament' ? DEFAULT_TOURNAMENT_MATCH_RULE : DEFAULT_LEAGUE_MATCH_RULE;
+      const current = (prev.matchRules && prev.matchRules[cls] && prev.matchRules[cls][matchType]) || fallback;
+      return {
+        ...prev,
+        matchRules: {
+          ...prev.matchRules,
+          [cls]: { ...(prev.matchRules && prev.matchRules[cls]), [matchType]: { ...current, forceAllGames } }
         }
       };
     });
@@ -5232,6 +5260,7 @@ export default function App() {
                           const rule = getMatchRule(cls, matchType);
                           const gamesToWin = rule.gamesToWin;
                           const maxGames = gamesToWin * 2 - 1;
+                          const forceAllGames = !!rule.forceAllGames;
                           return (
                             <div key={matchType} className="bg-white border rounded p-3">
                               <div className="flex items-center justify-between mb-2">
@@ -5241,10 +5270,20 @@ export default function App() {
                                   value={gamesToWin}
                                   onChange={e => setMatchRuleGamesToWin(cls, matchType, parseInt(e.target.value, 10))}
                                 >
-                                  <option value={1}>1セット先取</option>
+                                  <option value={1}>1ゲームのみ</option>
                                   <option value={2}>2セット先取</option>
                                 </select>
                               </div>
+                              {gamesToWin > 1 && (
+                                <label className="flex items-center gap-1.5 mb-2 text-[11px] text-gray-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={forceAllGames}
+                                    onChange={e => setMatchRuleForceAllGames(cls, matchType, e.target.checked)}
+                                  />
+                                  <span>先取が決まっても{maxGames}ゲーム目まで必ず消化する（先取なし）</span>
+                                </label>
+                              )}
                               <div className="space-y-1.5">
                                 {Array.from({ length: maxGames }).map((_, i) => {
                                   const g = rule.games[i] || rule.games[rule.games.length - 1];
@@ -5278,7 +5317,7 @@ export default function App() {
                                   );
                                 })}
                               </div>
-                              <p className="text-[10px] text-gray-400 mt-2 whitespace-pre-line border-t pt-1.5">{getParticipantAnnouncement({ gamesToWin, games: rule.games.slice(0, maxGames) })}</p>
+                              <p className="text-[10px] text-gray-400 mt-2 whitespace-pre-line border-t pt-1.5">{getParticipantAnnouncement({ gamesToWin, forceAllGames, games: rule.games.slice(0, maxGames) })}</p>
                             </div>
                           );
                         })}
@@ -6840,7 +6879,7 @@ export default function App() {
               {/* 5. 試合ルールマスタ */}
               <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
                  <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">⑤ 試合ルールマスタ（ゲーム別点数・MAX点数・デュース）</h4>
-                 <p className="text-sm text-gray-600 leading-relaxed">マスタ設定の「試合ルール設定」で、クラス×予選/決勝ごとに、セット数（1セット先取／2セット先取）、各ゲームの点数・MAX点数・デュースの有無を自由な数値で設定できます。</p>
+                 <p className="text-sm text-gray-600 leading-relaxed">マスタ設定の「試合ルール設定」で、クラス×予選/決勝ごとに、セット数（1ゲームのみ／2セット先取）、各ゲームの点数・MAX点数・デュースの有無を自由な数値で設定できます。「2セット先取」では「先取が決まっても3ゲーム目まで必ず消化する（先取なし）」をあわせて設定することもでき、有効にすると2-0で決着していても3ゲーム目のスコアが入力されるまで試合は完了扱いになりません。</p>
                  <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
                     <li>対戦カードを生成した時点のルールがその試合に記録されます。生成後にマスタ設定を変更しても、既に生成済み・進行中・終了済みの試合のルールは変わりません（新たに生成する試合から新ルールが適用されます）。</li>
                     <li>MAX点数に達した場合はデュース中でも即座にその時点の得点が多い側の勝ちとなります。</li>

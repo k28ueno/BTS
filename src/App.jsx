@@ -29,8 +29,6 @@ const ENTRY_EXCEL_COLUMNS = [
 // 吸収するための別名リスト。normalizeHeaderText()で正規化した上でこの別名（同じく正規化済み）
 // のいずれかに一致すれば、その項目の列とみなす（列の並び順は問わない）
 const ENTRY_IMPORT_FIELD_ALIASES = {
-  id: ['ID', 'エントリーID', 'エントリー番号', '番号', 'No', 'No.'],
-  password: ['パスワード', 'Password', 'PW'],
   cls: ['クラス', 'Class', '種目', '部門', '出場クラス'],
   club: ['所属クラブ', 'クラブ', '所属', 'Club', '所属チーム', 'チーム'],
   clubRank: ['クラブ内順位', '順位', 'クラブ順位', 'クラブ内ランク', 'Rank'],
@@ -69,9 +67,11 @@ const resolveImportColumnMap = (headerRow) => {
   return map;
 };
 
-// 「列の対応確認」画面に表示する項目ラベルと、必須項目の一覧
+// 「列の対応確認」画面に表示する項目ラベルと、必須項目の一覧。
+// ID・パスワードはシステムが自動採番するため、インポート項目には含めない
+// （インポートは常に新規追加として扱う。既存エントリーの更新は編集画面から行う）
 const ENTRY_IMPORT_FIELD_LABELS = {
-  id: 'ID', password: 'パスワード', cls: 'クラス', club: '所属クラブ', clubRank: 'クラブ内順位',
+  cls: 'クラス', club: '所属クラブ', clubRank: 'クラブ内順位',
   p1LastName: '選手1_姓', p1FirstName: '選手1_名', p1LastFurigana: '選手1_姓ふりがな', p1FirstFurigana: '選手1_名ふりがな',
   p2LastName: '選手2_姓', p2FirstName: '選手2_名', p2LastFurigana: '選手2_姓ふりがな', p2FirstFurigana: '選手2_名ふりがな',
   feeCategory: '区分', contact: '連絡先', email: 'メール', checkedIn: '受付済'
@@ -3151,8 +3151,10 @@ export default function App() {
     reader.readAsArrayBuffer(file);
   };
 
-  // 「列の対応確認」画面で承認された対応表（columnMap）を使って、実際に各行を検証し、
-  // 既存IDと一致する行は更新、ID空欄の行は新規作成の対象に振り分ける。
+  // 「列の対応確認」画面で承認された対応表（columnMap）を使って、実際に各行を検証する。
+  // ID・パスワードはインポート項目に含めない（システムが自動採番するため）ため、
+  // インポートされた行は常にすべて新規エントリーとして追加する。既存エントリーを
+  // 更新したい場合はエントリー管理の「編集」から個別に行う
   // 実際の反映はその次の確認ダイアログでの承認後（applyImportedEntries）に行う
   const proceedImportWithMapping = () => {
     const { rows, columnMap } = importMapping;
@@ -3162,12 +3164,9 @@ export default function App() {
 
     const errors = [];
     const toCreate = [];
-    const toUpdate = [];
-    const existingIds = new Set(entries.map(ent => String(ent.id)));
 
     rows.forEach((row, idx) => {
       const rowNum = idx + 2; // 1行目は見出し行のため
-      const id = String(getCell(row, 'id') ?? '').trim();
       const cls = String(getCell(row, 'cls') ?? '').trim();
       const club = String(getCell(row, 'club') ?? '').trim();
       const p1LastName = String(getCell(row, 'p1LastName') ?? '').trim();
@@ -3200,60 +3199,53 @@ export default function App() {
         checkedIn: /^(true|1|済)$/i.test(String(getCell(row, 'checkedIn') ?? '').trim())
       };
 
-      if (id) {
-        if (!existingIds.has(id)) {
-          errors.push(`${rowNum}行目: ID「${id}」が見つかりません（新規登録する場合はID列を空欄にしてください）`);
-          return;
-        }
-        toUpdate.push({ id, ...record });
-      } else {
-        const password = String(getCell(row, 'password') ?? '').trim() || Math.floor(1000 + Math.random() * 9000).toString();
-        toCreate.push({ ...record, password });
-      }
+      const password = Math.floor(1000 + Math.random() * 9000).toString();
+      toCreate.push({ ...record, password });
     });
 
+    // データ削除時と同様、反映前にローカルバックアップを取るかどうかを選べる確認ダイアログを挟む
     setDialog({
       title: "インポート内容の確認",
       message: (
-        <div className="text-left space-y-2 text-sm">
-          <div>新規作成: <strong>{toCreate.length}件</strong> ／ 更新: <strong>{toUpdate.length}件</strong></div>
+        <div className="text-left space-y-4">
+          <p className="text-sm text-gray-700">Excelから読み込んだ内容を、新規エントリーとして<strong>{toCreate.length}件</strong>追加します。</p>
           {errors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700 max-h-40 overflow-y-auto">
+            <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700 max-h-40 overflow-y-auto text-sm">
               <div className="font-bold mb-1">スキップされる行（{errors.length}件）:</div>
               {errors.map((err, i) => <div key={i}>{err}</div>)}
             </div>
           )}
-          {(toCreate.length + toUpdate.length) === 0 && <div className="text-gray-500">反映できる行がありませんでした。</div>}
+          {toCreate.length === 0 ? (
+            <div className="text-gray-500 text-sm">追加できる行がありませんでした。</div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600">追加する前に、念のため現在のデータをローカルにバックアップ保存できます。</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={() => { handleExportBackup(); setDialog(null); applyImportedEntries(toCreate); }}
+                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg shadow-sm"
+                >
+                   📥 バックアップしてから追加
+                </button>
+                <button
+                  onClick={() => { setDialog(null); applyImportedEntries(toCreate); }}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg shadow-sm"
+                >
+                   バックアップせず追加
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ),
-      confirmText: (toCreate.length + toUpdate.length) > 0 ? "この内容で反映する" : undefined,
-      confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
-      onConfirm: (toCreate.length + toUpdate.length) > 0 ? () => applyImportedEntries(toCreate, toUpdate) : undefined,
       onClose: () => setDialog(null)
     });
   };
 
-  // 確認ダイアログ承認後、実際にSupabase・ローカルstateへ反映する
-  const applyImportedEntries = async (toCreate, toUpdate) => {
+  // 確認ダイアログ承認後、実際にSupabase・ローカルstateへ反映する（インポートは常に新規追加）
+  const applyImportedEntries = async (toCreate) => {
     setDialog(null);
     setLoading(true);
-
-    for (const rec of toUpdate) {
-      const p1Name = `${rec.p1LastName}${rec.p1FirstName}`;
-      const p2Name = `${rec.p2LastName}${rec.p2FirstName}`;
-      if (isSupabaseConfigured) {
-        await supabase.from('entries').update({
-          cls: rec.cls, contact: rec.contact, email: rec.email, club: rec.club,
-          p1name: p1Name, p1lastname: rec.p1LastName, p1firstname: rec.p1FirstName,
-          p1lastfurigana: rec.p1LastFurigana, p1firstfurigana: rec.p1FirstFurigana,
-          p1club: rec.club, p1fee: rec.feeCategory,
-          p2name: p2Name, p2lastname: rec.p2LastName, p2firstname: rec.p2FirstName,
-          p2lastfurigana: rec.p2LastFurigana, p2firstfurigana: rec.p2FirstFurigana,
-          p2club: rec.club, p2fee: rec.feeCategory,
-          club_rank: rec.clubRank, checkedin: rec.checkedIn
-        }).eq('id', rec.id);
-      }
-    }
 
     let currentMaxId = entries.reduce((max, ent) => Math.max(max, parseInt(ent.id, 10) || 0), 0);
     const createdEntries = [];
@@ -3299,28 +3291,10 @@ export default function App() {
       });
     }
 
-    setEntries(prev => [
-      ...prev.map(ent => {
-        const upd = toUpdate.find(u => u.id === ent.id);
-        if (!upd) return ent;
-        const p1Name = `${upd.p1LastName}${upd.p1FirstName}`;
-        const p2Name = `${upd.p2LastName}${upd.p2FirstName}`;
-        return {
-          ...ent, cls: upd.cls, contact: upd.contact, email: upd.email, club: upd.club,
-          p1Name, p1LastName: upd.p1LastName, p1FirstName: upd.p1FirstName,
-          p1LastFurigana: upd.p1LastFurigana, p1FirstFurigana: upd.p1FirstFurigana,
-          p1Club: upd.club, p1Fee: upd.feeCategory,
-          p2Name, p2LastName: upd.p2LastName, p2FirstName: upd.p2FirstName,
-          p2LastFurigana: upd.p2LastFurigana, p2FirstFurigana: upd.p2FirstFurigana,
-          p2Club: upd.club, p2Fee: upd.feeCategory,
-          feeCategory: upd.feeCategory, clubRank: upd.clubRank, checkedIn: upd.checkedIn
-        };
-      }),
-      ...createdEntries
-    ]);
+    setEntries(prev => [...prev, ...createdEntries]);
 
     setLoading(false);
-    setDialog({ title: "インポート完了", message: `新規作成 ${toCreate.length}件、更新 ${toUpdate.length}件を反映しました。`, onClose: () => setDialog(null) });
+    setDialog({ title: "インポート完了", message: `新規エントリー ${toCreate.length}件を追加しました。`, onClose: () => setDialog(null) });
   };
 
   const handleDeleteSelfEntry = (id, p1Name) => {

@@ -3230,43 +3230,38 @@ export default function App() {
       toCreate.push({ ...record, password });
     });
 
-    // データ削除時と同様、反映前にローカルバックアップを取るかどうかを選べる確認ダイアログを挟む
+    // バックアップの要否は「Excelインポート」ボタン押下時点（handleStartImport）で既に確認済みのため、
+    // ここでは反映内容の確認のみ行う
     setDialog({
       title: "インポート内容の確認",
       message: (
-        <div className="text-left space-y-4">
-          <p className="text-sm text-gray-700">Excelから読み込んだ内容を、新規エントリーとして<strong>{toCreate.length}件</strong>追加します。</p>
+        <div className="text-left space-y-2 text-sm">
+          <div>新規作成: <strong>{toCreate.length}件</strong></div>
           {errors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700 max-h-40 overflow-y-auto text-sm">
+            <div className="bg-red-50 border border-red-200 rounded p-2 text-red-700 max-h-40 overflow-y-auto">
               <div className="font-bold mb-1">スキップされる行（{errors.length}件）:</div>
               {errors.map((err, i) => <div key={i}>{err}</div>)}
             </div>
           )}
-          {toCreate.length === 0 ? (
-            <div className="text-gray-500 text-sm">追加できる行がありませんでした。</div>
-          ) : (
-            <>
-              <p className="text-sm text-gray-600">追加する前に、念のため現在のデータをローカルにバックアップ保存できます。</p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  onClick={() => { handleExportBackup(); setDialog(null); applyImportedEntries(toCreate); }}
-                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg shadow-sm"
-                >
-                   📥 バックアップしてから追加
-                </button>
-                <button
-                  onClick={() => { setDialog(null); applyImportedEntries(toCreate); }}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg shadow-sm"
-                >
-                   バックアップせず追加
-                </button>
-              </div>
-            </>
-          )}
+          {toCreate.length === 0 && <div className="text-gray-500">追加できる行がありませんでした。</div>}
         </div>
       ),
+      confirmText: toCreate.length > 0 ? "この内容で反映する" : undefined,
+      confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
+      onConfirm: toCreate.length > 0 ? () => applyImportedEntries(toCreate) : undefined,
       onClose: () => setDialog(null)
     });
+  };
+
+  // 「Excelインポート」ボタン押下時点で、データ削除時と同様にローカルバックアップを取るか選べる
+  // 確認ダイアログを表示し、選択後にファイル選択ダイアログを開く
+  const handleStartImport = () => {
+    confirmDestructiveAction(
+      "Excelインポート",
+      "Excelファイルから読み込んだ内容を、新規エントリーとして追加します。",
+      () => entryImportFileInputRef.current?.click(),
+      "インポート"
+    );
   };
 
   // 確認ダイアログ承認後、実際にSupabase・ローカルstateへ反映する（インポートは常に新規追加）
@@ -5408,7 +5403,7 @@ export default function App() {
                        📄 インポート用ひな形
                     </button>
                     <button
-                      onClick={() => entryImportFileInputRef.current?.click()}
+                      onClick={handleStartImport}
                       className="text-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-3 py-2 rounded shadow-xs"
                     >
                        📥 Excelインポート
@@ -6885,7 +6880,7 @@ export default function App() {
                       ['試合のスコア用紙（得点用紙）を印刷したい', '個別の印刷ボタンはありません。コート進行画面で「試合受付」ボタンを押すと、その試合専用の記入用紙（A4横向き）の印刷ダイアログが自動的に開きます。'],
                       ['選手名の入っていない予備の用紙を用意しておきたい', 'コート進行画面上部の「予備用紙印刷」に枚数を入力して「印刷」を押すと、選手名・クラス・試合番号・コート番号を空欄にした手書き用のスコアシートを、指定枚数まとめて印刷できます（システムが使えない場合の紙運用の備えとして利用できます）。'],
                       ['試合ルールを変更したのに既存の試合に反映されない', '仕様です。ルール変更は、変更後に新しく生成する試合にのみ適用されます。既に生成済みの試合のルールを変えたい場合は、対象試合を含む対戦カードを作り直してください。'],
-                      ['エントリーをExcelで一括登録したい', 'エントリー管理画面の「📄 インポート用ひな形」から、取り込める列見出し・記入例入りのExcelファイルをダウンロードできます（1行目が記入例のため、実際のデータを入力したらその行は削除するか上書きしてください）。入力後は「Excelインポート」からファイルを選択すると、列見出しを自動判定した「列の対応確認」画面が開きます（ID・パスワードは対象外で、システムが自動採番します）。対応が誤っていればプルダウンで選び直し、「次へ」で内容を確認してから反映します。反映前には、削除操作と同様にローカルバックアップを取るかどうかを選べる確認ダイアログが表示されます。読み込んだ行は常に新規エントリーとして追加されます（既存エントリーの更新はできません。個別に「編集」から行ってください）。'],
+                      ['エントリーをExcelで一括登録したい', 'エントリー管理画面の「📄 インポート用ひな形」から、取り込める列見出し・記入例入りのExcelファイルをダウンロードできます（1行目が記入例のため、実際のデータを入力したらその行は削除するか上書きしてください）。入力後、「Excelインポート」を押すと、削除操作と同様にローカルバックアップを取るかどうかを選べる確認ダイアログがまず表示され、選択後にファイル選択画面が開きます。ファイルを選ぶと列見出しを自動判定した「列の対応確認」画面が開くので（ID・パスワードは対象外で、システムが自動採番します）、対応が誤っていればプルダウンで選び直し、「次へ」で内容を確認してから反映します。読み込んだ行は常に新規エントリーとして追加されます（既存エントリーの更新はできません。個別に「編集」から行ってください）。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (

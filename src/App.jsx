@@ -17,14 +17,6 @@ const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確�
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
 const DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES = 10; // 無操作で自動ログオフするまでの時間の既定値（分）。マスタ設定で変更可能
 
-// エントリー管理のExcelインポート/エクスポートで使う列見出し（この並び順でExcelに出力する）
-const ENTRY_EXCEL_COLUMNS = [
-  'ID', 'パスワード', 'クラス', '所属クラブ', 'クラブ内順位',
-  '選手1_姓', '選手1_名', '選手1_姓ふりがな', '選手1_名ふりがな',
-  '選手2_姓', '選手2_名', '選手2_姓ふりがな', '選手2_名ふりがな',
-  '区分', '連絡先', 'メール', '受付済'
-];
-
 // Excelインポート時、列見出しの表記ゆれ（別の言い回し・全角半角・区切り記号の有無等）を
 // 吸収するための別名リスト。normalizeHeaderText()で正規化した上でこの別名（同じく正規化済み）
 // のいずれかに一致すれば、その項目の列とみなす（列の並び順は問わない）
@@ -42,8 +34,7 @@ const ENTRY_IMPORT_FIELD_ALIASES = {
   p2FirstFurigana: ['選手2_名ふりがな', '選手2名ふりがな', '名ふりがな2', 'めい2', 'Player2FirstFurigana'],
   feeCategory: ['区分', '参加区分', 'Fee', 'Category', '料金区分'],
   contact: ['連絡先', '電話', '電話番号', '携帯', '携帯番号', 'Tel', 'Phone', 'TEL'],
-  email: ['メール', 'Email', 'E-mail', 'メールアドレス', 'Mail'],
-  checkedIn: ['受付済', 'チェックイン', 'CheckedIn', '受付', '受付状況']
+  email: ['メール', 'Email', 'E-mail', 'メールアドレス', 'Mail']
 };
 
 // 列見出し比較用の正規化：前後の空白除去・小文字化・全角英数を半角化し、
@@ -68,15 +59,18 @@ const resolveImportColumnMap = (headerRow) => {
 };
 
 // 「列の対応確認」画面に表示する項目ラベルと、必須項目の一覧。
-// ID・パスワードはシステムが自動採番するため、インポート項目には含めない
-// （インポートは常に新規追加として扱う。既存エントリーの更新は編集画面から行う）
+// ID・パスワード・受付済はシステム側で自動採番・管理する項目のため、インポート項目には
+// 含めない（インポートは常に新規追加として扱う。既存エントリーの更新・受付処理は
+// それぞれ編集画面・受付処理画面から行う）。
+// Excelエクスポートもこの列構成・順序に統一し、インポート・エクスポートの形式を一致させる
 const ENTRY_IMPORT_FIELD_LABELS = {
   cls: 'クラス', club: '所属クラブ', clubRank: 'クラブ内順位',
   p1LastName: '選手1_姓', p1FirstName: '選手1_名', p1LastFurigana: '選手1_姓ふりがな', p1FirstFurigana: '選手1_名ふりがな',
   p2LastName: '選手2_姓', p2FirstName: '選手2_名', p2LastFurigana: '選手2_姓ふりがな', p2FirstFurigana: '選手2_名ふりがな',
-  feeCategory: '区分', contact: '連絡先', email: 'メール', checkedIn: '受付済'
+  feeCategory: '区分', contact: '連絡先', email: 'メール'
 };
 const ENTRY_IMPORT_REQUIRED_FIELDS = ['cls', 'p1LastName', 'p1FirstName', 'p2LastName', 'p2FirstName'];
+const ENTRY_EXCEL_COLUMNS = Object.values(ENTRY_IMPORT_FIELD_LABELS);
 
 // クラス別メインコートの色分け表示に使う配色。クラス数が多い場合は先頭から巡回して使い回す
 const CLASS_COURT_COLORS = [
@@ -3103,8 +3097,6 @@ export default function App() {
   // エントリー一覧をExcel（.xlsx）としてダウンロードする
   const handleExportEntriesExcel = () => {
     const rows = entries.map(ent => ({
-      'ID': ent.id,
-      'パスワード': ent.password || '',
       'クラス': ent.cls || '',
       '所属クラブ': ent.club || '',
       'クラブ内順位': typeof ent.clubRank === 'number' ? ent.clubRank : '',
@@ -3118,8 +3110,7 @@ export default function App() {
       '選手2_名ふりがな': ent.p2FirstFurigana || '',
       '区分': ent.feeCategory || ent.p1Fee || '一般',
       '連絡先': ent.contact || '',
-      'メール': ent.email || '',
-      '受付済': ent.checkedIn ? 'TRUE' : 'FALSE'
+      'メール': ent.email || ''
     }));
     const ws = XLSX.utils.json_to_sheet(rows, { header: ENTRY_EXCEL_COLUMNS });
     const wb = XLSX.utils.book_new();
@@ -3128,7 +3119,7 @@ export default function App() {
     XLSX.writeFile(wb, `エントリー一覧_${dateStr}.xlsx`);
   };
 
-  // インポート用のひな形（ID・パスワードを含まない、Excelインポートがそのまま受け付ける列構成）をダウンロードする。
+  // インポート用のひな形（ID・パスワード・受付済を含まない、Excelエクスポートと同一の列構成）をダウンロードする。
   // 記入例の行を1行入れておく。「クラス」列はあえて実在しないクラス名にしてあり、
   // 削除し忘れたまま取り込んでもエラー行として検出され、実データとして紛れ込まないようにしている
   const handleDownloadImportTemplate = () => {
@@ -3146,10 +3137,9 @@ export default function App() {
       '選手2_名ふりがな': 'じろう',
       '区分': '一般',
       '連絡先': '090-1234-5678',
-      'メール': '',
-      '受付済': 'FALSE'
+      'メール': ''
     };
-    const ws = XLSX.utils.json_to_sheet([exampleRow], { header: Object.values(ENTRY_IMPORT_FIELD_LABELS) });
+    const ws = XLSX.utils.json_to_sheet([exampleRow], { header: ENTRY_EXCEL_COLUMNS });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'エントリー');
     XLSX.writeFile(wb, 'エントリーインポート_ひな形.xlsx');
@@ -3223,7 +3213,7 @@ export default function App() {
         feeCategory: String(getCell(row, 'feeCategory') ?? '').trim() || '一般',
         contact: String(getCell(row, 'contact') ?? '').trim(),
         email: String(getCell(row, 'email') ?? '').trim(),
-        checkedIn: /^(true|1|済)$/i.test(String(getCell(row, 'checkedIn') ?? '').trim())
+        checkedIn: false // 受付済はインポート対象外。実際の受付処理は当日「受付処理」画面から行う
       };
 
       const password = Math.floor(1000 + Math.random() * 9000).toString();

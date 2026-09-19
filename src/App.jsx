@@ -325,8 +325,8 @@ export default function App() {
   const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league');
-  // ドロー編成（予選リーグ）で、まだ組が1つも入っていない空のグループ列を何番目まで表示するか（クラス別）。
-  // A〜Cは常時表示、それ以降は「＋グループを追加」ボタンで手動公開する（一度組を入れれば自動的に表示され続ける）
+  // ドロー編成（予選リーグ）で、グループ列を何番目まで表示するか（クラス別）。未設定時はA〜Cを表示。
+  // 「＋グループを追加」で増やし、末尾の空グループの「✕」で減らせる（組が入っているグループより手前には減らせない）
   const [visibleEmptyGroupCount, setVisibleEmptyGroupCount] = useState({});
   const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1LastFurigana: '', p1FirstFurigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2LastFurigana: '', p2FirstFurigana: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', email: '', clubRank: '' });
   // ふりがな欄（姓・名それぞれ）をユーザーが直接編集したら、以後は自動補完で上書きしない
@@ -5661,64 +5661,79 @@ export default function App() {
                      const allGroupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
                      const usedGroupLetters = allGroupLetters.filter(g => entries.some(e => e.cls === drawClass && e.checkedIn && e.group === g));
                      const lastUsedIndex = usedGroupLetters.length > 0 ? allGroupLetters.indexOf(usedGroupLetters[usedGroupLetters.length - 1]) : -1;
-                     // 常時A〜Cまでは空でも表示し、それ以降は既に組が入っているか「＋グループを追加」で
-                     // 手動公開した分だけ表示する
-                     const visibleCount = Math.max(3, lastUsedIndex + 1, visibleEmptyGroupCount[drawClass] || 0);
+                     // 初期状態ではA〜Cまでを空でも表示する。「＋グループを追加」「削除」で
+                     // 手動上書きされた後は、その値（override）を優先する（組が入っている
+                     // グループより手前には減らせない）
+                     const defaultVisibleCount = 3;
+                     const override = visibleEmptyGroupCount[drawClass];
+                     const visibleCount = Math.max(lastUsedIndex + 1, override !== undefined ? override : defaultVisibleCount);
                      const visibleGroupLetters = allGroupLetters.slice(0, Math.min(visibleCount, allGroupLetters.length));
-                     return ['未割り当て', ...visibleGroupLetters];
-                   })().map(groupName => {
-                      const groupTeams = entries.filter(e => e.cls === drawClass && e.checkedIn && e.group === groupName);
-                      const isDropTarget = tapMoveSelection && tapMoveSelection.kind === 'entry';
-                      return (
-                        <div
-                          key={`admin-group-${groupName}`}
-                          className={`min-w-[210px] max-w-[210px] rounded-lg p-3 border-2 border-dashed flex-shrink-0 ${isDropTarget ? 'bg-indigo-50 border-indigo-400' : 'bg-gray-100 border-gray-300'}`}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, groupName)}
-                          onClick={handleGroupZoneTap(groupName)}
-                        >
-                           <h4 className="font-bold mb-3 border-b-2 pb-2 flex justify-between items-center">
-                              <span>{groupName === '未割り当て' ? '未割り当て (受付済)' : `グループ ${groupName}`}</span>
-                              <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full font-normal text-gray-600">{groupTeams.length}組</span>
-                           </h4>
-                           <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
-                              {groupTeams.map(ent => {
-                                const isSelected = tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
-                                return (
-                                 <div
-                                   key={ent.id}
-                                   draggable
-                                   onDragStart={(e) => handleDragStart(e, ent.id)}
-                                   onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
-                                   className={`bg-white p-2.5 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-[#2c5f4e] transition-colors ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
-                                 >
-                                    <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
-                                    <div>{ent.p1Name}・{ent.p2Name}</div>
-                                    {ent.club && <div className="text-xs text-gray-500 font-normal mt-0.5 truncate">{ent.club}</div>}
-                                 </div>
-                                );
-                              })}
-                              {groupTeams.length === 0 && (
-                                <div className="text-xs text-gray-400 text-center py-8">ここにドロップ、またはタップで配置</div>
-                              )}
-                           </div>
-                        </div>
-                      );
-                   })}
-                   {(() => {
-                     const allGroupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-                     const usedGroupLetters = allGroupLetters.filter(g => entries.some(e => e.cls === drawClass && e.checkedIn && e.group === g));
-                     const lastUsedIndex = usedGroupLetters.length > 0 ? allGroupLetters.indexOf(usedGroupLetters[usedGroupLetters.length - 1]) : -1;
-                     const visibleCount = Math.max(3, lastUsedIndex + 1, visibleEmptyGroupCount[drawClass] || 0);
-                     if (visibleCount >= allGroupLetters.length) return null;
-                     const nextGroupLetter = allGroupLetters[visibleCount];
+                     const lastVisibleGroupLetter = visibleGroupLetters[visibleGroupLetters.length - 1];
+
                      return (
-                       <button
-                         onClick={() => setVisibleEmptyGroupCount(prev => ({ ...prev, [drawClass]: visibleCount + 1 }))}
-                         className="min-w-[100px] flex-shrink-0 self-start rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-[#2c5f4e] hover:text-[#2c5f4e] font-bold text-sm py-3 px-3"
-                       >
-                          ＋ グループ{nextGroupLetter}を追加
-                       </button>
+                       <>
+                         {['未割り当て', ...visibleGroupLetters].map(groupName => {
+                            const groupTeams = entries.filter(e => e.cls === drawClass && e.checkedIn && e.group === groupName);
+                            const isDropTarget = tapMoveSelection && tapMoveSelection.kind === 'entry';
+                            // 空で、かつ一番末尾（これより後ろに表示中のグループが無い）のグループのみ削除できる。
+                            // 間のグループを消すと後続グループとの対応がずれるため許可しない
+                            const isDeletable = groupName !== '未割り当て' && groupTeams.length === 0 && groupName === lastVisibleGroupLetter;
+                            return (
+                              <div
+                                key={`admin-group-${groupName}`}
+                                className={`min-w-[210px] max-w-[210px] rounded-lg p-3 border-2 border-dashed flex-shrink-0 ${isDropTarget ? 'bg-indigo-50 border-indigo-400' : 'bg-gray-100 border-gray-300'}`}
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDrop(e, groupName)}
+                                onClick={handleGroupZoneTap(groupName)}
+                              >
+                                 <h4 className="font-bold mb-3 border-b-2 pb-2 flex justify-between items-center">
+                                    <span>{groupName === '未割り当て' ? '未割り当て (受付済)' : `グループ ${groupName}`}</span>
+                                    <div className="flex items-center gap-1.5">
+                                       <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full font-normal text-gray-600">{groupTeams.length}組</span>
+                                       {isDeletable && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setVisibleEmptyGroupCount(prev => ({ ...prev, [drawClass]: visibleCount - 1 })); }}
+                                            title={`グループ${groupName}を削除`}
+                                            className="text-gray-400 hover:text-red-600 font-bold text-xs w-4 h-4 flex items-center justify-center shrink-0"
+                                          >
+                                             ✕
+                                          </button>
+                                       )}
+                                    </div>
+                                 </h4>
+                                 <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
+                                    {groupTeams.map(ent => {
+                                      const isSelected = tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
+                                      return (
+                                       <div
+                                         key={ent.id}
+                                         draggable
+                                         onDragStart={(e) => handleDragStart(e, ent.id)}
+                                         onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
+                                         className={`bg-white p-2.5 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-[#2c5f4e] transition-colors ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
+                                       >
+                                          <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
+                                          <div>{ent.p1Name}・{ent.p2Name}</div>
+                                          {ent.club && <div className="text-xs text-gray-500 font-normal mt-0.5 truncate">{ent.club}</div>}
+                                       </div>
+                                      );
+                                    })}
+                                    {groupTeams.length === 0 && (
+                                      <div className="text-xs text-gray-400 text-center py-8">ここにドロップ、またはタップで配置</div>
+                                    )}
+                                 </div>
+                              </div>
+                            );
+                         })}
+                         {visibleCount < allGroupLetters.length && (
+                           <button
+                             onClick={() => setVisibleEmptyGroupCount(prev => ({ ...prev, [drawClass]: visibleCount + 1 }))}
+                             className="min-w-[100px] flex-shrink-0 self-start rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-[#2c5f4e] hover:text-[#2c5f4e] font-bold text-sm py-3 px-3"
+                           >
+                              ＋ グループ{allGroupLetters[visibleCount]}を追加
+                           </button>
+                         )}
+                       </>
                      );
                    })()}
                 </div>

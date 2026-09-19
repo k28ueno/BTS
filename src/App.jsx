@@ -1397,9 +1397,12 @@ export default function App() {
     setPrintMatchId(matchId);
   };
 
-  // 試合ルール設定（マスタ設定画面）：クラス×ラウンドのゲーム数（1/2セット先取）を変更する。
+  // 試合ルール設定（マスタ設定画面）：クラス×ラウンドの形式（1ゲームのみ／2セット先取／
+  // 3ゲーム＝先取が決まっても最後まで消化する）を1つのセレクトで切り替える。
   // 必要なゲーム数分だけ games 配列を確保し、既存のゲーム別設定はできるだけ保持する
-  const setMatchRuleGamesToWin = (cls, matchType, gamesToWin) => {
+  const setMatchRuleFormat = (cls, matchType, formatValue) => {
+    const gamesToWin = formatValue === '1' ? 1 : 2;
+    const forceAllGames = formatValue === '3f';
     setConfig(prev => {
       const fallback = matchType === 'tournament' ? DEFAULT_TOURNAMENT_MATCH_RULE : DEFAULT_LEAGUE_MATCH_RULE;
       const current = (prev.matchRules && prev.matchRules[cls] && prev.matchRules[cls][matchType]) || fallback;
@@ -1408,29 +1411,11 @@ export default function App() {
       while (games.length < neededGames) {
         games.push({ ...(games[games.length - 1] || fallback.games[0]) });
       }
-      // 1ゲームのみに戻す場合、「先取が決まっても最後まで消化する」は意味を持たないため解除する
-      const forceAllGames = gamesToWin > 1 ? !!current.forceAllGames : false;
       return {
         ...prev,
         matchRules: {
           ...prev.matchRules,
           [cls]: { ...(prev.matchRules && prev.matchRules[cls]), [matchType]: { gamesToWin, games, forceAllGames } }
-        }
-      };
-    });
-  };
-
-  // 試合ルール設定：先取（2セット先取等）が決まった後も、残りのゲームを必ず消化させるかどうかを切り替える。
-  // trueの場合、getMatchResult/getVisibleGameCountは全ゲーム分のスコアが揃うまで試合を「未確定」として扱う
-  const setMatchRuleForceAllGames = (cls, matchType, forceAllGames) => {
-    setConfig(prev => {
-      const fallback = matchType === 'tournament' ? DEFAULT_TOURNAMENT_MATCH_RULE : DEFAULT_LEAGUE_MATCH_RULE;
-      const current = (prev.matchRules && prev.matchRules[cls] && prev.matchRules[cls][matchType]) || fallback;
-      return {
-        ...prev,
-        matchRules: {
-          ...prev.matchRules,
-          [cls]: { ...(prev.matchRules && prev.matchRules[cls]), [matchType]: { ...current, forceAllGames } }
         }
       };
     });
@@ -5261,29 +5246,21 @@ export default function App() {
                           const gamesToWin = rule.gamesToWin;
                           const maxGames = gamesToWin * 2 - 1;
                           const forceAllGames = !!rule.forceAllGames;
+                          const formatValue = gamesToWin <= 1 ? '1' : (forceAllGames ? '3f' : '2');
                           return (
                             <div key={matchType} className="bg-white border rounded p-3">
                               <div className="flex items-center justify-between mb-2">
                                 <span className="font-bold text-xs text-gray-600">{matchType === 'league' ? '予選' : '決勝'}</span>
                                 <select
                                   className="text-xs border rounded p-1"
-                                  value={gamesToWin}
-                                  onChange={e => setMatchRuleGamesToWin(cls, matchType, parseInt(e.target.value, 10))}
+                                  value={formatValue}
+                                  onChange={e => setMatchRuleFormat(cls, matchType, e.target.value)}
                                 >
-                                  <option value={1}>1ゲームのみ</option>
-                                  <option value={2}>2セット先取</option>
+                                  <option value="1">1ゲームのみ</option>
+                                  <option value="2">2セット先取</option>
+                                  <option value="3f">3ゲーム（先取なし・全消化）</option>
                                 </select>
                               </div>
-                              {gamesToWin > 1 && (
-                                <label className="flex items-center gap-1.5 mb-2 text-[11px] text-gray-600">
-                                  <input
-                                    type="checkbox"
-                                    checked={forceAllGames}
-                                    onChange={e => setMatchRuleForceAllGames(cls, matchType, e.target.checked)}
-                                  />
-                                  <span>先取が決まっても{maxGames}ゲーム目まで必ず消化する（先取なし）</span>
-                                </label>
-                              )}
                               <div className="space-y-1.5">
                                 {Array.from({ length: maxGames }).map((_, i) => {
                                   const g = rule.games[i] || rule.games[rule.games.length - 1];

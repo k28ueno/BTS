@@ -348,8 +348,7 @@ export default function App() {
   const [receptionSortSnapshot, setReceptionSortSnapshot] = useState({});
   const [scoreModal, setScoreModal] = useState(null);
   const [printMatchId, setPrintMatchId] = useState(null); // スコアシート印刷対象の試合ID
-  const [printBlankSheetCount, setPrintBlankSheetCount] = useState(null); // 予備用紙（白紙スコアシート）の印刷枚数。nullは非表示
-  const [blankSheetPrintQty, setBlankSheetPrintQty] = useState(5); // 予備用紙の印刷枚数入力欄の値
+  const [printBlankSheetCount, setPrintBlankSheetCount] = useState(null); // 白紙スコアシートの印刷トリガー（1件固定）。nullは非表示
 
   const [testGenCounts, setTestGenCounts] = useState({});
 
@@ -5995,24 +5994,13 @@ export default function App() {
             <div>
                <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
                   <h3 className="text-xl font-bold flex items-center gap-2"><IconMatch /> コート進行・ドラッグ＆ドロップ割当</h3>
-                  <div className="flex items-center gap-2 bg-white border rounded-lg px-3 py-1.5 shadow-xs">
-                     <span className="text-xs font-bold text-gray-600 whitespace-nowrap">📄 予備用紙印刷</span>
-                     <input
-                       type="number" min="1" max="50"
-                       value={blankSheetPrintQty}
-                       onChange={e => setBlankSheetPrintQty(Math.max(1, parseInt(e.target.value) || 1))}
-                       onFocus={e => e.target.select()}
-                       className="w-14 border rounded px-1.5 py-1 text-sm text-center"
-                     />
-                     <span className="text-xs text-gray-500">枚</span>
-                     <button
-                       onClick={() => setPrintBlankSheetCount(blankSheetPrintQty)}
-                       className="text-xs bg-gray-700 hover:bg-gray-800 text-white font-bold px-2.5 py-1.5 rounded shadow-xs whitespace-nowrap"
-                       title="選手名・クラス・試合番号などを空欄にした、手書き用のスコアシートを印刷します"
-                     >
-                       印刷
-                     </button>
-                  </div>
+                  <button
+                    onClick={() => setPrintBlankSheetCount(1)}
+                    className="flex items-center gap-1.5 bg-white border rounded-lg px-3 py-1.5 shadow-xs text-xs font-bold text-gray-600 hover:bg-gray-50 whitespace-nowrap"
+                    title="選手名・クラス・試合番号などを空欄にした、手書き用のスコアシートを印刷します"
+                  >
+                     📄 スコアシート(白紙)印刷
+                  </button>
                </div>
 
                {tapMoveSelection && tapMoveSelection.kind === 'match' && (
@@ -6819,7 +6807,7 @@ export default function App() {
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成の対象になるのは受付済の組だけです。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。'],
-                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「予備用紙印刷」から、選手名等を空欄にした手書き用スコアシートを複数枚まとめて印刷することもできます。'],
+                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],
@@ -6926,7 +6914,7 @@ export default function App() {
                       ['一方の組が欠場・棄権した', 'コート進行画面のスコア入力から「棄権」を選択すると、出場した側の不戦勝として記録されます（得失点差には反映されません）。誤操作の場合は「スコア解除」で取り消せます。'],
                       ['試合結果を新聞社等に提出したい', '「結果PDF」画面で各クラスの優勝・準優勝・3位（実施した場合）をまとめて表示し、ブラウザの印刷機能からPDF保存できます。'],
                       ['試合のスコア用紙（得点用紙）を印刷したい', '個別の印刷ボタンはありません。コート進行画面で「試合受付」ボタンを押すと、その試合専用の記入用紙（A4横向き）の印刷ダイアログが自動的に開きます。'],
-                      ['選手名の入っていない予備の用紙を用意しておきたい', 'コート進行画面上部の「予備用紙印刷」に枚数を入力して「印刷」を押すと、選手名・クラス・試合番号・コート番号を空欄にした手書き用のスコアシートを、指定枚数まとめて印刷できます（システムが使えない場合の紙運用の備えとして利用できます）。'],
+                      ['選手名の入っていない予備の用紙を用意しておきたい', 'コート進行画面上部の「スコアシート(白紙)印刷」を押すと、選手名・クラス・試合番号・コート番号を空欄にした手書き用のスコアシートを印刷できます（システムが使えない場合の紙運用の備えとして利用できます）。複数枚必要な場合は印刷ダイアログの部数指定で枚数を増やしてください。'],
                       ['試合ルールを変更したのに既存の試合に反映されない', '仕様です。ルール変更は、変更後に新しく生成する試合にのみ適用されます。既に生成済みの試合のルールを変えたい場合は、対象試合を含む対戦カードを作り直してください。'],
                       ['エントリーをExcelで一括登録したい', 'エントリー管理画面の「📄 インポート用ひな形」から、取り込める列見出し・記入例入りのExcelファイルをダウンロードできます（1行目が記入例のため、実際のデータを入力したらその行は削除するか上書きしてください）。入力後、「Excelインポート」を押すと、削除操作と同様にローカルバックアップを取るかどうかを選べる確認ダイアログがまず表示され、選択後にファイル選択画面が開きます。ファイルを選ぶと列見出しを自動判定した「列の対応確認」画面が開くので（ID・パスワードは対象外で、システムが自動採番します）、対応が誤っていればプルダウンで選び直し、「次へ」で内容を確認してから反映します。読み込んだ行は常に新規エントリーとして追加されます（既存エントリーの更新はできません。個別に「編集」から行ってください）。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],

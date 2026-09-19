@@ -7346,7 +7346,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="text-[9px] text-gray-500 mb-1">{announcementText || ' '}</div>
+              <div className="text-sm font-bold text-black mb-1.5">{announcementText || ' '}</div>
               <div className="space-y-2">
                 {['第一ゲーム', '第二ゲーム', '第三ゲーム'].map(gameBox)}
               </div>

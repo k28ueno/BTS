@@ -5656,7 +5656,7 @@ export default function App() {
                 </div>
               )}
               {drawType === 'league' ? (
-                <div className="flex gap-4 overflow-x-auto pb-6 w-full cursor-grab active:cursor-grabbing">
+                <div className="flex gap-3 overflow-x-auto pb-6 w-full cursor-grab active:cursor-grabbing">
                    {(() => {
                      const allGroupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
                      const usedGroupLetters = allGroupLetters.filter(g => entries.some(e => e.cls === drawClass && e.checkedIn && e.group === g));
@@ -5672,7 +5672,7 @@ export default function App() {
                       return (
                         <div
                           key={`admin-group-${groupName}`}
-                          className={`min-w-[260px] max-w-[260px] rounded-lg p-3 border-2 border-dashed flex-shrink-0 ${isDropTarget ? 'bg-indigo-50 border-indigo-400' : 'bg-gray-100 border-gray-300'}`}
+                          className={`min-w-[210px] max-w-[210px] rounded-lg p-3 border-2 border-dashed flex-shrink-0 ${isDropTarget ? 'bg-indigo-50 border-indigo-400' : 'bg-gray-100 border-gray-300'}`}
                           onDragOver={handleDragOver}
                           onDrop={(e) => handleDrop(e, groupName)}
                           onClick={handleGroupZoneTap(groupName)}
@@ -5690,10 +5690,11 @@ export default function App() {
                                    draggable
                                    onDragStart={(e) => handleDragStart(e, ent.id)}
                                    onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
-                                   className={`bg-white p-3 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-[#2c5f4e] transition-colors ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
+                                   className={`bg-white p-2.5 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-[#2c5f4e] transition-colors ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                  >
                                     <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
-                                    <div>{getTeamNameWithClub(ent.id)}</div>
+                                    <div>{ent.p1Name}・{ent.p2Name}</div>
+                                    {ent.club && <div className="text-xs text-gray-500 font-normal mt-0.5 truncate">{ent.club}</div>}
                                  </div>
                                 );
                               })}

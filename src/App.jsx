@@ -325,6 +325,7 @@ export default function App() {
   const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league');
+  const [certTestClass, setCertTestClass] = useState(''); // 表彰状テスト（決勝結果ダミー作成）で対象にするクラス
   // ドロー編成（予選リーグ）で、グループ列を何番目まで表示するか（クラス別）。未設定時はA〜Cを表示。
   // 「＋グループを追加」で増やし、末尾の空グループの「✕」で減らせる（組が入っているグループより手前には減らせない）
   const [visibleEmptyGroupCount, setVisibleEmptyGroupCount] = useState({});
@@ -2898,6 +2899,91 @@ export default function App() {
       }]);
     }
     setDialog({ title: "3位決定戦 対戦カード生成完了", message: `【${cls}】準決勝で敗れた2組による3位決定戦の対戦カードを生成しました。`, onClose: () => setDialog(null) });
+  };
+
+  // 【ローカル動作確認専用】予選・決勝トーナメントを実際に進行させずに、決勝（と3位決定戦）
+  // の対戦カードだけをランダムな結果で「完了」状態にし、表彰状のデザイン・印刷を確認できる
+  // ようにする。既に決勝の結果が確定しているクラスは、実データを誤って上書きしないよう対象外とする
+  const handleSimulateFinalForCertTest = async (cls) => {
+    if (getClassFinalResult(cls)) {
+      setDialog({ title: "実行不可", message: `【${cls}】は既に決勝の結果が確定しています。実際の大会結果を誤って上書きしないため、この機能は対象外です。`, onClose: () => setDialog(null) });
+      return;
+    }
+    const clsEntries = entries.filter(e => e.cls === cls);
+    if (clsEntries.length < 2) {
+      setDialog({ title: "エントリーが不足しています", message: `【${cls}】のエントリーが2組未満です。先に「テスト用自動エントリー生成」で組を作成してください。`, onClose: () => setDialog(null) });
+      return;
+    }
+    // 決勝トーナメント枠数（getTournamentSlotCount）は受付済（checkedIn）のエントリーを基準に
+    // 判定されるため、テスト目的で未受付のままなら自動的に受付済へ切り替える。
+    // ただしsetEntries直後はReactの状態がこの関数内にまだ反映されないため、枠数の算出は
+    // 「全員受付済にした場合」を仮定したローカル計算で行う（getTournamentSlotCount等と同じ式）
+    const uncheckedIds = clsEntries.filter(e => !e.checkedIn).map(e => e.id);
+    const checkedInAsPartOfTest = uncheckedIds.length > 0;
+    if (checkedInAsPartOfTest) {
+      setEntries(prev => prev.map(e => uncheckedIds.includes(e.id) ? { ...e, checkedIn: true } : e));
+      if (isSupabaseConfigured) {
+        await Promise.all(uncheckedIds.map(id => supabase.from('entries').update({ checkedin: true }).eq('id', id)));
+      }
+    }
+    const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
+    const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
+    const qualifierCount = activeGroups.length * numPerGroup;
+    const slotCount = qualifierCount <= 2 ? 2 : qualifierCount <= 4 ? 4 : qualifierCount <= 8 ? 8 : 16;
+    let levelSize = slotCount, level = 0;
+    while (levelSize > 2) { levelSize = levelSize / 2; level++; }
+    const finalSlots = [level * 100 + 1, level * 100 + 2];
+
+    const tournamentMatchRule = getMatchRule(cls, 'tournament');
+    const simulateScore = () => {
+      const gamesToWin = tournamentMatchRule.gamesToWin || 1;
+      const maxGames = gamesToWin * 2 - 1;
+      const forceAll = !!tournamentMatchRule.forceAllGames;
+      const gameScores = [];
+      let team1Wins = 0, team2Wins = 0;
+      for (let i = 0; i < maxGames; i++) {
+        if (!forceAll && (team1Wins >= gamesToWin || team2Wins >= gamesToWin)) break;
+        const gameRule = getGameRule(tournamentMatchRule, i);
+        // デュース判定を気にせず必ず勝敗が付くよう、敗者側は勝者の点数より2点以上少なくする
+        const loserScore = Math.max(0, gameRule.points - 2 - Math.floor(Math.random() * 4));
+        if (Math.random() < 0.5) { gameScores.push({ team1: gameRule.points, team2: loserScore }); team1Wins++; }
+        else { gameScores.push({ team1: loserScore, team2: gameRule.points }); team2Wins++; }
+      }
+      return gameScores;
+    };
+
+    const shuffled = [...clsEntries].sort(() => Math.random() - 0.5);
+    const [a, b, c, d] = shuffled;
+    const dummyMatches = [
+      {
+        id: `T-${cls}-${finalSlots[0]}-${finalSlots[1]}`, cls, group: '決勝', matchType: 'tournament', courtNumber: null,
+        team1Id: a.id, team2Id: b.id, team1Score: null, team2Score: null,
+        matchRule: tournamentMatchRule, gameScores: simulateScore(), status: 'completed',
+        matchOrder: 99000, matchNo: null
+      }
+    ];
+    if (c && d) {
+      dummyMatches.push({
+        id: `T3-${cls}`, cls, group: '3位決定戦', matchType: 'tournament', courtNumber: null,
+        team1Id: c.id, team2Id: d.id, team1Score: null, team2Score: null,
+        matchRule: tournamentMatchRule, gameScores: simulateScore(), status: 'completed',
+        matchOrder: 99001, matchNo: null
+      });
+    }
+
+    setMatches(prev => [...prev.filter(m => !dummyMatches.some(dm => dm.id === m.id)), ...dummyMatches]);
+    if (isSupabaseConfigured) {
+      await Promise.all(dummyMatches.map(m => supabase.from('matches').upsert({
+        id: m.id, cls: m.cls, group_name: m.group, match_type: m.matchType, court_number: m.courtNumber,
+        team1_id: m.team1Id, team2_id: m.team2Id, team1_score: m.team1Score, team2_score: m.team2Score,
+        match_rule: m.matchRule, game_scores: m.gameScores, status: m.status, match_order: m.matchOrder, match_no: m.matchNo
+      })));
+    }
+    setDialog({
+      title: "表彰状テスト用データを作成しました",
+      message: `【${cls}】の決勝${dummyMatches.length > 1 ? '・3位決定戦' : ''}を、テスト用のランダムな結果で完了扱いにしました。${checkedInAsPartOfTest ? '未受付だったエントリーもテストのため受付済にしています。' : ''}「表彰状」画面で確認できます。実際の大会結果ではありません。元に戻すにはこのクラスの決勝カードを削除するか、「試合結果のみ初期化」をご利用ください。`,
+      onClose: () => setDialog(null)
+    });
   };
 
   // 姓・名欄のIME変換から、確定後の漢字ではなく変換前のひらがな読みを対応するふりがな欄へ自動反映する。
@@ -6721,6 +6807,36 @@ export default function App() {
                     </div>
                  </div>
 
+                 {/* 2.5 表彰状のローカルテスト用：決勝結果のダミー作成 */}
+                 <div className="border-t-2 pt-6">
+                    <h4 className="font-extrabold text-xl text-gray-800 mb-1 flex items-center gap-2">
+                       🏆 表彰状テスト（決勝結果をダミーで作成）
+                    </h4>
+                    <p className="text-base text-gray-600 font-medium mb-4">
+                       実際に予選・決勝トーナメントを進行させなくても、選択したクラスの決勝（準決勝が存在する規模なら3位決定戦も）をランダムな結果で完了扱いにし、「表彰状」画面のデザイン・印刷を確認できます。既に決勝結果が確定しているクラスは、実データ保護のため対象外です。
+                    </p>
+                    <div className="flex items-center gap-3 bg-gray-50 p-5 rounded-lg border">
+                       <select
+                         className="p-2 border-2 border-gray-300 rounded font-bold bg-white"
+                         value={certTestClass || config.classes[0] || ''}
+                         onChange={e => setCertTestClass(e.target.value)}
+                       >
+                          {config.classes.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+                       </select>
+                       <button
+                         onClick={() => confirmDestructiveAction(
+                           "表彰状テストデータの作成確認",
+                           `【${certTestClass || config.classes[0]}】の決勝（・3位決定戦）を、ランダムな結果で完了扱いにします。実際の大会結果ではないダミーデータです。`,
+                           () => handleSimulateFinalForCertTest(certTestClass || config.classes[0]),
+                           '作成'
+                         )}
+                         className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-5 py-2.5 rounded-lg shadow-md flex items-center gap-2 transition-colors"
+                       >
+                          🧪 決勝結果をダミー作成
+                       </button>
+                    </div>
+                 </div>
+
                  {/* 3. 試合結果のみ削除 */}
                  <div className="border-t-2 pt-6">
                     <h4 className="font-extrabold text-xl text-amber-600 mb-2 flex items-center gap-2">
@@ -6811,7 +6927,7 @@ export default function App() {
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],
-                      ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。'],
+                      ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。「表彰状テスト」では、予選・決勝トーナメントを実際に進行させなくても、選択したクラスの決勝結果をランダムなダミーデータで作成し、表彰状のデザイン確認ができます。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">
                          <div className="font-bold text-[#2c5f4e] text-sm mb-1">{title}</div>

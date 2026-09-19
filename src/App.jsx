@@ -6689,7 +6689,20 @@ export default function App() {
                 <h3 className="text-xl font-bold mb-4">表彰状</h3>
                 <div className="mb-6 flex flex-wrap items-center gap-4">
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => {
+                      // named page（@page + pageプロパティ）でのA4縦横切り替えはブラウザによって
+                      // 反映されないことがあり、その場合は用紙が横向きのまま縦長デザインが
+                      // 2ページに割れてしまう。印刷実行の直前に無名の@pageルールを動的に注入し、
+                      // 確実にテンプレートに合った向きで印刷されるようにする
+                      const styleEl = document.createElement('style');
+                      styleEl.textContent = config.certTemplate === 'badminton'
+                        ? '@page { size: A4 portrait; margin: 0; }'
+                        : '@page { size: A4 landscape; margin: 0; }';
+                      document.head.appendChild(styleEl);
+                      const cleanup = () => { styleEl.remove(); window.removeEventListener('afterprint', cleanup); };
+                      window.addEventListener('afterprint', cleanup);
+                      window.print();
+                    }}
                     disabled={certList.length === 0}
                     className={`font-bold px-5 py-2.5 rounded shadow-sm flex items-center gap-2 ${certList.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
                   >

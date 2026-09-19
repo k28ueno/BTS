@@ -324,7 +324,10 @@ export default function App() {
   const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
   const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
   const [drawClass, setDrawClass] = useState('4部');
-  const [drawType, setDrawType] = useState('league'); 
+  const [drawType, setDrawType] = useState('league');
+  // ドロー編成（予選リーグ）で、まだ組が1つも入っていない空のグループ列を何番目まで表示するか（クラス別）。
+  // A〜Cは常時表示、それ以降は「＋グループを追加」ボタンで手動公開する（一度組を入れれば自動的に表示され続ける）
+  const [visibleEmptyGroupCount, setVisibleEmptyGroupCount] = useState({});
   const [entryForm, setEntryForm] = useState({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1LastFurigana: '', p1FirstFurigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2LastFurigana: '', p2FirstFurigana: '', p2Club: '', feeCategory: '一般', cls: '4部', contact: '', email: '', clubRank: '' });
   // ふりがな欄（姓・名それぞれ）をユーザーが直接編集したら、以後は自動補完で上書きしない
   const furiganaDirtyRef = useRef({ p1LastName: false, p1FirstName: false, p2LastName: false, p2FirstName: false });
@@ -5654,11 +5657,17 @@ export default function App() {
               )}
               {drawType === 'league' ? (
                 <div className="flex gap-4 overflow-x-auto pb-6 w-full cursor-grab active:cursor-grabbing">
-                   {['未割り当て', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(groupName => {
+                   {(() => {
+                     const allGroupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                     const usedGroupLetters = allGroupLetters.filter(g => entries.some(e => e.cls === drawClass && e.checkedIn && e.group === g));
+                     const lastUsedIndex = usedGroupLetters.length > 0 ? allGroupLetters.indexOf(usedGroupLetters[usedGroupLetters.length - 1]) : -1;
+                     // 常時A〜Cまでは空でも表示し、それ以降は既に組が入っているか「＋グループを追加」で
+                     // 手動公開した分だけ表示する
+                     const visibleCount = Math.max(3, lastUsedIndex + 1, visibleEmptyGroupCount[drawClass] || 0);
+                     const visibleGroupLetters = allGroupLetters.slice(0, Math.min(visibleCount, allGroupLetters.length));
+                     return ['未割り当て', ...visibleGroupLetters];
+                   })().map(groupName => {
                       const groupTeams = entries.filter(e => e.cls === drawClass && e.checkedIn && e.group === groupName);
-                      if (groupName !== '未割り当て' && groupTeams.length === 0 && !['A', 'B', 'C'].includes(groupName)) {
-                        return null;
-                      }
                       const isDropTarget = tapMoveSelection && tapMoveSelection.kind === 'entry';
                       return (
                         <div
@@ -5695,6 +5704,22 @@ export default function App() {
                         </div>
                       );
                    })}
+                   {(() => {
+                     const allGroupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                     const usedGroupLetters = allGroupLetters.filter(g => entries.some(e => e.cls === drawClass && e.checkedIn && e.group === g));
+                     const lastUsedIndex = usedGroupLetters.length > 0 ? allGroupLetters.indexOf(usedGroupLetters[usedGroupLetters.length - 1]) : -1;
+                     const visibleCount = Math.max(3, lastUsedIndex + 1, visibleEmptyGroupCount[drawClass] || 0);
+                     if (visibleCount >= allGroupLetters.length) return null;
+                     const nextGroupLetter = allGroupLetters[visibleCount];
+                     return (
+                       <button
+                         onClick={() => setVisibleEmptyGroupCount(prev => ({ ...prev, [drawClass]: visibleCount + 1 }))}
+                         className="min-w-[100px] flex-shrink-0 self-start rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-[#2c5f4e] hover:text-[#2c5f4e] font-bold text-sm py-3 px-3"
+                       >
+                          ＋ グループ{nextGroupLetter}を追加
+                       </button>
+                     );
+                   })()}
                 </div>
               ) : (
                 <div>

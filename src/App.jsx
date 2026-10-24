@@ -350,6 +350,7 @@ export default function App() {
   const [scoreModal, setScoreModal] = useState(null);
   const [printMatchId, setPrintMatchId] = useState(null); // スコアシート印刷対象の試合ID
   const [printBlankSheetCount, setPrintBlankSheetCount] = useState(null); // 白紙スコアシートの印刷トリガー（1件固定）。nullは非表示
+  const [printDrawSheet, setPrintDrawSheet] = useState(null); // リーグ戦表／トーナメント表のA4印刷対象 { type: 'league'|'tournament', cls }。nullは非表示
 
   const [testGenCounts, setTestGenCounts] = useState({});
 
@@ -1396,6 +1397,23 @@ export default function App() {
     };
   }, [printBlankSheetCount]);
 
+  // リーグ戦表・トーナメント表（A4横）。名前付きページが反映されないブラウザでも確実に
+  // 横向きで印刷されるよう、無名の@pageルールを印刷中だけ動的に差し込む
+  useEffect(() => {
+    if (!printDrawSheet) return;
+    const styleEl = document.createElement('style');
+    styleEl.textContent = '@page { size: A4 landscape; margin: 8mm; }';
+    document.head.appendChild(styleEl);
+    const timer = setTimeout(() => window.print(), 50);
+    const clearOnAfterPrint = () => setPrintDrawSheet(null);
+    window.addEventListener('afterprint', clearOnAfterPrint);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('afterprint', clearOnAfterPrint);
+      styleEl.remove();
+    };
+  }, [printDrawSheet]);
+
   const handlePrintScoreSheet = (matchId) => {
     setPrintMatchId(matchId);
   };
@@ -2373,10 +2391,26 @@ export default function App() {
     return assignment;
   };
 
+  // 選択中クラスのリーグ戦表／トーナメント表をA4で印刷する
+  const handlePrintDrawSheet = (type) => {
+    if (type === 'league') {
+      const hasGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].some(g => entries.some(e => e.cls === drawClass && e.group === g));
+      if (!hasGroups) {
+        setDialog({ title: "印刷できません", message: `【${drawClass}】はまだグループに振り分けられていません。先に組み合わせを作成してください。`, onClose: () => setDialog(null) });
+        return;
+      }
+    } else if (getTournamentSlotCount(drawClass) < 2) {
+      setDialog({ title: "印刷できません", message: `【${drawClass}】の決勝トーナメント枠がありません。`, onClose: () => setDialog(null) });
+      return;
+    }
+    setPrintDrawSheet({ type, cls: drawClass });
+  };
+
   const handleAutoDraw = async () => {
-    const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
+    // 受付前（未受付）の組も含め、そのクラスの全エントリーを組み合わせの対象にする
+    const checkedInEntries = entries.filter(e => e.cls === drawClass);
     if (checkedInEntries.length === 0) {
-      setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。先に「受付処理」タブで受付を完了させてください。`, onClose: () => setDialog(null) });
+      setDialog({ title: "ドロップ不可", message: `${drawClass} のエントリーがありません。`, onClose: () => setDialog(null) });
       return;
     }
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -2404,7 +2438,7 @@ export default function App() {
       await Promise.all(updates.map(u => supabase.from('entries').update({ group: u.group }).eq('id', u.id)));
     }
     const matchCount = await generateLeagueMatches(drawClass, newEntries);
-    setDialog({ title: "完了", message: `受付済の ${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
+    setDialog({ title: "完了", message: `${checkedInEntries.length} 組の自動振り分けと予選対戦カード（${matchCount}試合）の生成が完了しました！`, onClose: () => setDialog(null) });
   };
 
   // 総当たり戦の対戦カードを組む。チーム数が偶数か奇数かで方式を分ける
@@ -2490,7 +2524,7 @@ export default function App() {
     const activeEntries = currentEntriesList || entries;
     const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
-    const clsEntries = activeEntries.filter(e => e.cls === targetCls && e.checkedIn);
+    const clsEntries = activeEntries.filter(e => e.cls === targetCls);
     const groupMatchesMap = {};
     let maxGroupMatches = 0;
 
@@ -2615,9 +2649,9 @@ export default function App() {
       return;
     }
 
-    const checkedInEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
+    const checkedInEntries = entries.filter(e => e.cls === drawClass);
     if (checkedInEntries.length === 0) {
-      setDialog({ title: "ドロップ不可", message: `${drawClass} で受付済の組がありません。`, onClose: () => setDialog(null) });
+      setDialog({ title: "ドロップ不可", message: `${drawClass} のエントリーがありません。`, onClose: () => setDialog(null) });
       return;
     }
 
@@ -2630,7 +2664,7 @@ export default function App() {
       return;
     }
 
-    const clsEntries = entries.filter(e => e.cls === drawClass && e.checkedIn);
+    const clsEntries = entries.filter(e => e.cls === drawClass);
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => 
       clsEntries.some(e => e.group === g)
     );
@@ -2914,18 +2948,6 @@ export default function App() {
       setDialog({ title: "エントリーが不足しています", message: `【${cls}】のエントリーが2組未満です。先に「テスト用自動エントリー生成」で組を作成してください。`, onClose: () => setDialog(null) });
       return;
     }
-    // 決勝トーナメント枠数（getTournamentSlotCount）は受付済（checkedIn）のエントリーを基準に
-    // 判定されるため、テスト目的で未受付のままなら自動的に受付済へ切り替える。
-    // ただしsetEntries直後はReactの状態がこの関数内にまだ反映されないため、枠数の算出は
-    // 「全員受付済にした場合」を仮定したローカル計算で行う（getTournamentSlotCount等と同じ式）
-    const uncheckedIds = clsEntries.filter(e => !e.checkedIn).map(e => e.id);
-    const checkedInAsPartOfTest = uncheckedIds.length > 0;
-    if (checkedInAsPartOfTest) {
-      setEntries(prev => prev.map(e => uncheckedIds.includes(e.id) ? { ...e, checkedIn: true } : e));
-      if (isSupabaseConfigured) {
-        await Promise.all(uncheckedIds.map(id => supabase.from('entries').update({ checkedin: true }).eq('id', id)));
-      }
-    }
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
     const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
     const qualifierCount = activeGroups.length * numPerGroup;
@@ -2981,7 +3003,7 @@ export default function App() {
     }
     setDialog({
       title: "表彰状テスト用データを作成しました",
-      message: `【${cls}】の決勝${dummyMatches.length > 1 ? '・3位決定戦' : ''}を、テスト用のランダムな結果で完了扱いにしました。${checkedInAsPartOfTest ? '未受付だったエントリーもテストのため受付済にしています。' : ''}「表彰状」画面で確認できます。実際の大会結果ではありません。元に戻すにはこのクラスの決勝カードを削除するか、「試合結果のみ初期化」をご利用ください。`,
+      message: `【${cls}】の決勝${dummyMatches.length > 1 ? '・3位決定戦' : ''}を、テスト用のランダムな結果で完了扱いにしました。「表彰状」画面で確認できます。実際の大会結果ではありません。元に戻すにはこのクラスの決勝カードを削除するか、「試合結果のみ初期化」をご利用ください。`,
       onClose: () => setDialog(null)
     });
   };
@@ -3991,7 +4013,7 @@ export default function App() {
   };
 
   const getGroupStandings = (cls, groupName) => {
-    const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName && e.checkedIn);
+    const groupEntries = entries.filter(e => e.cls === cls && e.group === groupName);
     const groupMatches = matches.filter(m => m.cls === cls && m.group === groupName && m.status === 'completed');
 
     const stats = groupEntries.map(ent => {
@@ -4098,7 +4120,7 @@ export default function App() {
   // 予選が終わっていない、または進出条件外の組は「決勝進出組」として扱わない
   const getTournamentQualifiedEntries = (cls) => {
     if (!isLeagueComplete(cls)) return [];
-    const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
+    const clsEntries = entries.filter(e => e.cls === cls);
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
     const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
     const qualified = [];
@@ -4115,7 +4137,7 @@ export default function App() {
   // グループ数だけで判定すると、進出条件を「各グループ1位のみ」にした場合などに
   // 空き枠だらけのブラケットになってしまうため、実際の進出組数から2の累乗枠数を求める
   const getTournamentSlotCount = (cls) => {
-    const clsEntries = entries.filter(e => e.cls === cls && e.checkedIn);
+    const clsEntries = entries.filter(e => e.cls === cls);
     if (clsEntries.length === 0) return 0;
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
     const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
@@ -5665,7 +5687,7 @@ export default function App() {
             return (
             <div className="w-full overflow-hidden">
               <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-lg mb-4 text-xs font-bold flex items-center justify-between">
-                 <span>⚠️ ドロー編成は「受付処理」で受付済（済）になった組のみが表示・割り当て対象となります。</span>
+                 <span>ℹ️ ドロー編成は受付前（未受付）の組も含め、そのクラスの全エントリーが対象です。未受付の組には「未受付」と表示されます。</span>
                  <span className="bg-amber-200 text-amber-800 px-2 py-0.5 rounded font-mono">
                     {drawClass} 受付済: {entries.filter(e => e.cls === drawClass && e.checkedIn).length} / {entries.filter(e => e.cls === drawClass).length} 組
                  </span>
@@ -5694,7 +5716,13 @@ export default function App() {
                        title={isLeagueComplete(drawClass) ? `【${drawClass}】の予選リーグは既に終了しています` : undefined}
                        className={`px-4 py-2 rounded font-bold shadow-sm ${isLeagueComplete(drawClass) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
                      >
-                        受付済の組を自動ランダム振り分け
+                        組を自動ランダム振り分け
+                     </button>
+                     <button
+                       onClick={() => handlePrintDrawSheet('league')}
+                       className="px-4 py-2 rounded font-bold shadow-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
+                     >
+                        🖨️ リーグ戦表を印刷（A4）
                      </button>
                      {isLeagueComplete(drawClass) && (
                         <span className="text-xs text-gray-500 font-bold">※ 予選リーグは終了済みのため、誤操作防止のためボタンを無効化しています</span>
@@ -5724,6 +5752,12 @@ export default function App() {
                      >
                         🥉 3位決定戦の対戦カードを生成
                      </button>
+                     <button
+                       onClick={() => handlePrintDrawSheet('tournament')}
+                       className="px-4 py-2 rounded font-bold shadow-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
+                     >
+                        🖨️ トーナメント表を印刷（A4）
+                     </button>
                      {isTournamentComplete(drawClass) && (
                         <span className="text-xs text-gray-500 font-bold">※ 決勝トーナメントは終了済みのため、誤操作防止のためボタンを無効化しています</span>
                      )}
@@ -5744,7 +5778,7 @@ export default function App() {
                 <div className="flex gap-3 overflow-x-auto pb-6 w-full cursor-grab active:cursor-grabbing">
                    {(() => {
                      const allGroupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-                     const usedGroupLetters = allGroupLetters.filter(g => entries.some(e => e.cls === drawClass && e.checkedIn && e.group === g));
+                     const usedGroupLetters = allGroupLetters.filter(g => entries.some(e => e.cls === drawClass && e.group === g));
                      const lastUsedIndex = usedGroupLetters.length > 0 ? allGroupLetters.indexOf(usedGroupLetters[usedGroupLetters.length - 1]) : -1;
                      // 初期状態ではA〜Cまでを空でも表示する。「＋グループを追加」「削除」で
                      // 手動上書きされた後は、その値（override）を優先する（組が入っている
@@ -5758,7 +5792,7 @@ export default function App() {
                      return (
                        <>
                          {['未割り当て', ...visibleGroupLetters].map(groupName => {
-                            const groupTeams = entries.filter(e => e.cls === drawClass && e.checkedIn && e.group === groupName);
+                            const groupTeams = entries.filter(e => e.cls === drawClass && e.group === groupName);
                             const isDropTarget = tapMoveSelection && tapMoveSelection.kind === 'entry';
                             // 空で、かつ一番末尾（これより後ろに表示中のグループが無い）のグループのみ削除できる。
                             // 間のグループを消すと後続グループとの対応がずれるため許可しない
@@ -5772,7 +5806,7 @@ export default function App() {
                                 onClick={handleGroupZoneTap(groupName)}
                               >
                                  <h4 className="font-bold mb-3 border-b-2 pb-2 flex justify-between items-center">
-                                    <span>{groupName === '未割り当て' ? '未割り当て (受付済)' : `グループ ${groupName}`}</span>
+                                    <span>{groupName === '未割り当て' ? '未割り当て' : `グループ ${groupName}`}</span>
                                     <div className="flex items-center gap-1.5">
                                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full font-normal text-gray-600">{groupTeams.length}組</span>
                                        {isDeletable && (
@@ -5797,7 +5831,10 @@ export default function App() {
                                          onClick={toggleTapSelect('entry', ent.id, getTeamNameWithClub(ent.id))}
                                          className={`bg-white p-2.5 rounded shadow-sm border cursor-pointer sm:cursor-move text-sm font-bold hover:border-[#2c5f4e] transition-colors ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
                                        >
-                                          <div className="text-xs text-gray-400 font-mono mb-1">{ent.id}</div>
+                                          <div className="text-xs text-gray-400 font-mono mb-1 flex items-center gap-1.5">
+                                             <span>{ent.id}</span>
+                                             {!ent.checkedIn && <span className="bg-gray-200 text-gray-500 px-1.5 rounded font-sans font-bold">未受付</span>}
+                                          </div>
                                           <div>{ent.p1Name}・{ent.p2Name}</div>
                                           {ent.club && <div className="text-xs text-gray-500 font-normal mt-0.5 truncate">{ent.club}</div>}
                                        </div>
@@ -6933,8 +6970,8 @@ export default function App() {
                     {[
                       ['マスタ設定', '大会名・日程・コート数・決勝進出条件・出場クラス・エントリー受付開始日/締切・お知らせ・協賛企業・試合ルール（クラス×予選/決勝ごとのゲーム数・点数・MAX点数・デュース）など、大会全体の基本設定を行います。'],
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。「Excelエクスポート」で全件をExcel（.xlsx）にダウンロードでき、「Excelインポート」でExcelファイルから一括登録できます（ID・パスワードはシステムが自動採番するため対象外。既存エントリーの更新は「編集」から個別に行います）。インポート時は列見出しの表記ゆれ・並び順の違いを自動判定したうえで「列の対応確認」画面が開くので、対応がおかしければプルダウンで修正してから反映できます。'],
-                      ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成の対象になるのは受付済の組だけです。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。'],
-                      ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。'],
+                      ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。'],
+                      ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、リーグ戦表・トーナメント表はA4横で印刷できます。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
@@ -7067,7 +7104,7 @@ export default function App() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-xl text-gray-500">データを読み込み中...</div>;
 
   return (
-    <div className={`min-h-screen font-sans bg-gray-50 text-gray-800 pb-20 ${(printMatchId || printBlankSheetCount) ? 'printing-score-sheet' : ''}`}>
+    <div className={`min-h-screen font-sans bg-gray-50 text-gray-800 pb-20 ${(printMatchId || printBlankSheetCount || printDrawSheet) ? 'printing-score-sheet' : ''}`}>
       {/* 修正: 右上の「エントリー」「修正・取消」ボタンを削除し、「管理」ボタンのみ配置 */}
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -7524,6 +7561,87 @@ export default function App() {
                   })}
                 </React.Fragment>
               ))}
+            </div>
+          );
+        }
+
+        if (printDrawSheet) {
+          const { type, cls } = printDrawSheet;
+          const sheetHeader = (
+            <div className="mb-3 border-b-2 border-black pb-1.5">
+              <div className="text-xs text-gray-600">{config.title}　{config.date}</div>
+              <h1 className="text-xl font-bold">{cls}　{type === 'league' ? '予選リーグ表' : '決勝トーナメント表'}</h1>
+            </div>
+          );
+
+          if (type === 'league') {
+            const groupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => entries.some(e => e.cls === cls && e.group === g));
+            return (
+              <div className="print-only-area">
+                <div className="p-3 bg-white text-black">
+                  {sheetHeader}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+                    {groupLetters.map(group => {
+                      const groupEntries = entries.filter(e => e.cls === cls && e.group === group);
+                      const groupMatches = matches.filter(m => m.cls === cls && m.group === group);
+                      return (
+                        <div key={`print-group-${group}`} style={{ breakInside: 'avoid' }}>
+                          <h2 className="font-bold text-base mb-1 border-l-4 border-black pl-2">グループ {group}</h2>
+                          <table className="w-full text-xs text-center border-collapse">
+                            <thead>
+                              <tr>
+                                <th className="border border-black p-1 text-left">ペア（所属）</th>
+                                {groupEntries.map((_, i) => <th key={`pth-${i}`} className="border border-black p-1 w-12">{i + 1}</th>)}
+                                <th className="border border-black p-1 w-12">勝敗</th>
+                                <th className="border border-black p-1 w-10">順位</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {groupEntries.map((ent, i) => {
+                                let wins = 0, losses = 0;
+                                const cells = groupEntries.map((opp, j) => {
+                                  if (i === j) return <td key={`ptd-${j}`} className="border border-black p-1 bg-gray-300">　</td>;
+                                  const match = groupMatches.find(m => (m.team1Id === ent.id && m.team2Id === opp.id) || (m.team1Id === opp.id && m.team2Id === ent.id));
+                                  if (!match) return <td key={`ptd-${j}`} className="border border-black p-1">　</td>;
+                                  if (match.status === 'completed') {
+                                    const result = getMatchResult(match);
+                                    if (result) { if (String(result.winnerId) === String(ent.id)) wins++; else losses++; }
+                                    return <td key={`ptd-${j}`} className="border border-black p-1 font-bold">{getGameWinLossText(match, ent.id)}</td>;
+                                  }
+                                  return <td key={`ptd-${j}`} className="border border-black p-1 font-bold">{typeof match.matchNo === 'number' ? `第${match.matchNo}試合` : '　'}</td>;
+                                });
+                                return (
+                                  <tr key={`print-row-${ent.id}`}>
+                                    <td className="border border-black p-1 text-left font-bold">
+                                      <div><span className="text-gray-500 mr-1">{i + 1}</span>{ent.p1Name}・{ent.p2Name}</div>
+                                      {ent.club && <div className="text-[10px] font-normal text-gray-600">（{ent.club}）</div>}
+                                    </td>
+                                    {cells}
+                                    <td className="border border-black p-1 font-bold">{wins}勝{losses}敗</td>
+                                    <td className="border border-black p-1">　</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // トーナメント表：枠数が多いほどA4横の1ページに収まるよう縮小して印刷する
+          const printSlotCount = getTournamentSlotCount(cls);
+          const printZoom = printSlotCount >= 16 ? 0.55 : printSlotCount >= 8 ? 0.8 : 1;
+          return (
+            <div className="print-only-area">
+              <div className="p-3 bg-white text-black">
+                {sheetHeader}
+                <div style={{ zoom: printZoom }}>{renderTournamentTree(cls, false)}</div>
+              </div>
             </div>
           );
         }

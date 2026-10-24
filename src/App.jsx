@@ -344,6 +344,7 @@ export default function App() {
 
   const [receptionClassFilter, setReceptionClassFilter] = useState('all');
   const [receptionSearchQuery, setReceptionSearchQuery] = useState('');
+  const [receptionUncheckedOnly, setReceptionUncheckedOnly] = useState(false); // 受付処理：未受付の組だけを表示する
   // 受付処理画面を開いた時点の受付状態を固定しておき、その後チェックを入れても
   // 表示順が変動しないようにする（画面を離れて再度開いた時にだけ並び順を更新する）
   const [receptionSortSnapshot, setReceptionSortSnapshot] = useState({});
@@ -4214,6 +4215,8 @@ export default function App() {
 
   const filteredReceptionEntries = entries.filter(ent => {
     if (receptionClassFilter !== 'all' && ent.cls !== receptionClassFilter) return false;
+    // 受付直後に行が消えて取り消せなくならないよう、並び順と同じく画面を開いた時点の受付状態で判定する
+    if (receptionUncheckedOnly && (receptionSortSnapshot[ent.id] ?? ent.checkedIn)) return false;
     if (receptionSearchQuery) {
       const q = receptionSearchQuery.trim().toLowerCase();
       const haystack = [ent.id, ent.cls, ent.club, ent.p1Name, ent.p2Name].filter(Boolean).join(' ').toLowerCase();
@@ -5600,6 +5603,14 @@ export default function App() {
                           </option>
                        ))}
                     </select>
+                    <label className="flex items-center gap-1.5 text-sm font-bold text-gray-700 whitespace-nowrap cursor-pointer ml-2">
+                       <input
+                         type="checkbox"
+                         checked={receptionUncheckedOnly}
+                         onChange={e => setReceptionUncheckedOnly(e.target.checked)}
+                       />
+                       未受付のみ
+                    </label>
                  </div>
 
                  <div className="relative w-full md:w-72">

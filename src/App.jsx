@@ -5847,7 +5847,12 @@ export default function App() {
                                              {!ent.checkedIn && <span className="bg-gray-200 text-gray-500 px-1.5 rounded font-sans font-bold">未受付</span>}
                                           </div>
                                           <div>{ent.p1Name}・{ent.p2Name}</div>
-                                          {ent.club && <div className="text-xs text-gray-500 font-normal mt-0.5 truncate">{ent.club}</div>}
+                                          {(ent.club || typeof ent.clubRank === 'number') && (
+                                             <div className="text-xs text-gray-500 font-normal mt-0.5 flex items-center gap-1.5">
+                                                <span className="truncate">{ent.club}</span>
+                                                {typeof ent.clubRank === 'number' && <span className="shrink-0 bg-emerald-50 text-emerald-700 font-bold px-1.5 rounded">{ent.clubRank}番手</span>}
+                                             </div>
+                                          )}
                                        </div>
                                       );
                                     })}

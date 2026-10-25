@@ -751,7 +751,15 @@ export default function App() {
     }
 
     // 実際にコートへ割り当てられた瞬間に確定した審判は、以後の状態変化で再計算・変動させない
-    if (lockedReferees[m.id]) return lockedReferees[m.id];
+    // ただし表示名は、エントリー管理で氏名・所属が変更された場合に追従できるよう、IDから毎回解決し直す
+    if (lockedReferees[m.id]) {
+      const locked = lockedReferees[m.id];
+      const relabel = (id, text) => {
+        const e = id ? entries.find(x => String(x.id) === String(id)) : null;
+        return e ? label(e) : text;
+      };
+      return { ...locked, main: relabel(locked.mainId, locked.main), line: relabel(locked.lineId, locked.line) };
+    }
 
     // 自分自身の次戦と連戦になり審判を続けられないペアがいれば差し替える。
     // 候補は「同クラス（グループは問わない）→他クラス」の順で、今まさに他で使われていない組を探し、
@@ -827,8 +835,13 @@ export default function App() {
 
       let mainId = lastRef.mainId;
       let lineId = lastRef.lineId;
-      let mainText = lastRef.main;
-      let lineText = lastRef.line;
+      // 直前試合の審判名もIDから解決し直し、氏名変更に追従させる
+      const nameOf = (id, fallback) => {
+        const e = id ? entries.find(x => String(x.id) === String(id)) : null;
+        return e ? getTeamNameWithClub(e.id) : fallback;
+      };
+      let mainText = nameOf(mainId, lastRef.main);
+      let lineText = nameOf(lineId, lastRef.line);
 
       const t1 = m.status !== 'completed' ? String(m.team1Id) : null;
       const t2 = m.status !== 'completed' ? String(m.team2Id) : null;
@@ -3176,7 +3189,8 @@ export default function App() {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
-    if (isEntryDeadlinePassed(config)) {
+    // 受付期間終了後でも、大会当日のペア変更などに対応できるよう、管理者による編集は期限の対象外とする
+    if (!isAdminLoggedIn && isEntryDeadlinePassed(config)) {
       setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
       return;
     }
@@ -7096,6 +7110,7 @@ export default function App() {
                  <div className="space-y-3">
                     {[
                       ['スコアを間違えて入力してしまった', '該当試合の「スコア修正」ボタンからいつでもゲーム別に修正できます。「コート進行・スコア」画面のほか、「試合結果明細」画面の各行からも同じボタンで修正できます。ただし、その予選試合のクラスで決勝の対戦カードが既にコール済（〜完了）の場合は、順位表・決勝トーナメントの枠との食い違いを防ぐため予選の修正はできません（ボタンが「修正不可」と表示されます）。'],
+                      ['当日急にペア（選手）が変わった', 'エントリー管理の「編集」で氏名・所属を変更して保存すれば、グループ分け・対戦カード・決勝トーナメント表・コートの審判表示などへそのまま反映されます（作り直し不要）。受付期間終了後でも、管理者による編集は可能です。'],
                       ['グループ分けをやり直したい', '予選リーグが「終了済」になる前であれば、組をドラッグ／タップで別グループへ移動すると対戦カードが自動的に再生成されます。終了済クラスは結果保護のため変更できません。'],
                       ['予選リーグのグループを4つ以上に増やしたい／減らしたい', 'グループ一覧の右端にある「＋グループを追加」ボタンを押すと、次のグループ（D、E…）が空の状態で表示され、A〜Cと同様に組をドラッグ／タップで配置できます。組が0件で一番右端のグループには「✕」が表示され、押すとそのグループを非表示に戻せます（間のグループは削除できません）。'],
                       ['対戦カードを全部作り直したい', 'データ管理の「試合結果のみ初期化」で、エントリー情報を残したまま試合結果とコート進行状態だけをリセットできます。'],

@@ -2393,7 +2393,7 @@ export default function App() {
   };
 
   // 選択中クラスのリーグ戦表／トーナメント表をA4で印刷する
-  const handlePrintDrawSheet = (type) => {
+  const handlePrintDrawSheet = (type, withStandings = true) => {
     if (type === 'league') {
       const hasGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].some(g => entries.some(e => e.cls === drawClass && e.group === g));
       if (!hasGroups) {
@@ -2404,7 +2404,7 @@ export default function App() {
       setDialog({ title: "印刷できません", message: `【${drawClass}】の決勝トーナメント枠がありません。`, onClose: () => setDialog(null) });
       return;
     }
-    setPrintDrawSheet({ type, cls: drawClass });
+    setPrintDrawSheet({ type, cls: drawClass, withStandings });
   };
 
   const handleAutoDraw = async () => {
@@ -5738,6 +5738,12 @@ export default function App() {
                      >
                         🖨️ リーグ戦表を印刷（A4）
                      </button>
+                     <button
+                       onClick={() => handlePrintDrawSheet('league', false)}
+                       className="px-4 py-2 rounded font-bold shadow-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
+                     >
+                        🖨️ リーグ戦表（勝敗・順位なし）
+                     </button>
                      {isLeagueComplete(drawClass) && (
                         <span className="text-xs text-gray-500 font-bold">※ 予選リーグは終了済みのため、誤操作防止のためボタンを無効化しています</span>
                      )}
@@ -7585,7 +7591,7 @@ export default function App() {
         }
 
         if (printDrawSheet) {
-          const { type, cls } = printDrawSheet;
+          const { type, cls, withStandings = true } = printDrawSheet;
           const sheetHeader = (
             <div className="mb-3 border-b-2 border-black pb-1.5">
               <div className="text-xs text-gray-600">{config.title}　{config.date}</div>
@@ -7610,9 +7616,9 @@ export default function App() {
                             <thead>
                               <tr>
                                 <th className="border border-black p-1 text-left">ペア（所属）</th>
-                                {groupEntries.map((_, i) => <th key={`pth-${i}`} className="border border-black p-1 w-12">{i + 1}</th>)}
-                                <th className="border border-black p-1 w-12">勝敗</th>
-                                <th className="border border-black p-1 w-10">順位</th>
+                                {groupEntries.map((_, i) => <th key={`pth-${i}`} className="border border-black p-1 w-16">{i + 1}</th>)}
+                                {withStandings && <th className="border border-black p-1 w-14">勝敗</th>}
+                                {withStandings && <th className="border border-black p-1 w-12">順位</th>}
                               </tr>
                             </thead>
                             <tbody>
@@ -7625,9 +7631,9 @@ export default function App() {
                                   if (match.status === 'completed') {
                                     const result = getMatchResult(match);
                                     if (result) { if (String(result.winnerId) === String(ent.id)) wins++; else losses++; }
-                                    return <td key={`ptd-${j}`} className="border border-black p-1 font-bold">{getGameWinLossText(match, ent.id)}</td>;
+                                    return <td key={`ptd-${j}`} className="border border-black p-1 font-bold whitespace-nowrap">{getGameWinLossText(match, ent.id)}</td>;
                                   }
-                                  return <td key={`ptd-${j}`} className="border border-black p-1 font-bold">{typeof match.matchNo === 'number' ? `第${match.matchNo}試合` : '　'}</td>;
+                                  return <td key={`ptd-${j}`} className="border border-black p-1 font-bold whitespace-nowrap">{typeof match.matchNo === 'number' ? `第${match.matchNo}試合` : '　'}</td>;
                                 });
                                 return (
                                   <tr key={`print-row-${ent.id}`}>
@@ -7636,8 +7642,8 @@ export default function App() {
                                       {ent.club && <div className="text-[10px] font-normal text-gray-600">（{ent.club}）</div>}
                                     </td>
                                     {cells}
-                                    <td className="border border-black p-1 font-bold">{wins}勝{losses}敗</td>
-                                    <td className="border border-black p-1">　</td>
+                                    {withStandings && <td className="border border-black p-1 font-bold whitespace-nowrap">{wins}勝{losses}敗</td>}
+                                    {withStandings && <td className="border border-black p-1">　</td>}
                                   </tr>
                                 );
                               })}

@@ -5733,16 +5733,16 @@ export default function App() {
                         組を自動ランダム振り分け
                      </button>
                      <button
-                       onClick={() => handlePrintDrawSheet('league')}
-                       className="px-4 py-2 rounded font-bold shadow-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
-                     >
-                        🖨️ リーグ戦表を印刷（A4）
-                     </button>
-                     <button
                        onClick={() => handlePrintDrawSheet('league', false)}
                        className="px-4 py-2 rounded font-bold shadow-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
                      >
-                        🖨️ リーグ戦表（勝敗・順位なし）
+                        🖨️ リーグ戦表
+                     </button>
+                     <button
+                       onClick={() => handlePrintDrawSheet('league')}
+                       className="px-4 py-2 rounded font-bold shadow-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
+                     >
+                        🖨️ リーグ戦表(勝敗付)
                      </button>
                      {isLeagueComplete(drawClass) && (
                         <span className="text-xs text-gray-500 font-bold">※ 予選リーグは終了済みのため、誤操作防止のためボタンを無効化しています</span>

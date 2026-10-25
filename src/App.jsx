@@ -7616,7 +7616,13 @@ export default function App() {
                             <thead>
                               <tr>
                                 <th className="border border-black p-1 text-left">ペア（所属）</th>
-                                {groupEntries.map((_, i) => <th key={`pth-${i}`} className="border border-black p-1 w-16">{i + 1}</th>)}
+                                {groupEntries.map((e2, i) => (
+                                  <th key={`pth-${i}`} className="border border-black p-1 w-16 whitespace-nowrap">
+                                    <div>{i + 1}</div>
+                                    <div className="text-[10px] font-bold">{e2.p1LastName || e2.p1Name}</div>
+                                    <div className="text-[10px] font-bold">{e2.p2LastName || e2.p2Name}</div>
+                                  </th>
+                                ))}
                                 {withStandings && <th className="border border-black p-1 w-14">勝敗</th>}
                                 {withStandings && <th className="border border-black p-1 w-12">順位</th>}
                               </tr>

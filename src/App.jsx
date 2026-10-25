@@ -4748,11 +4748,11 @@ export default function App() {
       </div>
 
       {config.sponsors.length > 0 && (
-        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-          <h2 className="text-lg font-bold text-gray-500 text-center mb-4">協賛</h2>
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-md p-6 border-2 border-amber-300">
+          <h2 className="text-lg md:text-xl font-extrabold text-amber-800 text-center mb-4">ご協賛企業の皆様（五十音順）</h2>
           <div className="flex flex-wrap justify-center gap-3">
             {config.sponsors.map((sponsor, i) => (
-              <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg px-5 py-2.5 text-gray-700 font-bold text-sm">
+              <div key={i} className="bg-white border border-amber-300 rounded-lg px-5 py-2.5 text-amber-900 font-bold text-base shadow-sm">
                 {sponsor}
               </div>
             ))}

@@ -5776,7 +5776,7 @@ export default function App() {
                        onClick={() => handlePrintDrawSheet('tournament')}
                        className="px-4 py-2 rounded font-bold shadow-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
                      >
-                        🖨️ トーナメント表を印刷（A4）
+                        🖨️ トーナメント表
                      </button>
                      {isTournamentComplete(drawClass) && (
                         <span className="text-xs text-gray-500 font-bold">※ 決勝トーナメントは終了済みのため、誤操作防止のためボタンを無効化しています</span>

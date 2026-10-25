@@ -4508,6 +4508,131 @@ export default function App() {
     );
   };
 
+  // 決勝トーナメント表のA4横・印刷専用レイアウト。画面用（renderTournamentTree）の固定幅カードではなく、
+  // 用紙いっぱいに各ラウンドの列を等分して広げ、枠数に応じて文字サイズも大きくする
+  const renderTournamentPrintSheet = (cls) => {
+    const slotCount = getTournamentSlotCount(cls);
+    const getEntryAtSlot = (slot) => {
+      const bySlot = entries.find(e => e.cls === cls && e.tournamentPosition === slot);
+      if (bySlot) return bySlot;
+      const { siblingSlot } = getTournamentSlotInfo(slot);
+      const lo = Math.min(slot, siblingSlot);
+      const pairMatch = matches.find(m => m.id === `T-${cls}-${lo}-${Math.max(slot, siblingSlot)}`);
+      if (!pairMatch || pairMatch.status !== 'completed') return null;
+      return entries.find(e => e.id === (slot === lo ? pairMatch.team1Id : pairMatch.team2Id)) || null;
+    };
+
+    const rounds = [];
+    let levelSize = slotCount;
+    let level = 0;
+    while (levelSize >= 2) {
+      rounds.push(Array.from({ length: levelSize }, (_, i) => (level === 0 ? i + 1 : level * 100 + i + 1)));
+      levelSize = levelSize / 2;
+      level++;
+    }
+    const roundLabel = (idx) => {
+      const remaining = rounds.length - idx;
+      if (remaining === 1) return '決勝';
+      if (remaining === 2) return '準決勝';
+      if (remaining === 3) return '準々決勝';
+      return `${idx + 1}回戦`;
+    };
+
+    // 決勝の勝者（優勝）
+    let champion = null;
+    const finalSlots = rounds[rounds.length - 1];
+    const finalMatch = matches.find(m => m.id === `T-${cls}-${Math.min(...finalSlots)}-${Math.max(...finalSlots)}`);
+    const finalResult = finalMatch && finalMatch.status === 'completed' ? getMatchResult(finalMatch) : null;
+    if (finalResult) champion = entries.find(e => e.id === finalResult.winnerId) || null;
+
+    const thirdPlaceMatch = matches.find(m => m.id === `T3-${cls}`);
+    const nameSize = { 2: 30, 4: 24, 8: 18, 16: 13 }[slotCount] || 18;
+    const subSize = Math.max(9, Math.round(nameSize * 0.62));
+    const GAP = '7mm';
+
+    const renderBox = (ent, scoreLabel, isLoser) => (
+      <div
+        style={{ border: '1.5px solid #000', borderRadius: 4, padding: '2px 6px', minHeight: nameSize * 2.2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, background: '#fff', overflow: 'hidden' }}
+      >
+        <div style={{ minWidth: 0, flex: 1, opacity: isLoser ? 0.5 : 1 }}>
+          <div style={{ fontSize: nameSize, fontWeight: 800, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isLoser ? 'line-through' : 'none' }}>
+            {ent ? `${ent.p1Name}・${ent.p2Name}` : '　'}
+          </div>
+          {ent && ent.club && <div style={{ fontSize: subSize, color: '#444', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>（{ent.club}）</div>}
+        </div>
+        {scoreLabel && <div style={{ fontSize: subSize + 2, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{scoreLabel}</div>}
+      </div>
+    );
+
+    const renderSlotBox = (slot) => {
+      const ent = getEntryAtSlot(slot);
+      const { siblingSlot } = getTournamentSlotInfo(slot);
+      const [lo, hi] = slot < siblingSlot ? [slot, siblingSlot] : [siblingSlot, slot];
+      const pairMatch = matches.find(m => m.id === `T-${cls}-${lo}-${hi}`);
+      let scoreLabel = null, isLoser = false;
+      if (ent && pairMatch && pairMatch.status === 'completed') {
+        const result = getMatchResult(pairMatch);
+        if (result) isLoser = String(result.winnerId) !== String(ent.id);
+        scoreLabel = getGameWinLossText(pairMatch, ent.id);
+      }
+      return <div key={`ps-${slot}`}>{renderBox(ent, scoreLabel, isLoser)}</div>;
+    };
+
+    const colHeader = (text) => (
+      <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 800, borderBottom: '2px solid #000', marginBottom: 4, paddingBottom: 2 }}>{text}</div>
+    );
+
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: GAP, height: thirdPlaceMatch ? '146mm' : '160mm' }}>
+          {rounds.map((slots, rIdx) => {
+            const pairs = [];
+            for (let i = 0; i < slots.length; i += 2) pairs.push([slots[i], slots[i + 1]]);
+            return (
+              <div key={`pr-${rIdx}`} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                {colHeader(roundLabel(rIdx))}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  {pairs.map(([a, b], pIdx) => (
+                    <div key={`pg-${pIdx}`} style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
+                      {renderSlotBox(a)}
+                      {renderSlotBox(b)}
+                      {/* 2枠の中央同士を結ぶ括弧と、次ラウンド（または優勝枠）への接続線 */}
+                      <div style={{ position: 'absolute', right: '-3.5mm', top: '25%', height: '50%', width: '3.5mm', borderTop: '1.5px solid #000', borderRight: '1.5px solid #000', borderBottom: '1.5px solid #000' }} />
+                      <div style={{ position: 'absolute', right: '-7mm', top: '50%', width: '3.5mm', borderTop: '1.5px solid #000' }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            {colHeader('優勝')}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              {renderBox(champion, null, false)}
+            </div>
+          </div>
+        </div>
+        {thirdPlaceMatch && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, whiteSpace: 'nowrap' }}>3位決定戦</div>
+            {[thirdPlaceMatch.team1Id, thirdPlaceMatch.team2Id].map((tid, i) => {
+              const ent = entries.find(e => e.id === tid) || null;
+              const r = thirdPlaceMatch.status === 'completed' ? getMatchResult(thirdPlaceMatch) : null;
+              return (
+                <React.Fragment key={`tp-${i}`}>
+                  {i === 1 && <div style={{ fontSize: 14, fontWeight: 800 }}>vs</div>}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {renderBox(ent, r ? getGameWinLossText(thirdPlaceMatch, tid) : null, !!r && String(r.winnerId) !== String(tid))}
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
       <div ref={measureTitleRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
@@ -7679,14 +7804,11 @@ export default function App() {
             );
           }
 
-          // トーナメント表：枠数が多いほどA4横の1ページに収まるよう縮小して印刷する
-          const printSlotCount = getTournamentSlotCount(cls);
-          const printZoom = printSlotCount >= 16 ? 0.55 : printSlotCount >= 8 ? 0.8 : 1;
           return (
             <div className="print-only-area">
               <div className="p-3 bg-white text-black">
                 {sheetHeader}
-                <div style={{ zoom: printZoom }}>{renderTournamentTree(cls, false)}</div>
+                {renderTournamentPrintSheet(cls)}
               </div>
             </div>
           );

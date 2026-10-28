@@ -4691,7 +4691,7 @@ export default function App() {
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">会場</strong>{config.venue}</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込期間</strong><span className="text-red-500 font-bold">{config.entryStartDate ? `${config.entryStartDate} 〜 ` : ''}{config.deadline}</span></div>
-             <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-base mt-2"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
+             <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-base mt-2 whitespace-pre-wrap"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
            </div>
         </div>
 

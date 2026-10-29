@@ -108,7 +108,7 @@ function IconCheckCircle() { return <svg xmlns="http://www.w3.org/2000/svg" widt
 function IconSmartphone() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>; }
 function IconSearch() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
 function IconMail() { return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>; }
-function IconInstagram() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>; }
+function IconInstagram() { return <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 48 48"><defs><radialGradient id="igGrad" cx="30%" cy="107%" r="150%"><stop offset="0" stopColor="#fdf497"/><stop offset="0.05" stopColor="#fdf497"/><stop offset="0.45" stopColor="#fd5949"/><stop offset="0.6" stopColor="#d6249f"/><stop offset="0.9" stopColor="#285AEB"/></radialGradient></defs><rect x="2" y="2" width="44" height="44" rx="12" fill="url(#igGrad)"/><rect x="10.5" y="10.5" width="27" height="27" rx="8" fill="none" stroke="#fff" strokeWidth="3"/><circle cx="24" cy="24" r="6.5" fill="none" stroke="#fff" strokeWidth="3"/><circle cx="32" cy="16" r="2" fill="#fff"/></svg>; }
 function IconPhone() { return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>; }
 function IconMatch() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
 function IconRefresh() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>; }
@@ -4648,23 +4648,30 @@ export default function App() {
         >
           {config.title}
         </h1>
-        <div className="mb-4 relative z-10">
+        <div className="mb-8 relative z-10 md:min-h-[88px] md:flex md:items-center md:justify-center">
           <p className="text-xl md:text-2xl font-light">{config.date}</p>
-          {config.contactPhone && (
-            <p className="mt-2 md:mt-0 md:absolute md:right-0 md:top-1/2 md:-translate-y-1/2">
+          {/* 左側の空きスペース：Instagram（カラーの大きなアイコン） */}
+          <a
+            href={`https://www.instagram.com/${CONTACT_INSTAGRAM}/`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Instagram @${CONTACT_INSTAGRAM}`}
+            title={`Instagram @${CONTACT_INSTAGRAM}`}
+            className="mt-3 md:mt-0 inline-block hover:scale-105 transition-transform md:absolute md:left-0 md:top-1/2 md:-translate-y-1/2"
+          >
+            <IconInstagram />
+          </a>
+          {/* 右側：電話番号の下にメールアドレス */}
+          <div className="mt-2 md:mt-0 flex flex-col items-center md:items-end gap-2 md:absolute md:right-0 md:top-1/2 md:-translate-y-1/2">
+            {config.contactPhone && (
               <span className="inline-flex items-center gap-1.5 text-sm font-bold text-white/90 bg-white/10 rounded-full px-3 py-1.5 whitespace-nowrap">
                 <IconPhone /> {config.contactPhone}
               </span>
-            </p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-3 mb-8 relative z-10">
-          <a href={`mailto:${CONTACT_EMAIL}`} className="inline-flex items-center gap-1.5 text-sm font-bold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5">
-            <IconMail /> {CONTACT_EMAIL}
-          </a>
-          <a href={`https://www.instagram.com/${CONTACT_INSTAGRAM}/`} target="_blank" rel="noopener noreferrer" aria-label={`Instagram @${CONTACT_INSTAGRAM}`} title={`Instagram @${CONTACT_INSTAGRAM}`} className="inline-flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-9 h-9">
-            <IconInstagram />
-          </a>
+            )}
+            <a href={`mailto:${CONTACT_EMAIL}`} className="inline-flex items-center gap-1.5 text-sm font-bold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 whitespace-nowrap">
+              <IconMail /> {CONTACT_EMAIL}
+            </a>
+          </div>
         </div>
         <div className="flex flex-col md:flex-row md:flex-wrap justify-center gap-4 relative z-10">
           <button onClick={() => {

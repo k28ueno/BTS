@@ -15,6 +15,9 @@ const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) :
 // 管理者ログインの排他制御・自動ログオフに関する定数
 const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確認間隔
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
+// トップ画面に表示する大会事務局の連絡先（メール・Instagram）。マスタ設定の項目ではなく固定表示
+const CONTACT_EMAIL = 'kihoku.bad.2026.kba@gmail.com';
+const CONTACT_INSTAGRAM = 'kihoku_bad_2026_kba';
 const DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES = 10; // 無操作で自動ログオフするまでの時間の既定値（分）。マスタ設定で変更可能
 
 // Excelインポート時、列見出しの表記ゆれ（別の言い回し・全角半角・区切り記号の有無等）を
@@ -104,6 +107,8 @@ function IconSettings() { return <svg xmlns="http://www.w3.org/2000/svg" width="
 function IconCheckCircle() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>; }
 function IconSmartphone() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>; }
 function IconSearch() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
+function IconMail() { return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>; }
+function IconInstagram() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>; }
 function IconPhone() { return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>; }
 function IconMatch() { return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; }
 function IconRefresh() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>; }
@@ -4643,7 +4648,7 @@ export default function App() {
         >
           {config.title}
         </h1>
-        <div className="mb-8 relative z-10">
+        <div className="mb-4 relative z-10">
           <p className="text-xl md:text-2xl font-light">{config.date}</p>
           {config.contactPhone && (
             <p className="mt-2 md:mt-0 md:absolute md:right-0 md:top-1/2 md:-translate-y-1/2">
@@ -4652,6 +4657,14 @@ export default function App() {
               </span>
             </p>
           )}
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-3 mb-8 relative z-10">
+          <a href={`mailto:${CONTACT_EMAIL}`} className="inline-flex items-center gap-1.5 text-sm font-bold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5">
+            <IconMail /> {CONTACT_EMAIL}
+          </a>
+          <a href={`https://www.instagram.com/${CONTACT_INSTAGRAM}/`} target="_blank" rel="noopener noreferrer" aria-label={`Instagram @${CONTACT_INSTAGRAM}`} title={`Instagram @${CONTACT_INSTAGRAM}`} className="inline-flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-9 h-9">
+            <IconInstagram />
+          </a>
         </div>
         <div className="flex flex-col md:flex-row md:flex-wrap justify-center gap-4 relative z-10">
           <button onClick={() => {

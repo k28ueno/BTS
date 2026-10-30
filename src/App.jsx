@@ -12,6 +12,48 @@ const isSupabaseConfigured = supabaseUrl !== 'YOUR_SUPABASE_URL';
 
 const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) : null;
 
+// 管理者パスワード。設定画面で変更するまでは初期パスワードで認証する。
+// 変更後はsettings.admin_password_hashにPBKDF2（SHA-256・ソルト付き）のハッシュだけを保存し、
+// パスワード自体は保存しない。初期パスワードはソース内に平文で残るため、必ず変更して使うこと
+const ADMIN_DEFAULT_PASSWORD = 'admin2026';
+const ADMIN_PASSWORD_MIN_LENGTH = 8;
+const PBKDF2_ITERATIONS = 100000;
+const bytesToB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const b64ToBytes = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const pbkdf2Bits = async (password, salt, iterations) => {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  return crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+};
+const hashAdminPassword = async (password) => {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const bits = await pbkdf2Bits(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToB64(salt)}$${bytesToB64(bits)}`;
+};
+// storedHashが空（未設定）なら初期パスワードと比較する
+const verifyAdminPassword = async (password, storedHash) => {
+  if (!storedHash) return password === ADMIN_DEFAULT_PASSWORD;
+  const [scheme, iter, saltB64, hashB64] = storedHash.split('$');
+  if (scheme !== 'pbkdf2') return false;
+  const bits = new Uint8Array(await pbkdf2Bits(password, b64ToBytes(saltB64), parseInt(iter, 10)));
+  const expected = b64ToBytes(hashB64);
+  if (bits.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < bits.length; i++) diff |= bits[i] ^ expected[i];
+  return diff === 0;
+};
+// 保存済みハッシュを取得する。列が未作成（SQL未実行）の場合のみ「未設定」として空文字を返し、
+// 通信エラー等ではthrowする（エラー時に初期パスワードで通ってしまうのを防ぐ）
+const isMissingHashColumnError = (error) => !!error && (error.code === '42703' || error.code === 'PGRST204' || /admin_password_hash/.test(error.message || ''));
+const fetchAdminPasswordHash = async () => {
+  if (!isSupabaseConfigured) return '';
+  const { data, error } = await supabase.from('settings').select('admin_password_hash').eq('id', 1).maybeSingle();
+  if (error) {
+    if (isMissingHashColumnError(error)) return '';
+    throw error;
+  }
+  return (data && data.admin_password_hash) || '';
+};
+
 // 管理者ログインの排他制御・自動ログオフに関する定数
 const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確認間隔
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
@@ -3547,9 +3589,58 @@ export default function App() {
     setIsAdminLoggedIn(false);
   };
 
+  // マスタ設定画面：管理者パスワードの変更
+  const [pwChangeForm, setPwChangeForm] = useState({ current: '', next: '', confirm: '' });
+  const handleChangeAdminPassword = async () => {
+    const { current, next, confirm } = pwChangeForm;
+    const fail = (message) => setDialog({ title: "パスワードを変更できません", message, onClose: () => setDialog(null) });
+    if (!isSupabaseConfigured) { fail('データベースに接続していないため、パスワードを変更できません。'); return; }
+    let stored;
+    try {
+      stored = await fetchAdminPasswordHash();
+    } catch (err) {
+      fail('現在のパスワードを確認できませんでした。通信状況を確認して再度お試しください。');
+      return;
+    }
+    if (!(await verifyAdminPassword(current, stored))) { fail('現在のパスワードが違います。'); return; }
+    if (next.length < ADMIN_PASSWORD_MIN_LENGTH) { fail(`新しいパスワードは${ADMIN_PASSWORD_MIN_LENGTH}文字以上で入力してください。`); return; }
+    if (next !== confirm) { fail('新しいパスワード（確認）が一致しません。'); return; }
+    if (next === current) { fail('新しいパスワードが現在のパスワードと同じです。'); return; }
+    if (!(window.crypto && window.crypto.subtle)) { fail('このブラウザ・接続ではパスワードの暗号化ができません（HTTPSまたはlocalhostで開いてください）。'); return; }
+
+    const { error } = await supabase.from('settings').update({ admin_password_hash: await hashAdminPassword(next) }).eq('id', 1);
+    if (error) {
+      if (isMissingHashColumnError(error)) {
+        setDialog({
+          title: "データベースの準備が必要です",
+          message: (
+            <div className="text-left space-y-2 text-sm">
+              <p>パスワードを保存する列がまだありません。SupabaseのSQL Editorで次のSQLを一度だけ実行してから、もう一度お試しください。</p>
+              <pre className="bg-gray-100 border rounded p-2 text-xs overflow-x-auto select-all">ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_password_hash text;</pre>
+            </div>
+          ),
+          onClose: () => setDialog(null)
+        });
+      } else {
+        fail('保存に失敗しました。通信状況を確認して再度お試しください。');
+      }
+      return;
+    }
+    setPwChangeForm({ current: '', next: '', confirm: '' });
+    setDialog({ title: "変更完了", message: "管理者パスワードを変更しました。次回のログインから新しいパスワードが必要です。", onClose: () => setDialog(null) });
+  };
+
   const handleAdminLogin = async (e) => {
     e.preventDefault();
-    if (adminPassword !== 'admin2026') {
+    let passwordOk = false;
+    try {
+      passwordOk = await verifyAdminPassword(adminPassword, await fetchAdminPasswordHash());
+    } catch (err) {
+      console.error('管理者パスワードの確認に失敗しました:', err);
+      setDialog({ title: "エラー", message: "パスワードを確認できませんでした。通信状況を確認して再度お試しください。", onClose: () => setDialog(null) });
+      return;
+    }
+    if (!passwordOk) {
       setDialog({ title: "エラー", message: "パスワードが間違っています。", onClose: () => setDialog(null) });
       return;
     }
@@ -5552,6 +5643,24 @@ export default function App() {
               </div>
 
               <div className="border-t pt-4 mt-2">
+                <h4 className="font-bold text-lg text-gray-800 mb-1">管理者パスワードの変更</h4>
+                <p className="text-xs text-gray-500 mb-3">変更後のパスワードは暗号化（ソルト付きハッシュ）して保存され、パスワード自体は保存されません。{ADMIN_PASSWORD_MIN_LENGTH}文字以上で設定してください。「設定を保存」ボタンとは別に、このボタンで即時に変更されます。</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-3xl">
+                  <input type="password" autoComplete="current-password" className="p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" placeholder="現在のパスワード" value={pwChangeForm.current} onChange={e => setPwChangeForm({ ...pwChangeForm, current: e.target.value })} />
+                  <input type="password" autoComplete="new-password" className="p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" placeholder="新しいパスワード" value={pwChangeForm.next} onChange={e => setPwChangeForm({ ...pwChangeForm, next: e.target.value })} />
+                  <input type="password" autoComplete="new-password" className="p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" placeholder="新しいパスワード（確認）" value={pwChangeForm.confirm} onChange={e => setPwChangeForm({ ...pwChangeForm, confirm: e.target.value })} />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleChangeAdminPassword}
+                  disabled={!pwChangeForm.current || !pwChangeForm.next || !pwChangeForm.confirm}
+                  className={`mt-3 font-bold px-5 py-2 rounded shadow-sm ${(!pwChangeForm.current || !pwChangeForm.next || !pwChangeForm.confirm) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
+                >
+                  パスワードを変更
+                </button>
+              </div>
+
+              <div className="border-t pt-4 mt-2">
                 <h4 className="font-bold text-lg text-gray-800 mb-1">試合ルール設定</h4>
                 <p className="text-xs text-gray-500 mb-3">クラス×予選/決勝ごとに、ゲーム数・ゲーム別の点数／MAX点数／デュース有無を設定します。対戦カード生成の時点のルールが各試合に記録されるため、生成後にここを変更しても既存の試合には影響しません。</p>
                 <div className="space-y-4">
@@ -7304,6 +7413,7 @@ export default function App() {
                       ['対戦カードを全部作り直したい', 'データ管理の「試合結果のみ初期化」で、エントリー情報を残したまま試合結果とコート進行状態だけをリセットできます。'],
                       ['決勝トーナメントの枠数がおかしい', '決勝の枠数（2/4/8枠）は「グループ数×決勝進出条件」から自動計算されます。進出条件はマスタ設定の「決勝トーナメント進出条件」で変更できます。'],
                       ['作業前にバックアップを取りたい', 'データ管理の「①データをローカルに退避」からJSONファイルとして保存できます。テストデータ生成前には自動でバックアップの要否を確認するダイアログが出ます。'],
+                      ['管理者パスワードを変更したい', 'マスタ設定の「管理者パスワードの変更」で、現在のパスワードと新しいパスワード（8文字以上）を入力して変更できます。変更後のパスワードは暗号化（ソルト付きハッシュ）して保存されます。初回のみ、Supabaseで「ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_password_hash text;」を実行する必要があります（未実行の場合は、変更時に手順が表示されます）。変更するまでは初期パスワードでログインできます。'],
                       ['管理者ログインができない（既に他の端末でログイン中）', '同時にログインできるのは1台のみです。使い終わったら必ず「ログアウト」してください。一定時間操作がない場合も自動的にログオフされます（既定10分、マスタ設定の「自動ログオフ時間」で変更可能）。'],
                       ['一方の組が欠場・棄権した', 'コート進行画面のスコア入力から「棄権」を選択すると、出場した側の不戦勝として記録されます（得失点差には反映されません）。誤操作の場合は「スコア解除」で取り消せます。'],
                       ['試合結果を新聞社等に提出したい', '「結果PDF」画面で各クラスの優勝・準優勝・3位（実施した場合）をまとめて表示し、ブラウザの印刷機能からPDF保存できます。'],

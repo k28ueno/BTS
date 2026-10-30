@@ -4638,6 +4638,41 @@ export default function App() {
     );
   };
 
+  // メールアイコン押下時：PCでメールアプリが未設定だとmailtoリンクが無反応になるため、
+  // アドレスの表示・コピー・Gmail/メールアプリでの作成を選べるダイアログを開く
+  const handleOpenContactMail = (e) => {
+    e.preventDefault();
+    const copyAddress = async () => {
+      try {
+        await navigator.clipboard.writeText(CONTACT_EMAIL);
+      } catch (err) {
+        const ta = document.createElement('textarea');
+        ta.value = CONTACT_EMAIL;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      setDialog({ title: "コピーしました", message: `${CONTACT_EMAIL} をクリップボードにコピーしました。`, onClose: () => setDialog(null) });
+    };
+    setDialog({
+      title: "メールでのお問い合わせ",
+      message: (
+        <div className="text-left space-y-3 text-sm">
+          <div className="font-mono font-bold break-all bg-gray-50 border rounded p-2.5 select-all">{CONTACT_EMAIL}</div>
+          <div className="flex flex-wrap gap-2">
+            <a href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CONTACT_EMAIL)}`} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50 font-bold text-gray-700">Gmailで作成</a>
+            <a href={`mailto:${CONTACT_EMAIL}`} className="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50 font-bold text-gray-700">メールアプリで作成</a>
+          </div>
+        </div>
+      ),
+      confirmText: "アドレスをコピー",
+      confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
+      onConfirm: copyAddress,
+      onClose: () => setDialog(null)
+    });
+  };
+
   const viewHome = (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
       <div ref={measureTitleRef} className="bg-[#2c5f4e] text-white rounded-2xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
@@ -4664,6 +4699,7 @@ export default function App() {
             </a>
             <a
               href={`mailto:${CONTACT_EMAIL}`}
+              onClick={handleOpenContactMail}
               aria-label={`メール ${CONTACT_EMAIL}`}
               title={CONTACT_EMAIL}
               className="inline-flex items-center justify-center w-[52px] h-[52px] rounded-xl bg-white/15 hover:bg-white/25 text-white hover:scale-105 transition-all"

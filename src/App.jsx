@@ -10,7 +10,27 @@ const supabaseUrl = getEnv('VITE_SUPABASE_URL') || 'YOUR_SUPABASE_URL';
 const supabaseKey = getEnv('VITE_SUPABASE_ANON_KEY') || 'YOUR_SUPABASE_ANON_KEY';
 const isSupabaseConfigured = supabaseUrl !== 'YOUR_SUPABASE_URL';
 
-const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) : null;
+const supabaseClient = isSupabaseConfigured ? createClient(supabaseUrl, supabaseKey) : null;
+
+// 本番DB／テストDBの切替。テストDBは同じSupabaseプロジェクト内の「*_test」テーブルを使う。
+// 切替はこのブラウザ（localStorage）だけに効き、他の端末や公開サイトの利用者は本番DBのまま。
+// 管理者の認証（admin_session・パスワード）は常に本番側のテーブルを使う
+const DB_MODE_STORAGE_KEY = 'bts_db_mode';
+const TEST_DB_TABLES = ['entries', 'matches', 'settings'];
+const TEST_DB_SUFFIX = '_test';
+const readIsTestDb = () => {
+  try { return localStorage.getItem(DB_MODE_STORAGE_KEY) === 'test'; } catch (e) { return false; }
+};
+const isTestDb = isSupabaseConfigured && readIsTestDb();
+const supabase = supabaseClient && {
+  from: (table) => supabaseClient.from(isTestDb && TEST_DB_TABLES.includes(table) ? table + TEST_DB_SUFFIX : table)
+};
+// テストDB用テーブルの作成SQL（Supabaseの SQL Editor で一度だけ実行する）
+const TEST_DB_SETUP_SQL = TEST_DB_TABLES.map(t => `CREATE TABLE IF NOT EXISTS ${t}${TEST_DB_SUFFIX} (LIKE ${t} INCLUDING ALL);`).concat([
+  'INSERT INTO settings_test SELECT * FROM settings WHERE id = 1 ON CONFLICT DO NOTHING;'
+], TEST_DB_TABLES.map(t => `ALTER TABLE ${t}${TEST_DB_SUFFIX} ENABLE ROW LEVEL SECURITY;`), TEST_DB_TABLES.map(t => `CREATE POLICY "allow all" ON ${t}${TEST_DB_SUFFIX} FOR ALL TO anon USING (true) WITH CHECK (true);`), [
+  'GRANT ALL ON entries_test, matches_test, settings_test TO anon, authenticated;'
+]).join('\n');
 
 // 管理者パスワード。設定画面で変更するまでは初期パスワードで認証する。
 // 変更後はsettings.admin_password_hashにPBKDF2（SHA-256・ソルト付き）のハッシュだけを保存し、
@@ -46,7 +66,7 @@ const verifyAdminPassword = async (password, storedHash) => {
 const isMissingHashColumnError = (error) => !!error && (error.code === '42703' || error.code === 'PGRST204' || /admin_password_hash/.test(error.message || ''));
 const fetchAdminPasswordHash = async () => {
   if (!isSupabaseConfigured) return '';
-  const { data, error } = await supabase.from('settings').select('admin_password_hash').eq('id', 1).maybeSingle();
+  const { data, error } = await supabaseClient.from('settings').select('admin_password_hash').eq('id', 1).maybeSingle();
   if (error) {
     if (isMissingHashColumnError(error)) return '';
     throw error;
@@ -3589,6 +3609,52 @@ export default function App() {
     setIsAdminLoggedIn(false);
   };
 
+  // データ管理画面：本番DB／テストDBの切替。切替後は再読み込みして読み込み直す（管理者ログインは外れる）
+  const applyDbMode = (toTest) => {
+    try {
+      if (toTest) localStorage.setItem(DB_MODE_STORAGE_KEY, 'test'); else localStorage.removeItem(DB_MODE_STORAGE_KEY);
+    } catch (e) {
+      setDialog({ title: "切り替えできません", message: "このブラウザでは設定を保存できないため、DBを切り替えられません。", onClose: () => setDialog(null) });
+      return;
+    }
+    window.location.reload();
+  };
+  const handleSwitchDb = async (toTest) => {
+    if (!toTest) {
+      setDialog({
+        title: "本番DBに戻す",
+        message: "本番DBに切り替えます。画面を再読み込みするため、管理者ログインが外れます。",
+        confirmText: "本番DBに戻す",
+        confirmBg: "bg-emerald-700",
+        onConfirm: () => { setDialog(null); applyDbMode(false); },
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+    // テスト用テーブルが未作成なら、切り替えずに作成SQLを案内する
+    const results = await Promise.all(TEST_DB_TABLES.map(t => supabaseClient.from(t + TEST_DB_SUFFIX).select('*').limit(1)));
+    if (results.some(r => r.error)) {
+      setDialog({
+        title: "テストDBの準備が必要です",
+        message: (
+          <div className="text-left space-y-2 text-sm">
+            <p>テスト用のテーブルがまだありません。SupabaseのSQL Editorで次のSQLを一度だけ実行してから、もう一度お試しください。</p>
+            <pre className="bg-gray-100 border rounded p-2 text-xs overflow-x-auto select-all whitespace-pre">{TEST_DB_SETUP_SQL}</pre>
+          </div>
+        ),
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
+    setDialog({
+      title: "テストDBに切り替え",
+      message: "テストDBに切り替えます。この端末（ブラウザ）だけが対象で、他の端末や公開サイトの利用者は本番DBのままです。画面を再読み込みするため、管理者ログインが外れます。",
+      confirmText: "テストDBに切り替える",
+      onConfirm: () => { setDialog(null); applyDbMode(true); },
+      onClose: () => setDialog(null)
+    });
+  };
+
   // マスタ設定画面：管理者パスワードの変更
   const [pwChangeForm, setPwChangeForm] = useState({ current: '', next: '', confirm: '' });
   const handleChangeAdminPassword = async () => {
@@ -3608,7 +3674,7 @@ export default function App() {
     if (next === current) { fail('新しいパスワードが現在のパスワードと同じです。'); return; }
     if (!(window.crypto && window.crypto.subtle)) { fail('このブラウザ・接続ではパスワードの暗号化ができません（HTTPSまたはlocalhostで開いてください）。'); return; }
 
-    const { error } = await supabase.from('settings').update({ admin_password_hash: await hashAdminPassword(next) }).eq('id', 1);
+    const { error } = await supabaseClient.from('settings').update({ admin_password_hash: await hashAdminPassword(next) }).eq('id', 1);
     if (error) {
       if (isMissingHashColumnError(error)) {
         setDialog({
@@ -7105,6 +7171,31 @@ export default function App() {
               </h3>
 
               <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-8">
+                 {/* 0. 本番DB／テストDBの切替 */}
+                 <div>
+                    <h4 className="font-extrabold text-xl text-gray-800 mb-2 flex items-center gap-2">
+                       🧪 データベースの切替（本番 / テスト）
+                    </h4>
+                    <p className="text-base text-gray-600 mb-4 font-medium">
+                       テスト用のデータベースに切り替えて、エントリー登録・ドロー・試合進行などを本番データに影響なく試せます。切り替えはこの端末（ブラウザ）だけに効き、他の端末や公開サイトの利用者は本番DBのままです。切替後は画面が再読み込みされ、管理者ログインが外れます。
+                    </p>
+                    <div className="flex items-center gap-4 flex-wrap bg-gray-50 p-5 rounded-lg border">
+                       <span className="font-extrabold text-base text-gray-800">現在の接続先：</span>
+                       <span className={`font-extrabold text-base px-3 py-1 rounded ${isTestDb ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'}`}>{isTestDb ? 'テストDB' : '本番DB'}</span>
+                       {isSupabaseConfigured ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchDb(!isTestDb)}
+                            className={`font-bold text-base py-2 px-5 rounded-lg shadow-md text-white transition-colors ${isTestDb ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-red-600 hover:bg-red-700'}`}
+                          >
+                            {isTestDb ? '本番DBに戻す' : 'テストDBに切り替える'}
+                          </button>
+                       ) : (
+                          <span className="text-sm text-gray-500 font-medium">（データベース未接続のため切り替えできません）</span>
+                       )}
+                    </div>
+                 </div>
+
                  {/* 1. データの退避・復元 (ローカル) */}
                  <div>
                     <h4 className="font-extrabold text-xl text-gray-800 mb-2 flex items-center gap-2">
@@ -7313,7 +7404,7 @@ export default function App() {
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],
-                      ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。「表彰状テスト」では、予選・決勝トーナメントを実際に進行させなくても、選択したクラスの決勝結果をランダムなダミーデータで作成し、表彰状のデザイン確認ができます。'],
+                      ['データ管理', '「データベースの切替（本番 / テスト）」で、この端末だけテスト用データベースに切り替えられます（他の端末や公開サイトは本番のまま）。テスト中は画面上部に赤い帯が表示され、「本番DBに戻す」で戻せます。切替後は再読み込みされ、管理者ログインが外れます。初回のみ、Supabaseで表示されるSQLの実行が必要です。テスト用データベースは本番とは別のテーブルなので、テストデータ生成や全データ削除をしても本番データには影響しません。テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。「表彰状テスト」では、予選・決勝トーナメントを実際に進行させなくても、選択したクラスの決勝結果をランダムなダミーデータで作成し、表彰状のデザイン確認ができます。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">
                          <div className="font-bold text-[#2c5f4e] text-sm mb-1">{title}</div>
@@ -7445,6 +7536,12 @@ export default function App() {
     <div className={`min-h-screen font-sans bg-gray-50 text-gray-800 pb-20 ${(printMatchId || printBlankSheetCount || printDrawSheet) ? 'printing-score-sheet' : ''}`}>
       {/* 修正: 右上の「エントリー」「修正・取消」ボタンを削除し、「管理」ボタンのみ配置 */}
       <header className="bg-white shadow-sm sticky top-0 z-50">
+        {isTestDb && (
+          <div className="bg-red-600 text-white text-sm font-bold px-4 py-1.5 flex items-center justify-center gap-3 flex-wrap">
+            <span>テストDB接続中（本番データではありません）</span>
+            <button type="button" onClick={() => handleSwitchDb(false)} className="bg-white text-red-700 px-3 py-0.5 rounded shadow-sm hover:bg-red-50">本番DBに戻す</button>
+          </div>
+        )}
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="font-bold text-[#2c5f4e] text-lg flex items-center gap-2 cursor-pointer" onClick={() => setCurrentTab('home')}>
              <IconTrophy /> 大会運営ポータル

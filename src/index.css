@@ -69,6 +69,15 @@
   page: certificate-page-portrait;
 }
 @media print {
+  /* 画面プレビュー用のインライン最大幅（maxWidth）・余白・影を印刷時は解除し、用紙（A4）いっぱいに印刷する。
+     高さは縦横比（aspect-ratio）で決まり、余白0の1ページ内に収まる */
+  .certificate-print-area { background: none !important; padding: 0 !important; border-radius: 0 !important; }
+  .cert-page, .cert-page-badmin {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
   .cert-page, .cert-page-badmin { page-break-after: always; }
   .cert-page:last-child, .cert-page-badmin:last-child { page-break-after: auto; }
 }
@@ -106,7 +115,6 @@
 .cert-badmin-body { position: absolute; top: 68%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(14px, 2.9cqw, 41px); line-height: 1.7; }
 .cert-badmin-date { position: absolute; top: 79.1%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(13px, 2.6cqw, 36px); letter-spacing: .1em; font-variant-numeric: tabular-nums; }
 .cert-badmin-org { position: absolute; top: 82%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 400; color: #2B2620; font-size: clamp(11px, 2.84cqw, 40px); }
-.cert-badmin-org .cert-badmin-org-label { font-size: .78em; margin-right: .8em; }
 .cert-badmin-chief { position: absolute; top: 84.6%; left: 0; right: 0; text-align: center; font-family: var(--cert-badmin-font); font-weight: 700; color: #2B2620; font-size: clamp(18px, 4.36cqw, 61px); }
 .cert-badmin-chief .cert-badmin-chief-label { font-weight: 400; font-size: .72em; margin-right: .8em; }
 .cert-badmin-standard-num { font-family: 'Noto Sans JP', sans-serif; }

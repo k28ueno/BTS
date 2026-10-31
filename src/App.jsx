@@ -7148,7 +7148,7 @@ export default function App() {
                   よってその栄誉をたたえこれを賞します
                 </p>
                 <div className="cert-badmin-date">{withStandardDigits(formatBadmintonDate(config.date))}</div>
-                <div className="cert-badmin-org"><span className="cert-badmin-org-label">主催者</span>{withStandardDigits(config.orgName)}</div>
+                <div className="cert-badmin-org">{withStandardDigits(config.orgName)}</div>
                 <div className="cert-badmin-chief"><span className="cert-badmin-chief-label">会長</span>{withStandardDigits(config.chiefName || '○○　○○')}</div>
                 {config.sealImageUrl ? (
                   <img src={config.sealImageUrl} alt="印鑑" className="cert-badmin-seal" style={{ objectFit: 'contain' }} />

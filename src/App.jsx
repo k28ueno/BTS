@@ -1073,23 +1073,25 @@ export default function App() {
     return predictedMap;
   };
 
-  // 直近に試合結果が入力され、まだ次の試合が配置されていないコート（複数ある場合は最後に完了したコート）
-  const getFocusCourtInfo = () => {
-    let focus = null;
+  // 試合結果が入力され、まだ次の試合が配置されていないコートを、結果が入力された順（古い順）に返す
+  const getFreeCourtQueue = () => {
+    const queue = [];
     for (let c = 1; c <= config.courts; c++) {
       const am = getActiveMatchForCourt(c);
-      if (am && am.status === 'completed' && am.completedAt && (!focus || am.completedAt > focus.completedAt)) {
-        focus = { court: c, completedAt: am.completedAt };
+      if (am && am.status === 'completed' && am.completedAt) {
+        queue.push({ court: c, cls: am.cls, completedAt: am.completedAt });
       }
     }
-    return focus;
+    return queue.sort((a, b) => a.completedAt.localeCompare(b.completedAt));
   };
 
-  const getSortedWaitingMatches = () => {
+  const getSortedWaitingMatches = () => getWaitingMatchPlan().list;
+
+  // 優先対戦リストの並び順と、先頭に出す「〇コート向け」の候補（試合ID→コート番号）を返す
+  const getWaitingMatchPlan = () => {
     const busyIds = getBusyTeamIds();
     const predictedIds = getPredictedRefereeDetails();
     const waitingMatches = matches.filter(m => m.status === 'waiting');
-    const focusCourt = getFocusCourtInfo();
 
     // 未受付のペアが含まれる試合はコートへ配置できない
     const hasUncheckedTeam = (m) => [m.team1Id, m.team2Id].some(id => {
@@ -1099,17 +1101,10 @@ export default function App() {
 
     // 優先度: ①両チームとも今すぐ完全に空いている ②片方/両方に次審判予定あり（今は空いているがブロックはしていない）
     // ③ブロック中 ④未受付のペアを含む（受付が済むまで配置できない）
-    // ②のうち、結果入力直後のコートの次審判予定ペア（そのコートで続けて試合させず審判を務める組）を含む試合は、
-    // そのコートで試合できる他の組の試合より後ろにする
     const tierOf = (m) => {
       if (hasUncheckedTeam(m)) return 3;
       if (busyIds.has(String(m.team1Id)) || busyIds.has(String(m.team2Id))) return 2;
-      const p1 = predictedIds.get(String(m.team1Id));
-      const p2 = predictedIds.get(String(m.team2Id));
-      if (p1 || p2) {
-        const isFocusRef = focusCourt && ((p1 && p1.court === focusCourt.court) || (p2 && p2.court === focusCourt.court));
-        return isFocusRef ? 1.5 : 1;
-      }
+      if (predictedIds.has(String(m.team1Id)) || predictedIds.has(String(m.team2Id))) return 1;
       return 0;
     };
 
@@ -1135,7 +1130,7 @@ export default function App() {
 
     const virtualKey = (m) => rankByMatchId.get(m.id) / (waitingCountByCls.get(m.cls) || 1);
 
-    return [...waitingMatches].sort((a, b) => {
+    const sorted = [...waitingMatches].sort((a, b) => {
       const tierDiff = tierOf(a) - tierOf(b);
       if (tierDiff !== 0) return tierDiff;
       const keyDiff = virtualKey(a) - virtualKey(b);
@@ -1146,6 +1141,27 @@ export default function App() {
       if (totalA !== totalB) return totalB - totalA;
       return (a.matchOrder || 0) - (b.matchOrder || 0);
     });
+
+    // 結果が入力されて次の試合待ちのコートには、結果が入力された順に、そのコートで続けて試合できる試合を
+    // 先頭から並べる。候補は「同じクラスの試合」を優先し（無ければ他クラス）、両ペアとも受付済で空いていて、
+    // そのコートの次審判予定ペア（直前の勝者・敗者）を含まず、他のコート向けに選んだ試合でないもの
+    const courtByMatchId = new Map();
+    const picked = [];
+    getFreeCourtQueue().forEach(({ court, cls }) => {
+      const isEligible = (m) => {
+        if (courtByMatchId.has(m.id) || tierOf(m) > 1) return false;
+        const p1 = predictedIds.get(String(m.team1Id));
+        const p2 = predictedIds.get(String(m.team2Id));
+        return !((p1 && p1.court === court) || (p2 && p2.court === court));
+      };
+      const candidate = sorted.find(m => isEligible(m) && m.cls === cls) || sorted.find(isEligible);
+      if (candidate) {
+        courtByMatchId.set(candidate.id, court);
+        picked.push(candidate);
+      }
+    });
+
+    return { list: [...picked, ...sorted.filter(m => !courtByMatchId.has(m.id))], courtByMatchId };
   };
 
   // ページ読み込み時など、lastCourtReferees（直前コートの勝者・敗者記録）が消えている完了済みコートを、
@@ -6807,12 +6823,8 @@ export default function App() {
                               const team2Predicted = !team2Busy ? predictedMap.get(String(m.team2Id)) : null;
 
                               const isSelected = tapMoveSelection && tapMoveSelection.kind === 'match' && tapMoveSelection.id === m.id;
-                              // 結果入力直後のコートで、そのまま試合できる先頭の候補にラベルを付ける
-                              const focusCourt = getFocusCourtInfo();
-                              const isFocusCourtCandidate = displayIndex === 0 && !!focusCourt && !isAnyBusy &&
-                                !(team1Predicted && team1Predicted.court === focusCourt.court) &&
-                                !(team2Predicted && team2Predicted.court === focusCourt.court) &&
-                                [m.team1Id, m.team2Id].every(id => { const ent = entries.find(e => String(e.id) === String(id)); return !ent || ent.checkedIn; });
+                              // 結果が入力されたコート向けに先頭へ並べた候補には、コート番号のラベルを付ける
+                              const candidateCourt = getWaitingMatchPlan().courtByMatchId.get(m.id);
                               return (
                                 <div
                                   key={m.id}
@@ -6824,7 +6836,7 @@ export default function App() {
                                 >
                                    <div className="flex items-center gap-3 mb-1 flex-wrap">
                                       <span className="text-base font-mono font-extrabold bg-gray-200 px-1.5 py-0.5 rounded text-gray-700">#{displayIndex + 1}</span>
-                                      {isFocusCourtCandidate && <span className="text-xs font-bold bg-emerald-600 text-white px-2 py-1 rounded whitespace-nowrap">第{focusCourt.court}コート向け</span>}
+                                      {candidateCourt && <span className="text-xs font-bold bg-emerald-600 text-white px-2 py-1 rounded whitespace-nowrap">第{candidateCourt}コート向け</span>}
                                       <span className="text-sm font-bold text-blue-800">{m.cls} {m.matchType === 'tournament' ? m.group : `グループ${m.group}`}</span>
                                       {typeof m.matchNo === 'number' && (
                                          <span className="font-mono font-extrabold inline-flex items-baseline gap-0.5">
@@ -7466,7 +7478,7 @@ export default function App() {
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。「未受付のみ」にチェックを入れると、まだ受付していない組だけに絞り込めます。ドローは未受付でも作れますが、コートへ配置できるのは受付済の組だけです（未受付の組が含まれる試合をコートへ配置しようとすると「未受付エラー」が表示され、配置できません）。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。'],
-                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭になり、「第〇コート向け」と表示されます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
+                      ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],

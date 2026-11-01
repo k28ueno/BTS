@@ -3682,9 +3682,39 @@ export default function App() {
     setDialog({ title: "インポート完了", message: `新規エントリー ${toCreate.length}件を追加しました。`, onClose: () => setDialog(null) });
   };
 
+  // エントリー削除時の対戦カードの扱いを判定する。まだ試合が始まっていない（予選の待機中だけの）対戦カードは
+  // エントリーと一緒に削除して整合を保つ。試合が始まっている・結果が入力済み・決勝トーナメントの対戦カードに
+  // 含まれる場合は削除できない（途中の欠場は、スコア入力の「棄権」で処理する）
+  const getEntryDeletionPlan = (id) => {
+    const involved = matches.filter(m => String(m.team1Id) === String(id) || String(m.team2Id) === String(id));
+    const blocked = involved.some(m => m.matchType === 'tournament' || m.status !== 'waiting' || m.courtNumber !== null || isMatchScored(m));
+    return { involved, blocked };
+  };
+
+  // エントリーと、それに紐づく待機中の対戦カードをDBと画面から削除する。DBの削除に失敗したらfalseを返す
+  const deleteEntryAndMatches = async (id, involved) => {
+    const matchIds = involved.map(m => m.id);
+    if (isSupabaseConfigured) {
+      if (matchIds.length > 0) {
+        const { error: matchError } = await supabase.from('matches').delete().in('id', matchIds);
+        if (matchError) return false;
+      }
+      const { error: entryError } = await supabase.from('entries').delete().eq('id', id);
+      if (entryError) return false;
+    }
+    setEntries(prev => prev.filter(e => e.id !== id));
+    if (matchIds.length > 0) setMatches(prev => prev.filter(m => !matchIds.includes(m.id)));
+    return true;
+  };
+
   const handleDeleteSelfEntry = (id, p1Name) => {
     if (isEntryDeadlinePassed(config)) {
       setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
+      return;
+    }
+    const { involved, blocked } = getEntryDeletionPlan(id);
+    if (blocked) {
+      setDialog({ title: "取り消せません", message: `${p1Name} ペアは、既に試合が始まっているため、ご自身では取り消せません。事務局へご連絡ください。`, onClose: () => setDialog(null) });
       return;
     }
     setDialog({
@@ -3693,10 +3723,11 @@ export default function App() {
       confirmText: "取消実行",
       confirmBg: "bg-red-600 hover:bg-red-700",
       onConfirm: async () => {
-        if (isSupabaseConfigured) {
-          await supabase.from('entries').delete().eq('id', id);
+        const deleted = await deleteEntryAndMatches(id, involved);
+        if (!deleted) {
+          setDialog({ title: "エラー", message: "取り消しに失敗しました。通信状況を確認して再度お試しください。", onClose: () => setDialog(null) });
+          return;
         }
-        setEntries(entries.filter(e => e.id !== id));
         setEditMode(false);
         setCurrentEditId(null);
         setDialog({
@@ -3710,17 +3741,25 @@ export default function App() {
   };
 
   const handleDeleteEntry = async (id, p1Name) => {
+    const { involved, blocked } = getEntryDeletionPlan(id);
+    if (blocked) {
+      setDialog({
+        title: "削除できません",
+        message: `${p1Name} ペアは、試合が始まっている・結果が入力済み・決勝トーナメントの対戦カードがあるため、削除できません。欠場の場合は、「コート進行・スコア」のスコア入力で「棄権」を選んでください。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
     setDialog({
       title: "削除確認",
-      message: `${p1Name} ペアのエントリーを削除しますか？`,
+      message: involved.length > 0
+        ? `${p1Name} ペアのエントリーを削除しますか？作成済みの対戦カード（${involved.length}試合）も一緒に削除されます。`
+        : `${p1Name} ペアのエントリーを削除しますか？`,
       confirmText: "削除する",
       confirmBg: "bg-red-600 hover:bg-red-700",
       onConfirm: async () => {
-        if (isSupabaseConfigured) {
-          await supabase.from('entries').delete().eq('id', id);
-        }
-        setEntries(entries.filter(e => e.id !== id));
-        setDialog(null);
+        const deleted = await deleteEntryAndMatches(id, involved);
+        setDialog(deleted ? null : { title: "エラー", message: "削除に失敗しました。通信状況を確認して再度お試しください。", onClose: () => setDialog(null) });
       },
       onClose: () => setDialog(null)
     });
@@ -7699,6 +7738,7 @@ export default function App() {
                       ['リーグ戦表・トーナメント表を印刷したい', 'ドロー編成の画面にある「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンを押すと、A4横向きの印刷ダイアログが開きます。「リーグ戦表」は勝敗・順位が空欄の表（手書き用）、「リーグ戦表(勝敗付)」は現在の結果・順位が入った表、「トーナメント表」は決勝トーナメントの組み合わせ表です。PDFで保存したい場合は、印刷ダイアログの送信先で「PDFに保存」を選んでください。'],
                       ['本番データに影響せず練習・動作確認がしたい（テストDB）', 'データ管理の一番上にある「データベースの切替（本番 / テスト）」で「テストDBに切り替える」を押すと、この端末だけテスト用データベースに切り替わります（他の端末や公開サイトの利用者は本番のままです）。接続中は画面上部に赤い帯が表示され、「本番DBに戻す」で戻せます。テストDBでは、エントリー登録・テストデータ生成・全データ削除・ドロー・試合進行などを本番に影響なく試せます。マスタ設定も本番とは別に保存されます。切替の際は画面が再読み込みされ、管理者ログインが外れます（管理者パスワードは本番と共通です）。初回のみ、テスト用テーブルを作るSQLをSupabaseで実行する必要があります（未実行の場合は、切替時にSQLが表示されます）。'],
                       ['今サイトにアクセスしている人数を知りたい', '管理者ログイン中は、画面上部のヘッダーに「👥 アクセス中 〇台」と表示されます（参加者の画面には表示されません）。サイトを開いている端末（タブ）の数で、同じ人が複数のタブを開けば複数と数えます。画面を閉じた端末は、数秒〜数分で数から外れます。スマホは接続が切れやすいため、実際より少なめに出ることがあります。数字にマウスを合わせると、そのうち管理者画面を開いている台数がわかります。テストDBに切り替えている端末は、本番とは別に数えられます。'],
+                      ['エントリーを削除したい（対戦カードを作成した後・当日の欠場）', 'エントリー管理の「削除」で、予選の対戦カードがまだ待機中（コート未配置・結果なし）の組は、作成済みの対戦カードも一緒に削除されます（他の組の対戦カードや結果には影響しません）。既に試合が始まっている・結果が入力済み・決勝トーナメントの対戦カードに含まれる組は削除できません。その場合は、「コート進行・スコア」のスコア入力で「棄権」を選ぶと、相手の不戦勝として記録されます。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (

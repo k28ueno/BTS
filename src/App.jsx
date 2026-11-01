@@ -125,6 +125,9 @@ const fetchAdminPasswordHash = async () => {
 
 // 管理者ログインの排他制御・自動ログオフに関する定数
 const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確認間隔
+const ADMIN_MAX_SESSIONS = 2; // 同時にログインできる管理者の台数（admin_sessionテーブルの id=1..台数 の行を、1台ずつの枠として使う）
+const ADMIN_SESSION_SLOT_IDS = Array.from({ length: ADMIN_MAX_SESSIONS }, (_, i) => i + 1);
+const ADMIN_SESSION_SLOT_SQL = `INSERT INTO admin_session (id, token, updated_at) VALUES ${ADMIN_SESSION_SLOT_IDS.slice(1).map(id => `(${id}, NULL, now())`).join(', ')} ON CONFLICT (id) DO NOTHING;`;
 const ADMIN_SESSION_STALE_MS = 60000; // この時間ハートビートが途絶えたら「異常終了（クラッシュ等）」とみなしロックを解放可能にする
 // トップ画面に表示する大会事務局の連絡先（メール・Instagram）。マスタ設定の項目ではなく固定表示
 const CONTACT_EMAIL = 'kihoku.bad.2026.kba@gmail.com';
@@ -437,6 +440,7 @@ export default function App() {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const adminSessionTokenRef = useRef(null); // このタブが保持している管理者セッションのロックトークン
+  const adminSessionSlotRef = useRef(null); // このタブが使っている管理者セッションの枠（admin_sessionの行id）
   const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
   const adminLoggedInRef = useRef(false); // fetchEntriesが全項目／公開項目のどちらを取得するか判定するための参照（定期取得のクロージャから最新値を読むためref）
   const wasAdminLoggedInRef = useRef(false);
@@ -1477,7 +1481,7 @@ export default function App() {
             avgMatchDuration: data.avgmatchduration || 15,
             lunchBreakStart: data.lunchbreakstart || '',
             lunchBreakEnd: data.lunchbreakend || '',
-            adminIdleTimeoutMinutes: data.adminidletimeoutminutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES,
+            adminIdleTimeoutMinutes: data.adminidletimeoutminutes ?? DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES, // 0は「ログオフしない」
             matchRules: data.matchrules || {}
           };
           setConfig(loadedConfig);
@@ -3801,7 +3805,7 @@ export default function App() {
     adminSessionTokenRef.current = null;
     if (isSupabaseConfigured && token) {
       try {
-        await supabase.from('admin_session').update({ token: null }).eq('id', 1).eq('token', token);
+        await supabase.from('admin_session').update({ token: null }).eq('id', adminSessionSlotRef.current || 1).eq('token', token);
       } catch (err) {
         console.error('管理者セッションの解放に失敗しました:', err);
       }
@@ -3917,15 +3921,45 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       try {
-        const { data } = await supabase.from('admin_session').select('*').eq('id', 1).maybeSingle();
-        const heldByOther = data && data.token && (Date.now() - new Date(data.updated_at).getTime() < ADMIN_SESSION_STALE_MS);
-        if (heldByOther) {
-          setDialog({ title: "ログイン不可", message: "既に他の端末で管理者ログイン中です。暫くしてから再度お試しください。", onClose: () => setDialog(null) });
+        const { data: rows, error: readError } = await supabase.from('admin_session').select('*').in('id', ADMIN_SESSION_SLOT_IDS);
+        if (readError) throw readError;
+        const rowById = new Map((rows || []).map(r => [r.id, r]));
+        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const nowIso = new Date().toISOString();
+        let claimedSlot = null;
+        let slotRowMissing = false;
+        for (const slotId of ADMIN_SESSION_SLOT_IDS) {
+          const row = rowById.get(slotId);
+          if (!row) {
+            // 2台目以降の枠の行が未作成の場合は作成を試みる（作成できない＝権限の都合などの場合は、SQLでの準備を案内する）
+            const { error: insertError } = await supabase.from('admin_session').insert({ id: slotId, token, updated_at: nowIso });
+            if (!insertError) { claimedSlot = slotId; break; }
+            slotRowMissing = true;
+            continue;
+          }
+          const isFree = !row.token || (Date.now() - new Date(row.updated_at).getTime() >= ADMIN_SESSION_STALE_MS);
+          if (!isFree) continue;
+          // 他の端末が同時に同じ枠を取りに来ても片方だけが成功するよう、読み取った時点の状態と一致する場合だけ更新する
+          let claim = supabase.from('admin_session').update({ token, updated_at: nowIso }).eq('id', slotId);
+          claim = row.token ? claim.eq('token', row.token) : claim.is('token', null);
+          const { data: claimed, error: claimError } = await claim.select();
+          if (!claimError && claimed && claimed.length === 1) { claimedSlot = slotId; break; }
+        }
+        if (claimedSlot === null) {
+          setDialog({
+            title: "ログイン不可",
+            message: slotRowMissing ? (
+              <div className="text-left space-y-2 text-sm">
+                <p>既に他の端末で管理者ログイン中です。2台目以降でログインするには、SupabaseのSQL Editorで次のSQLを一度だけ実行してください。</p>
+                <pre className="bg-gray-100 border rounded p-2 text-xs overflow-x-auto select-all whitespace-pre-wrap">{ADMIN_SESSION_SLOT_SQL}</pre>
+              </div>
+            ) : `既に${ADMIN_MAX_SESSIONS}台の端末で管理者ログイン中です。暫くしてから再度お試しください。`,
+            onClose: () => setDialog(null)
+          });
           return;
         }
-        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        await supabase.from('admin_session').update({ token, updated_at: new Date().toISOString() }).eq('id', 1);
         adminSessionTokenRef.current = token;
+        adminSessionSlotRef.current = claimedSlot;
       } catch (err) {
         // ロック確認自体が通信エラーで失敗した場合、締め出しを避けるためログインは許可する
         console.error('管理者セッションの確認に失敗しました:', err);
@@ -3944,7 +3978,7 @@ export default function App() {
     if (!isAdminLoggedIn || !isSupabaseConfigured) return;
     const beat = () => {
       if (adminSessionTokenRef.current) {
-        supabase.from('admin_session').update({ updated_at: new Date().toISOString() }).eq('id', 1).eq('token', adminSessionTokenRef.current);
+        supabase.from('admin_session').update({ updated_at: new Date().toISOString() }).eq('id', adminSessionSlotRef.current || 1).eq('token', adminSessionTokenRef.current);
       }
     };
     beat();
@@ -3961,7 +3995,7 @@ export default function App() {
       const token = adminSessionTokenRef.current;
       if (!token) return;
       try {
-        fetch(`${supabaseUrl}/rest/v1/admin_session?id=eq.1&token=eq.${encodeURIComponent(token)}`, {
+        fetch(`${supabaseUrl}/rest/v1/admin_session?id=eq.${adminSessionSlotRef.current || 1}&token=eq.${encodeURIComponent(token)}`, {
           method: 'PATCH',
           headers: {
             apikey: supabaseKey,
@@ -3995,6 +4029,8 @@ export default function App() {
   // マスタ設定で指定した時間、操作がなければ自動的にログオフする
   useEffect(() => {
     if (!isAdminLoggedIn) return;
+    // 0は「ログオフしない」（自動ログオフを無効にする）
+    if (config.adminIdleTimeoutMinutes === 0) return;
     const timeoutMinutes = config.adminIdleTimeoutMinutes || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES;
     const timeoutMs = timeoutMinutes * 60 * 1000;
     adminLastActivityRef.current = Date.now();
@@ -6091,8 +6127,12 @@ export default function App() {
                 <h4 className="font-bold text-md text-[#2c5f4e] mb-3">管理者ログイン設定</h4>
                 <div className="max-w-sm">
                   <label className="block font-bold text-sm mb-1 text-gray-700">無操作時の自動ログオフまでの時間 (分)</label>
-                  <input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.adminIdleTimeoutMinutes} onChange={e=>setConfig({...config, adminIdleTimeoutMinutes: parseInt(e.target.value) || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES})} onFocus={e=>e.target.select()} placeholder="例: 10" />
-                  <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。</p>
+                  <label className="flex items-center gap-2 mb-2 text-sm font-bold text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={config.adminIdleTimeoutMinutes === 0} onChange={e => setConfig({ ...config, adminIdleTimeoutMinutes: e.target.checked ? 0 : DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES })} />
+                    ログオフしない（自動ログオフを行わない）
+                  </label>
+                  <input type="number" min="1" disabled={config.adminIdleTimeoutMinutes === 0} className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none disabled:bg-gray-100 disabled:text-gray-400" value={config.adminIdleTimeoutMinutes === 0 ? '' : config.adminIdleTimeoutMinutes} onChange={e=>setConfig({...config, adminIdleTimeoutMinutes: parseInt(e.target.value) || DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES})} onFocus={e=>e.target.select()} placeholder="例: 10" />
+                  <p className="text-xs text-gray-500 mt-1">※この時間、管理画面で操作がないと自動的にログオフされます。「ログオフしない」にすると、ログアウトするまで管理画面が開いたままになるため、端末の置き忘れ・放置にご注意ください。</p>
                 </div>
               </div>
             </div>
@@ -7728,7 +7768,7 @@ export default function App() {
                       ['作業前にバックアップを取りたい', 'データ管理の「①データをローカルに退避」からJSONファイルとして保存できます。テストデータ生成前には自動でバックアップの要否を確認するダイアログが出ます。'],
                       ['管理者パスワードを変更したい', 'マスタ設定の「管理者パスワードの変更」で、現在のパスワードと新しいパスワード（8文字以上）を入力して変更できます。変更後のパスワードは暗号化（ソルト付きハッシュ）して保存されます。初回のみ、Supabaseで「ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_password_hash text;」を実行する必要があります（未実行の場合は、変更時に手順が表示されます）。変更するまでは初期パスワードでログインできます。変更したパスワードは、テストDBに切り替えている間も同じものを使います。'],
                       ['管理者パスワードを忘れた', '現在のパスワードがわからないと画面からは変更できません。Supabaseの SQL Editor で「UPDATE settings SET admin_password_hash = NULL WHERE id = 1;」を実行すると、初期パスワードでログインできるようになります。ログイン後、すぐにマスタ設定の「管理者パスワードの変更」で新しいパスワードを設定してください。'],
-                      ['管理者ログインができない（既に他の端末でログイン中）', '同時にログインできるのは1台のみです。使い終わったら必ず「ログアウト」してください。一定時間操作がない場合も自動的にログオフされます（既定10分、マスタ設定の「自動ログオフ時間」で変更可能）。'],
+                      ['管理者ログインができない（既に他の端末でログイン中）', '同時にログインできるのは2台までです。使い終わったら必ず「ログアウト」してください。3台目は、先にどれかをログアウトするまでログインできません（画面を閉じた端末は、約1分で自動的に枠が空きます）。一定時間操作がない場合は自動的にログオフされます（既定10分、マスタ設定の「管理者ログイン設定」で変更でき、「ログオフしない」を選ぶと自動ログオフを行いません）。2台目のログインを初めて使うときは、Supabaseで表示されるSQL（admin_sessionテーブルに2台目の枠を追加するもの）を一度だけ実行する必要があります。'],
                       ['一方の組が欠場・棄権した', 'コート進行画面のスコア入力から「棄権」を選択すると、出場した側の不戦勝として記録されます（得失点差には反映されません）。誤操作の場合は「スコア解除」で取り消せます。'],
                       ['試合結果を新聞社等に提出したい', '「結果PDF」画面で各クラスの優勝・準優勝・3位（実施した場合）をまとめて表示し、ブラウザの印刷機能からPDF保存できます。'],
                       ['試合のスコア用紙（得点用紙）を印刷したい', '個別の印刷ボタンはありません。コート進行画面で「試合受付」ボタンを押すと、その試合専用の記入用紙（A4横向き）の印刷ダイアログが自動的に開きます。'],

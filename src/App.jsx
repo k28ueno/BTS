@@ -307,23 +307,36 @@ const formatHHMM = (str) => {
 const WEEKDAYS_JP = ['日', '月', '火', '水', '木', '金', '土'];
 const REIWA_OFFSET = 2018; // 令和1年 = 西暦2019年
 
-const parseJapaneseFullDate = (str) => {
-  const m = (str || '').match(/令和(\d+)年(\d+)月(\d+)日/);
-  if (!m) return null;
-  const date = new Date(parseInt(m[1], 10) + REIWA_OFFSET, parseInt(m[2], 10) - 1, parseInt(m[3], 10));
-  return isNaN(date.getTime()) ? null : date;
+// 日付の文字列を解釈する。和暦「令和8年12月6日」、西暦「2026年12月6日」「2026-12-06」「2026/12/6」、
+// 年のない「11月27日(金)」に対応（全角数字も可）。存在しない日付（2月30日など）や読み取れない文字列はnullを返す。
+// 年がない場合は、基準日（大会日）の年とみなし、基準日より後になるときは前年とする
+// （受付開始日・申込締切は、大会日より前にあるため。大会が1月で締切が12月のときに翌年と誤解しないための補正）
+const parseFlexibleDate = (str, referenceDate) => {
+  const text = String(str || '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim();
+  if (!text) return null;
+  const make = (y, m, d) => {
+    const date = new Date(y, m - 1, d);
+    return (date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d) ? date : null;
+  };
+  let m = text.match(/令和\s*(\d+|元)\s*年\s*(\d+)\s*月\s*(\d+)\s*日/);
+  if (m) return make((m[1] === '元' ? 1 : parseInt(m[1], 10)) + REIWA_OFFSET, parseInt(m[2], 10), parseInt(m[3], 10));
+  m = text.match(/(\d{4})\s*年\s*(\d+)\s*月\s*(\d+)\s*日/) || text.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (m) return make(parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10));
+  m = text.match(/(\d+)\s*月\s*(\d+)\s*日/);
+  if (m) {
+    const ref = referenceDate || new Date();
+    let date = make(ref.getFullYear(), parseInt(m[1], 10), parseInt(m[2], 10));
+    if (date && referenceDate && date > referenceDate) date = make(ref.getFullYear() - 1, parseInt(m[1], 10), parseInt(m[2], 10));
+    return date;
+  }
+  return null;
 };
+
+const parseJapaneseFullDate = (str) => parseFlexibleDate(str);
 
 const formatJapaneseFullDate = (date) => {
   if (!date || isNaN(date.getTime())) return '';
   return `令和${date.getFullYear() - REIWA_OFFSET}年${date.getMonth() + 1}月${date.getDate()}日(${WEEKDAYS_JP[date.getDay()]})`;
-};
-
-const parseJapaneseMonthDay = (str, fallbackYear) => {
-  const m = (str || '').match(/(\d+)月(\d+)日/);
-  if (!m) return null;
-  const date = new Date(fallbackYear, parseInt(m[1], 10) - 1, parseInt(m[2], 10));
-  return isNaN(date.getTime()) ? null : date;
 };
 
 const formatJapaneseMonthDay = (date) => {
@@ -343,19 +356,47 @@ const inputValueToDate = (value) => {
   return isNaN(date.getTime()) ? null : date;
 };
 
+// 大会日・受付開始日・申込締切を日付として解釈する。年のない受付開始日・申込締切は、大会日を基準に年を決める
+// （受付開始日は申込締切より前、申込締切は大会日より前）。読み取れない場合はnull
+const getEntryPeriod = (config) => {
+  const eventDate = parseFlexibleDate(config.date);
+  const deadline = parseFlexibleDate(config.deadline, eventDate);
+  const start = parseFlexibleDate(config.entryStartDate, deadline || eventDate);
+  return { eventDate, start, deadline };
+};
+
+// 受付開始日・申込締切の表示用文字列。大会日と同じ年なら「11月27日(金)」、違う年なら年も付ける。読み取れなければ入力のまま
+const formatPeriodDate = (str, config) => {
+  const { eventDate } = getEntryPeriod(config);
+  const date = parseFlexibleDate(str, eventDate);
+  if (!date) return str || '';
+  return eventDate && date.getFullYear() === eventDate.getFullYear() ? formatJapaneseMonthDay(date) : formatJapaneseFullDate(date);
+};
+
+// 日付の設定に問題があれば、管理者への警告文の一覧を返す（問題が無ければ空）。読み取れない日付は、
+// 受付期間の制限が効かない（いつでも受付・修正できる）状態になるため、特に注意が必要
+const getEntryPeriodWarnings = (config) => {
+  const warnings = [];
+  const { eventDate, start, deadline } = getEntryPeriod(config);
+  if (!eventDate) warnings.push('大会日を日付として読み取れません。');
+  if (config.entryStartDate && !start) warnings.push('エントリー受付開始日を日付として読み取れないため、開始日の制限が効きません。日付を選び直してください。');
+  if (!deadline) warnings.push(config.deadline ? '申込締切を日付として読み取れないため、受付期間の制限が効かず、期限後も登録内容の修正・取消ができてしまいます。日付を選び直してください。' : '申込締切が未設定のため、受付期間の制限が効きません。');
+  if (eventDate && deadline && deadline > eventDate) warnings.push('申込締切が大会日より後になっています。');
+  if (start && deadline && start > deadline) warnings.push('エントリー受付開始日が申込締切より後になっています。');
+  return warnings;
+};
+
 // 現在日時がエントリー受付期間内（受付開始日〜申込締切日の23:59まで）かどうかを判定する
 const checkEntryPeriod = (config) => {
-  const fallbackYear = (parseJapaneseFullDate(config.date) || new Date()).getFullYear();
   const now = new Date();
-  const startDate = parseJapaneseMonthDay(config.entryStartDate, fallbackYear);
-  if (startDate && now < startDate) {
-    return { ok: false, message: `エントリー受付はまだ開始していません。受付開始日は${config.entryStartDate}です。` };
+  const { start, deadline } = getEntryPeriod(config);
+  if (start && now < start) {
+    return { ok: false, message: `エントリー受付はまだ開始していません。受付開始日は${formatPeriodDate(config.entryStartDate, config)}です。` };
   }
-  const deadlineDate = parseJapaneseMonthDay(config.deadline, fallbackYear);
-  if (deadlineDate) {
-    const deadlineEnd = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate(), 23, 59, 59, 999);
+  if (deadline) {
+    const deadlineEnd = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate(), 23, 59, 59, 999);
     if (now > deadlineEnd) {
-      return { ok: false, message: `エントリーの受付は終了しました（申込締切: ${config.deadline}）。` };
+      return { ok: false, message: `エントリーの受付は終了しました（申込締切: ${formatPeriodDate(config.deadline, config)}）。` };
     }
   }
   return { ok: true };
@@ -363,14 +404,13 @@ const checkEntryPeriod = (config) => {
 
 // 申込締切を過ぎているかどうかを判定する（登録内容の修正・取消の受付終了判定に使う）
 const isEntryDeadlinePassed = (config) => {
-  const fallbackYear = (parseJapaneseFullDate(config.date) || new Date()).getFullYear();
-  const deadlineDate = parseJapaneseMonthDay(config.deadline, fallbackYear);
-  if (!deadlineDate) return false;
-  const deadlineEnd = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate(), 23, 59, 59, 999);
+  const { deadline } = getEntryPeriod(config);
+  if (!deadline) return false;
+  const deadlineEnd = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate(), 23, 59, 59, 999);
   return new Date() > deadlineEnd;
 };
 
-const ENTRY_DEADLINE_PASSED_MESSAGE = (config) => `申込締切（${config.deadline}）を過ぎたため、登録内容の修正・取消はできません。内容の変更が必要な場合は、大会本部までご連絡ください。`;
+const ENTRY_DEADLINE_PASSED_MESSAGE = (config) => `申込締切（${formatPeriodDate(config.deadline, config)}）を過ぎたため、登録内容の修正・取消はできません。内容の変更が必要な場合は、大会本部までご連絡ください。`;
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
@@ -5347,7 +5387,7 @@ export default function App() {
              <div><strong className="block text-base text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">会場</strong>{config.venue}</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
-             <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込期間</strong><span className="text-red-500 font-bold">{config.entryStartDate ? `${config.entryStartDate} 〜 ` : ''}{config.deadline}</span></div>
+             <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込期間</strong><span className="text-red-500 font-bold">{config.entryStartDate ? `${formatPeriodDate(config.entryStartDate, config)} 〜 ` : ''}{formatPeriodDate(config.deadline, config)}</span></div>
              <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-base mt-2 whitespace-pre-wrap"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
            </div>
         </div>
@@ -6011,10 +6051,10 @@ export default function App() {
                   <input
                     type="date"
                     className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
-                    value={dateToInputValue(parseJapaneseMonthDay(config.entryStartDate, (parseJapaneseFullDate(config.date) || new Date()).getFullYear()))}
-                    onChange={e => setConfig({ ...config, entryStartDate: formatJapaneseMonthDay(inputValueToDate(e.target.value)) })}
+                    value={dateToInputValue(getEntryPeriod(config).start)}
+                    onChange={e => setConfig({ ...config, entryStartDate: formatJapaneseFullDate(inputValueToDate(e.target.value)) })}
                   />
-                  {config.entryStartDate && <p className="text-xs text-gray-400 mt-1">表示: {config.entryStartDate}</p>}
+                  {config.entryStartDate && <p className="text-xs text-gray-400 mt-1">表示: {formatPeriodDate(config.entryStartDate, config)}</p>}
                   <p className="text-xs text-gray-500 mt-1">※未設定の場合、開始日の制限はかけません。</p>
                 </div>
                 <div>
@@ -6022,11 +6062,16 @@ export default function App() {
                   <input
                     type="date"
                     className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
-                    value={dateToInputValue(parseJapaneseMonthDay(config.deadline, (parseJapaneseFullDate(config.date) || new Date()).getFullYear()))}
-                    onChange={e => setConfig({ ...config, deadline: formatJapaneseMonthDay(inputValueToDate(e.target.value)) })}
+                    value={dateToInputValue(getEntryPeriod(config).deadline)}
+                    onChange={e => setConfig({ ...config, deadline: formatJapaneseFullDate(inputValueToDate(e.target.value)) })}
                   />
-                  {config.deadline && <p className="text-xs text-gray-400 mt-1">表示: {config.deadline}</p>}
+                  {config.deadline && <p className="text-xs text-gray-400 mt-1">表示: {formatPeriodDate(config.deadline, config)}</p>}
                 </div>
+                {getEntryPeriodWarnings(config).length > 0 && (
+                  <div className="md:col-span-2 bg-amber-50 border border-amber-300 rounded p-3 text-xs text-amber-800 font-bold space-y-1">
+                    {getEntryPeriodWarnings(config).map((w, i) => <div key={i}>⚠️ {w}</div>)}
+                  </div>
+                )}
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">コート数（面）</label><input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.courts} onChange={e=>setConfig({...config, courts: parseInt(e.target.value) || 1})} onFocus={e=>e.target.select()} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">開館時間</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeOpen)} onChange={e=>setConfig({...config, timeOpen: e.target.value})} /></div>
                 <div><label className="block font-bold text-sm mb-1 text-gray-700">受付開始</label><input type="time" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={formatHHMM(config.timeReception)} onChange={e=>setConfig({...config, timeReception: e.target.value})} /></div>
@@ -7978,6 +8023,7 @@ export default function App() {
                       ['エントリーを削除したい（対戦カードを作成した後・当日の欠場）', 'エントリー管理の「削除」で、予選の対戦カードがまだ待機中（コート未配置・結果なし）の組は、作成済みの対戦カードも一緒に削除されます（他の組の対戦カードや結果には影響しません）。既に試合が始まっている・結果が入力済み・決勝トーナメントの対戦カードに含まれる組は削除できません。その場合は、「コート進行・スコア」のスコア入力で「棄権」を選ぶと、相手の不戦勝として記録されます。'],
                       ['画面の上にオレンジ色の警告が出た（保存できませんでした／サーバーと通信できません）', '「〇〇をサーバーに保存できませんでした」は、直前の操作がサーバーに保存されなかったことを示します。画面は自動的にサーバーの最新の状態に戻るので、表示を確認して、同じ操作をやり直してください（繰り返し出る場合は、会場のネット接続を確認してください。「閉じる」を押すまで表示が残ります）。「サーバーと通信できません」は、約45秒続けて最新の状態を取得できなかったときに出る警告で、その間の操作は保存されません。通信が戻ると自動で消えます。大会中にこの警告が続く場合は、紙のスコアシートでの運用に切り替え、復旧後に入力してください。'],
                       ['審判の表示が端末ごとに違う／参加者の画面の更新が遅い', '確定した審判は、matchesテーブルの「locked_referee」列に保存され、全端末で同じ表示になります。初めて使うときは、Supabaseの SQL Editor で、表示されるSQL（ALTER TABLE matches ADD COLUMN IF NOT EXISTS locked_referee jsonb; など）を一度だけ実行してください。実行するまでは、審判の表示が端末ごとにずれることがあります（管理者が最初に試合をコートへ配置したときに、案内が表示されます）。データを更新すると、他の端末へすぐ通知され、数秒で表示が更新されます（通知が届かない場合でも、15秒ごとの自動取得で更新されます）。お知らせなどの設定は、参加者の画面で約1分ごとに更新されます。'],
+                      ['エントリーの受付期間（受付開始日・申込締切）が正しく効かない／警告が出た', 'マスタ設定の「開催日」「エントリー受付開始日」「申込締切」は、日付の選択欄から選んでください（年も一緒に保存されるため、大会が1月で締切が12月のように年をまたぐ場合も正しく判定されます）。日付として読み取れない値になっている場合や、申込締切が大会日より後、受付開始日が申込締切より後の場合は、設定欄の下に黄色い警告が出ます。読み取れない日付は、受付期間の制限が効かず、期限後も登録内容の修正・取消ができてしまうため、警告が出たら選び直してください。なお、過去に「11月27日(金)」のように年なしで保存した設定も、大会日を基準に年を補って判定します。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (

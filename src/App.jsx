@@ -921,7 +921,8 @@ export default function App() {
     return null;
   };
 
-  const getAllOccupiedRefereeIds = (currentCourtNum, extraOccupiedIds) => {
+  // ignoreMatchIdは、コート間を移動しようとしている試合自身（現在のコートでの占有を、移動先の判定に持ち込まないため）
+  const getAllOccupiedRefereeIds = (currentCourtNum, extraOccupiedIds, ignoreMatchId = null) => {
     const occupied = new Set(extraOccupiedIds || []);
 
     Object.keys(lastCourtReferees).forEach(cNum => {
@@ -930,7 +931,7 @@ export default function App() {
         // 直近の勝者・敗者を「次の審判として予約済み」とみなして除外する。
         // 既にそのコートの試合が終わって次が何も配置されていない（空き、または最後の試合が試合済のまま）なら、
         // その2組は他のコート（決勝など）の審判として使って問題ない
-        const hasPendingMatchOnCourt = matches.some(x => Number(x.courtNumber) === Number(cNum) && x.status !== 'completed');
+        const hasPendingMatchOnCourt = matches.some(x => x.id !== ignoreMatchId && Number(x.courtNumber) === Number(cNum) && x.status !== 'completed');
         if (!hasPendingMatchOnCourt) return;
         const ref = lastCourtReferees[cNum];
         if (ref && ref.mainId) occupied.add(String(ref.mainId));
@@ -939,6 +940,7 @@ export default function App() {
     });
 
     matches.forEach(m => {
+      if (m.id === ignoreMatchId) return;
       if (m.courtNumber !== null && Number(m.courtNumber) !== Number(currentCourtNum) && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
         if (m.team1Id) occupied.add(String(m.team1Id));
         if (m.team2Id) occupied.add(String(m.team2Id));
@@ -947,6 +949,7 @@ export default function App() {
 
     // 他コートで進行中の試合に既にロック済みの審判も、二重に割り当てないよう除外する
     matches.forEach(m => {
+      if (m.id === ignoreMatchId) return;
       if (m.courtNumber !== null && Number(m.courtNumber) !== Number(currentCourtNum) && m.status !== 'completed' && lockedReferees[m.id]) {
         const ref = lockedReferees[m.id];
         if (ref.mainId) occupied.add(String(ref.mainId));
@@ -1002,7 +1005,9 @@ export default function App() {
     return matches.find(x => x.id === partnerId) || null;
   };
 
-  const getRefereeForMatch = (m, extraOccupiedIds, lastRefMapOverride) => {
+  // optionsは、コート間を移動する試合の審判を、移動先のコートで決め直すときに使う：
+  // ignoreLocked＝以前のコートで確定した審判を使わない／ignoreMatchId＝その試合自身の現在のコートでの占有を除いて判定する
+  const getRefereeForMatch = (m, extraOccupiedIds, lastRefMapOverride, options = {}) => {
     if (!m) return { main: '未定', mainId: null, line: '未定', lineId: null, substitutionNotes: [] };
     const lastRefMap = lastRefMapOverride || lastCourtReferees;
 
@@ -1028,7 +1033,7 @@ export default function App() {
 
     // 実際にコートへ割り当てられた瞬間に確定した審判は、以後の状態変化で再計算・変動させない
     // ただし表示名は、エントリー管理で氏名・所属が変更された場合に追従できるよう、IDから毎回解決し直す
-    if (lockedReferees[m.id]) {
+    if (lockedReferees[m.id] && !options.ignoreLocked) {
       const locked = lockedReferees[m.id];
       const relabel = (id, text) => {
         const e = id ? entries.find(x => String(x.id) === String(id)) : null;
@@ -1041,7 +1046,7 @@ export default function App() {
     // 候補は「同クラス（グループは問わない）→他クラス」の順で、今まさに他で使われていない組を探し、
     // それでも見つからなければ本部スタッフに依頼する
     // （「他に次戦の予定がある」だけでは対象から外さない＝ラウンドロビンでは常にほぼ全員に次戦があるため）
-    const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber, extraOccupiedIds);
+    const occupiedRefIds = getAllOccupiedRefereeIds(m.courtNumber, extraOccupiedIds, options.ignoreMatchId || null);
 
     // 自分自身にまだ消化していない試合（この後控えている試合）があるかどうか。
     // 決勝トーナメント終盤など、既に敗退して試合が残っていない組が他にいる場面では、
@@ -1197,10 +1202,12 @@ export default function App() {
     }
   };
 
-  const getBusyTeamDetails = () => {
+  // ignoreMatchIdは、コート間を移動しようとしている試合自身（その試合が今いるコートでの使用を、移動先の判定に含めない）
+  const getBusyTeamDetails = (ignoreMatchId = null) => {
     const busyMap = new Map();
 
     matches.forEach(m => {
+      if (m.id === ignoreMatchId) return;
       if (m.courtNumber !== null && (m.status === 'calling' || m.status === 'recepted' || m.status === 'in_progress')) {
         if (m.team1Id) busyMap.set(String(m.team1Id), { court: m.courtNumber, role: '試合進行中' });
         if (m.team2Id) busyMap.set(String(m.team2Id), { court: m.courtNumber, role: '試合進行中' });
@@ -1211,7 +1218,7 @@ export default function App() {
       const activeMatch = getActiveMatchForCourt(c);
       // 次の試合が実際にそのコートへ割り当てられるまでは、前試合の勝者・敗者を審判として拘束しない
       // （そうしないと、次戦が未割当なだけで該当ペアが他コートへの配置対象からブロックされ続けてしまう）
-      if (activeMatch && activeMatch.status !== 'completed') {
+      if (activeMatch && activeMatch.id !== ignoreMatchId && activeMatch.status !== 'completed') {
         const ref = getRefereeForMatch(activeMatch);
         if (ref.mainId && !busyMap.has(String(ref.mainId))) {
           busyMap.set(String(ref.mainId), { court: c, role: '審判担当中' });
@@ -2593,6 +2600,12 @@ export default function App() {
     const targetMatch = matches.find(m => m.id === matchId);
     if (!targetMatch) return;
 
+    // 既に同じコートにある試合を、同じコートへ置き直しても何も変わらない
+    if (courtNum !== null && targetMatch.courtNumber !== null && Number(targetMatch.courtNumber) === Number(courtNum)) return;
+    // コートに置かれた（まだコール前の）試合を、別のコートへ移動する場合。移動元のコートでの「使用中」や審判の確定は、
+    // 移動先の判定に持ち込まず、移動先のコートで審判を決め直す
+    const isMovingBetweenCourts = courtNum !== null && targetMatch.courtNumber !== null && targetMatch.status !== 'completed';
+
     // 未受付のペアが含まれる試合はコートへ配置できない（審判の判定より先に、未受付であることを知らせる）
     if (courtNum !== null) {
       const uncheckedNames = [targetMatch.team1Id, targetMatch.team2Id]
@@ -2609,7 +2622,7 @@ export default function App() {
       }
     }
 
-    const busyMap = getBusyTeamDetails();
+    const busyMap = getBusyTeamDetails(matchId);
     const team1Busy = busyMap.get(String(targetMatch.team1Id));
     const team2Busy = busyMap.get(String(targetMatch.team2Id));
 
@@ -2652,7 +2665,7 @@ export default function App() {
     // 同クラス内の別グループへの依頼は原則の範囲内として無警告で進めるが、
     // 他クラスへの応援依頼や本部スタッフ対応が必要になる場合は、配置前に管理者へ確認を求める
     if (courtNum !== null) {
-      const wouldBeRef = getRefereeForMatch({ ...targetMatch, courtNumber: courtNum });
+      const wouldBeRef = getRefereeForMatch({ ...targetMatch, courtNumber: courtNum, manualReferee: null }, undefined, undefined, { ignoreLocked: true, ignoreMatchId: matchId });
       if (wouldBeRef.substitutionNotes && wouldBeRef.substitutionNotes.length > 0) {
         setDialog({
           title: "審判の割当を確認してください",
@@ -2696,7 +2709,9 @@ export default function App() {
           updatedTargetMatch = {
             ...m,
             courtNumber: courtNum,
-            status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting')
+            status: courtNum ? (isScored ? 'completed' : 'calling') : (isScored ? 'completed' : 'waiting'),
+            // 別のコートへ移す場合、手動で変えた審判は前のコートでの判断なので、引き継がない
+            ...(isMovingBetweenCourts ? { manualReferee: null } : {})
           };
           return updatedTargetMatch;
         }
@@ -2725,7 +2740,7 @@ export default function App() {
 
       // 実際にコートへ割り当てられた瞬間の審判割り当てを固定する。押し出された試合のロックは解除し、再割当時に再計算させる
       if (courtNum !== null && updatedTargetMatch) {
-        const decidedRef = getRefereeForMatch(updatedTargetMatch);
+        const decidedRef = getRefereeForMatch(updatedTargetMatch, undefined, undefined, { ignoreLocked: true, ignoreMatchId: matchId });
         setLockedReferees(prev => {
           const next = { ...prev, [matchId]: decidedRef };
           displacedIds.forEach(id => delete next[id]);
@@ -2738,7 +2753,8 @@ export default function App() {
         // 何らかの理由で失敗しても、肝心の割当だけは反映されない…という事態を避けるため
         await supabase.from('matches').update({
           court_number: courtNum,
-          status: courtNum ? (isMatchScored(targetMatch) ? 'completed' : 'calling') : (isMatchScored(targetMatch) ? 'completed' : 'waiting')
+          status: courtNum ? (isMatchScored(targetMatch) ? 'completed' : 'calling') : (isMatchScored(targetMatch) ? 'completed' : 'waiting'),
+          ...(isMovingBetweenCourts ? { manual_referee: null } : {})
         }).eq('id', matchId);
 
         try {
@@ -8232,6 +8248,7 @@ export default function App() {
                       ['画面の上にオレンジ色の警告が出た（保存できませんでした／サーバーと通信できません）', '「〇〇をサーバーに保存できませんでした」は、直前の操作がサーバーに保存されなかったことを示します。画面は自動的にサーバーの最新の状態に戻るので、表示を確認して、同じ操作をやり直してください（繰り返し出る場合は、会場のネット接続を確認してください。「閉じる」を押すまで表示が残ります）。「サーバーと通信できません」は、約45秒続けて最新の状態を取得できなかったときに出る警告で、その間の操作は保存されません。通信が戻ると自動で消えます。大会中にこの警告が続く場合は、紙のスコアシートでの運用に切り替え、復旧後に入力してください。'],
                       ['審判の表示が端末ごとに違う／参加者の画面の更新が遅い', '確定した審判は、matchesテーブルの「locked_referee」列に保存され、全端末で同じ表示になります。初めて使うときは、Supabaseの SQL Editor で、表示されるSQL（ALTER TABLE matches ADD COLUMN IF NOT EXISTS locked_referee jsonb; など）を一度だけ実行してください。実行するまでは、審判の表示が端末ごとにずれることがあります（管理者が最初に試合をコートへ配置したときに、案内が表示されます）。データを更新すると、他の端末へすぐ通知され、数秒で表示が更新されます（通知が届かない場合でも、15秒ごとの自動取得で更新されます）。お知らせなどの設定は、参加者の画面で約1分ごとに更新されます。なお、通信量（無料プランの転送量）を抑えるため、更新の通知を受け取れている間は自動取得を30秒ごとに減らし、画面が見えていない（別のタブ・画面オフ）間は取得を止めます（表示に戻ると、すぐ最新になります）。'],
                       ['エントリーの受付期間（受付開始日・申込締切）が正しく効かない／警告が出た', 'マスタ設定の「開催日」「エントリー受付開始日」「申込締切」は、日付の選択欄から選んでください（年も一緒に保存されるため、大会が1月で締切が12月のように年をまたぐ場合も正しく判定されます）。日付として読み取れない値になっている場合や、申込締切が大会日より後、受付開始日が申込締切より後の場合は、設定欄の下に黄色い警告が出ます。読み取れない日付は、受付期間の制限が効かず、期限後も登録内容の修正・取消ができてしまうため、警告が出たら選び直してください。なお、過去に「11月27日(金)」のように年なしで保存した設定も、大会日を基準に年を補って判定します。'],
+                      ['コートに置いた試合を、別のコートへ移したい', 'まだコール前（「コール」ボタンが出ている状態）の試合は、コートのカードをドラッグして、別のコートへドロップすると移動できます。移動先のコートで、審判が決め直されます（前のコートで決めた審判や、手動で変えた審判は引き継ぎません）。移動先に、まだ試合が始まっていない別の試合がある場合、その試合は待機中の一覧に戻ります。コール済み・試合中の試合は、移動できません（「戻る」で前の状態に戻してから移してください）。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (

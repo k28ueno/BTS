@@ -32,6 +32,18 @@ const TEST_DB_SETUP_SQL = TEST_DB_TABLES.map(t => `CREATE TABLE IF NOT EXISTS ${
   'GRANT ALL ON entries_test, matches_test, settings_test TO anon, authenticated;'
 ]).join('\n');
 
+// 決勝トーナメントの16枠配置（予選の各グループ上位2組が進出する、5〜8グループの場合）。
+// スロット1〜16に入る「グループ（A=最初のグループ）＋順位（1=1位、2=2位）」で、'--'は空き枠（不戦勝）。
+// 標準的なシード配置（1位をシード上位、枠が余る場合は1位から順に不戦勝）をもとに、
+// 同じグループの2組が決勝まで当たらない（それぞれ別の半分に入る）配置を探索して決めた。
+// 組数が少ない場合の空き枠は、1回戦の相手がいない上位シードの位置に自動的に生じる
+const TOURNAMENT_LAYOUT_16_TOP2 = {
+  5: ['A1', '--', 'B2', 'C2', 'D1', '--', 'E1', '--', 'B1', '--', 'D2', 'E2', 'C1', '--', 'A2', '--'],
+  6: ['A1', '--', 'B2', 'C2', 'D1', '--', 'E1', 'F2', 'B1', '--', 'A2', 'D2', 'C1', '--', 'F1', 'E2'],
+  7: ['A1', '--', 'B2', 'C2', 'D1', 'G2', 'E1', 'F2', 'B1', '--', 'G1', 'A2', 'C1', 'E2', 'F1', 'D2'],
+  8: ['A1', 'G2', 'H1', 'B2', 'D1', 'F2', 'E1', 'C2', 'B1', 'H2', 'G1', 'A2', 'C1', 'E2', 'F1', 'D2']
+};
+
 // 参加者向け画面（管理者ログイン前）で取得するエントリーの項目。連絡先・メール・パスワード・参加費区分は
 // 参加者向け画面では使わないため含めない（管理者ログイン後だけ全項目を取得する）
 const ENTRY_PUBLIC_COLUMNS = [
@@ -2902,7 +2914,7 @@ export default function App() {
         { group: 'B', rank: 0, slot: 3 },
         { group: 'A', rank: 1, slot: 4 },
       ];
-    } else {
+    } else if (groupCount === 4) {
       slotMapping = [
         { group: 'A', rank: 0, slot: 1 },
         { group: 'B', rank: 1, slot: 2 },
@@ -2913,6 +2925,12 @@ export default function App() {
         { group: 'D', rank: 0, slot: 7 },
         { group: 'C', rank: 1, slot: 8 },
       ];
+    } else {
+      // 5〜8グループ：存在するグループを順に配置表のA、B、C…へ当てはめる（グループ名が飛んでいても対応できるようにする）
+      const layout = TOURNAMENT_LAYOUT_16_TOP2[Math.min(groupCount, 8)];
+      slotMapping = layout
+        .map((cell, i) => (cell === '--' ? null : { group: activeGroups['ABCDEFGH'.indexOf(cell[0])], rank: Number(cell[1]) - 1, slot: i + 1 }))
+        .filter(Boolean);
     }
 
     const newEntries = [...entries];
@@ -2988,6 +3006,19 @@ export default function App() {
     // 生成時点の試合ルールをこのクラスの決勝トーナメント全試合にスナップショット保存する
     const tournamentMatchRule = getMatchRule(cls, 'tournament');
 
+    // その枠に、下位ラウンドの未完了の試合の勝者（または不戦勝で上がってくる組）がこれから入るか。
+    // 入る予定がある枠を「空き」と見て、反対側の組を不戦勝にして先へ進めてしまわないために使う
+    // （例：1回戦を免除された1位の組が、2回戦の相手の勝ち上がりを待たずに決勝まで進んでしまう）
+    const isSlotPending = (slot) => {
+      const lvl = Math.floor(slot / 100);
+      if (lvl === 0) return false;
+      const idx = slot - lvl * 100 - 1;
+      const feederA = (lvl - 1) * 100 + idx * 2 + 1;
+      const feederB = feederA + 1;
+      const hasEntry = (sl) => workingEntries.some(e => e.cls === cls && e.tournamentPosition === sl);
+      return (hasEntry(feederA) && hasEntry(feederB)) || isSlotPending(feederA) || isSlotPending(feederB);
+    };
+
     let levelSize = slotCount;
     let level = 0;
     while (levelSize >= 2) {
@@ -3024,11 +3055,15 @@ export default function App() {
             createdCount++;
           }
         } else if (entA && !entB) {
-          workingEntries = workingEntries.map(e => e.id === entA.id ? { ...e, tournamentPosition: nextSlot } : e);
-          advancedUpdates.push({ id: entA.id, tournamentposition: nextSlot });
+          if (!isSlotPending(slotB)) {
+            workingEntries = workingEntries.map(e => e.id === entA.id ? { ...e, tournamentPosition: nextSlot } : e);
+            advancedUpdates.push({ id: entA.id, tournamentposition: nextSlot });
+          }
         } else if (!entA && entB) {
-          workingEntries = workingEntries.map(e => e.id === entB.id ? { ...e, tournamentPosition: nextSlot } : e);
-          advancedUpdates.push({ id: entB.id, tournamentposition: nextSlot });
+          if (!isSlotPending(slotA)) {
+            workingEntries = workingEntries.map(e => e.id === entB.id ? { ...e, tournamentPosition: nextSlot } : e);
+            advancedUpdates.push({ id: entB.id, tournamentposition: nextSlot });
+          }
         }
       }
       levelSize = levelSize / 2;
@@ -7546,7 +7581,7 @@ export default function App() {
                       ['マスタ設定', '大会名・日程・コート数・決勝進出条件・出場クラス・エントリー受付開始日/締切・お知らせ・協賛企業・試合ルール（クラス×予選/決勝ごとのゲーム数・点数・MAX点数・デュース）など、大会全体の基本設定を行います。お知らせは入力どおりの改行でトップ画面に表示されます。協賛企業は五十音順の枠でトップ画面に表示されます。管理者パスワードの変更もここで行えます（「設定を保存」とは別に、専用のボタンで即時に変更されます）。'],
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。「Excelエクスポート」で全件をExcel（.xlsx）にダウンロードでき、「Excelインポート」でExcelファイルから一括登録できます（ID・パスワードはシステムが自動採番するため対象外。既存エントリーの更新は「編集」から個別に行います）。インポート時は列見出しの表記ゆれ・並び順の違いを自動判定したうえで「列の対応確認」画面が開くので、対応がおかしければプルダウンで修正してから反映できます。'],
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。「未受付のみ」にチェックを入れると、まだ受付していない組だけに絞り込めます。ドローは未受付でも作れますが、コートへ配置できるのは受付済の組だけです（未受付の組が含まれる試合をコートへ配置しようとすると「未受付エラー」が表示され、配置できません）。'],
-                      ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。'],
+                      ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。予選は最大8グループ、決勝トーナメントは最大16枠に対応しており、予選順位からの自動反映では、同じグループの2組が決勝まで当たらない配置になります（組数に対して枠が余る場合は、上位シードの1位の組が1回戦を免除されます）。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],

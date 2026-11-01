@@ -86,6 +86,15 @@ const LOCKED_REFEREE_COLUMN_SQL = [
 ].join('\n');
 const isMissingColumnError = (error, column) => !!error && (error.code === '42703' || error.code === 'PGRST204' || new RegExp(column).test(error.message || ''));
 
+// 設定（settings）の取得項目。管理者パスワードのハッシュ（admin_password_hash）など、画面で使わない列は
+// 含めない（select('*')だと、全来訪者の画面へハッシュまで届いてしまうため）
+const SETTINGS_COLUMNS = [
+  'id', 'title', 'date', 'timeopen', 'timereception', 'timestart', 'venue', 'entrystartdate', 'deadline',
+  'notes', 'announcement', 'contactphone', 'orgname', 'chiefname', 'sealimageurl', 'certtemplate', 'certfont',
+  'sponsors', 'classes', 'courts', 'maincourts', 'fees', 'advancementcondition', 'avgmatchduration',
+  'lunchbreakstart', 'lunchbreakend', 'adminidletimeoutminutes', 'matchrules'
+].join(',');
+
 // 参加者向け画面（管理者ログイン前）で取得するエントリーの項目。連絡先・メール・パスワード・参加費区分は
 // 参加者向け画面では使わないため含めない（管理者ログイン後だけ全項目を取得する）
 const ENTRY_PUBLIC_COLUMNS = [
@@ -1478,13 +1487,33 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     const interval = setInterval(() => {
+      // 画面が見えていない（別タブ・画面オフ）間は取得しない。見えるようになったときに、すぐ取り直す（下のeffect）
+      if (document.visibilityState === 'hidden') return;
+      const tick = ++pollTickRef.current;
+      // 更新通知（ブロードキャスト）を受け取れている間は、通知が主で、定期取得は補完なので30秒ごとに減らす
+      // （通知に使うチャンネルに接続できていないときだけ、従来どおり15秒ごと）
+      const channel = presenceChannelRef.current;
+      if (channel && channel.state === 'joined' && tick % 2 !== 0) return;
       fetchEntries();
       fetchMatches();
       // 設定（お知らせ・日程・ルールなど）は、参加者の画面だけ約1分ごとに取り直す
       // （管理者は編集中のマスタ設定フォームを上書きしないよう対象外）
-      if (++pollTickRef.current % 4 === 0 && !adminLoggedInRef.current) fetchSettings(true);
+      if (tick % 4 === 0 && !adminLoggedInRef.current) fetchSettings(true);
     }, 15000);
     return () => clearInterval(interval);
+  }, []);
+
+  // 画面が再び見えるようになったら（別タブから戻った・画面オンなど）、止めていた間の更新をすぐ取り直す
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchEntries();
+      fetchMatches();
+      if (!adminLoggedInRef.current) fetchSettings(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   // 管理者ログイン中だけ連絡先・メール・パスワードを含む全項目を取得する。
@@ -1642,7 +1671,7 @@ export default function App() {
   const fetchSettings = async (background = false) => {
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle();
+        const { data, error } = await supabase.from('settings').select(SETTINGS_COLUMNS).eq('id', 1).maybeSingle();
         if (data && !error) {
           const loadedConfig = {
             title: data.title,
@@ -7249,6 +7278,11 @@ export default function App() {
                               const team2Predicted = !team2Busy ? predictedMap.get(String(m.team2Id)) : null;
 
                               const isSelected = tapMoveSelection && tapMoveSelection.kind === 'match' && tapMoveSelection.id === m.id;
+                              // 受付が済んでいないペア（コートへ配置できない）。来場しない場合は、配置せずにここから棄権にできる
+                              const uncheckedTeamIds = [m.team1Id, m.team2Id].filter(id => {
+                                const ent = entries.find(e => String(e.id) === String(id));
+                                return ent && !ent.checkedIn;
+                              });
                               // 結果が入力されたコート向けに先頭へ並べた候補には、コート番号のラベルを付ける
                               const candidateCourt = getWaitingMatchPlan().courtByMatchId.get(m.id);
                               return (
@@ -7287,6 +7321,23 @@ export default function App() {
                                          {team2Predicted && <span className="text-xs px-1.5 py-1 rounded font-bold whitespace-nowrap bg-emerald-100 text-emerald-700">次審判予定(第{team2Predicted.court}C)</span>}
                                       </div>
                                    </div>
+                                   {uncheckedTeamIds.length > 0 && (
+                                      <div className="mt-1.5 pt-1.5 border-t border-gray-200 text-xs space-y-1.5">
+                                         <div className="font-bold text-amber-700">⚠️ 未受付のペアがいるため、コートへ配置できません（受付処理をするか、来場しない場合は棄権にしてください）</div>
+                                         <div className="flex flex-wrap gap-1.5">
+                                            {uncheckedTeamIds.map(id => (
+                                               <button
+                                                 key={`forfeit-${m.id}-${id}`}
+                                                 type="button"
+                                                 onClick={(e) => { e.stopPropagation(); confirmForfeitMatch(m, id); }}
+                                                 className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                               >
+                                                  {getTeamNameWithClub(id)} を棄権にする
+                                               </button>
+                                            ))}
+                                         </div>
+                                      </div>
+                                   )}
                                    {isAnyBusy && (
                                       <div className="mt-1.5 pt-1.5 border-t border-gray-200 text-xs font-bold text-red-600">
                                          ⚠️ {[
@@ -8011,6 +8062,7 @@ export default function App() {
                       ['管理者パスワードを変更したい', 'マスタ設定の「管理者パスワードの変更」で、現在のパスワードと新しいパスワード（8文字以上）を入力して変更できます。変更後のパスワードは暗号化（ソルト付きハッシュ）して保存されます。初回のみ、Supabaseで「ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_password_hash text;」を実行する必要があります（未実行の場合は、変更時に手順が表示されます）。変更するまでは初期パスワードでログインできます。変更したパスワードは、テストDBに切り替えている間も同じものを使います。'],
                       ['管理者パスワードを忘れた', '現在のパスワードがわからないと画面からは変更できません。Supabaseの SQL Editor で「UPDATE settings SET admin_password_hash = NULL WHERE id = 1;」を実行すると、初期パスワードでログインできるようになります。ログイン後、すぐにマスタ設定の「管理者パスワードの変更」で新しいパスワードを設定してください。'],
                       ['管理者ログインができない（既に他の端末でログイン中）', '同時にログインできるのは2台までです。使い終わったら必ず「ログアウト」してください。3台目は、先にどれかをログアウトするまでログインできません（画面を閉じた端末は、約1分で自動的に枠が空きます）。一定時間操作がない場合は自動的にログオフされます（既定10分、マスタ設定の「管理者ログイン設定」で変更でき、「ログオフしない」を選ぶと自動ログオフを行いません）。2台目のログインを初めて使うときは、Supabaseで表示されるSQL（admin_sessionテーブルに2台目の枠を追加するもの）を一度だけ実行する必要があります。'],
+                      ['来場しない組（未受付のまま）を棄権にしたい', '未受付の組を含む試合は、コートへ配置できません。コート進行・スコア画面の右側「優先対戦リスト」で、その試合のカードに表示される「〇〇を棄権にする」を押すと、コートへ置かずに、確認のうえで棄権（相手の不戦勝）として記録できます。受付が済んだ組は、これまでどおり、コートへ置いてスコア入力画面の「棄権」から処理します。誤って棄権にした場合は、試合結果明細の「スコア修正」から取り消せます。'],
                       ['一方の組が欠場・棄権した', 'コート進行画面のスコア入力から「棄権」を選択すると、出場した側の不戦勝として記録されます（得失点差には反映されません）。誤操作の場合は「スコア解除」で取り消せます。'],
                       ['試合結果を新聞社等に提出したい', '「結果PDF」画面で各クラスの優勝・準優勝・3位（実施した場合）をまとめて表示し、ブラウザの印刷機能からPDF保存できます。'],
                       ['試合のスコア用紙（得点用紙）を印刷したい', '個別の印刷ボタンはありません。コート進行画面で「試合受付」ボタンを押すと、その試合専用の記入用紙（A4横向き）の印刷ダイアログが自動的に開きます。'],
@@ -8022,7 +8074,7 @@ export default function App() {
                       ['今サイトにアクセスしている人数を知りたい', '管理者ログイン中は、画面上部のヘッダーに「👥 アクセス中 〇台」と表示されます（参加者の画面には表示されません）。サイトを開いている端末（タブ）の数で、同じ人が複数のタブを開けば複数と数えます。画面を閉じた端末は、数秒〜数分で数から外れます。スマホは接続が切れやすいため、実際より少なめに出ることがあります。数字にマウスを合わせると、そのうち管理者画面を開いている台数がわかります。テストDBに切り替えている端末は、本番とは別に数えられます。'],
                       ['エントリーを削除したい（対戦カードを作成した後・当日の欠場）', 'エントリー管理の「削除」で、予選の対戦カードがまだ待機中（コート未配置・結果なし）の組は、作成済みの対戦カードも一緒に削除されます（他の組の対戦カードや結果には影響しません）。既に試合が始まっている・結果が入力済み・決勝トーナメントの対戦カードに含まれる組は削除できません。その場合は、「コート進行・スコア」のスコア入力で「棄権」を選ぶと、相手の不戦勝として記録されます。'],
                       ['画面の上にオレンジ色の警告が出た（保存できませんでした／サーバーと通信できません）', '「〇〇をサーバーに保存できませんでした」は、直前の操作がサーバーに保存されなかったことを示します。画面は自動的にサーバーの最新の状態に戻るので、表示を確認して、同じ操作をやり直してください（繰り返し出る場合は、会場のネット接続を確認してください。「閉じる」を押すまで表示が残ります）。「サーバーと通信できません」は、約45秒続けて最新の状態を取得できなかったときに出る警告で、その間の操作は保存されません。通信が戻ると自動で消えます。大会中にこの警告が続く場合は、紙のスコアシートでの運用に切り替え、復旧後に入力してください。'],
-                      ['審判の表示が端末ごとに違う／参加者の画面の更新が遅い', '確定した審判は、matchesテーブルの「locked_referee」列に保存され、全端末で同じ表示になります。初めて使うときは、Supabaseの SQL Editor で、表示されるSQL（ALTER TABLE matches ADD COLUMN IF NOT EXISTS locked_referee jsonb; など）を一度だけ実行してください。実行するまでは、審判の表示が端末ごとにずれることがあります（管理者が最初に試合をコートへ配置したときに、案内が表示されます）。データを更新すると、他の端末へすぐ通知され、数秒で表示が更新されます（通知が届かない場合でも、15秒ごとの自動取得で更新されます）。お知らせなどの設定は、参加者の画面で約1分ごとに更新されます。'],
+                      ['審判の表示が端末ごとに違う／参加者の画面の更新が遅い', '確定した審判は、matchesテーブルの「locked_referee」列に保存され、全端末で同じ表示になります。初めて使うときは、Supabaseの SQL Editor で、表示されるSQL（ALTER TABLE matches ADD COLUMN IF NOT EXISTS locked_referee jsonb; など）を一度だけ実行してください。実行するまでは、審判の表示が端末ごとにずれることがあります（管理者が最初に試合をコートへ配置したときに、案内が表示されます）。データを更新すると、他の端末へすぐ通知され、数秒で表示が更新されます（通知が届かない場合でも、15秒ごとの自動取得で更新されます）。お知らせなどの設定は、参加者の画面で約1分ごとに更新されます。なお、通信量（無料プランの転送量）を抑えるため、更新の通知を受け取れている間は自動取得を30秒ごとに減らし、画面が見えていない（別のタブ・画面オフ）間は取得を止めます（表示に戻ると、すぐ最新になります）。'],
                       ['エントリーの受付期間（受付開始日・申込締切）が正しく効かない／警告が出た', 'マスタ設定の「開催日」「エントリー受付開始日」「申込締切」は、日付の選択欄から選んでください（年も一緒に保存されるため、大会が1月で締切が12月のように年をまたぐ場合も正しく判定されます）。日付として読み取れない値になっている場合や、申込締切が大会日より後、受付開始日が申込締切より後の場合は、設定欄の下に黄色い警告が出ます。読み取れない日付は、受付期間の制限が効かず、期限後も登録内容の修正・取消ができてしまうため、警告が出たら選び直してください。なお、過去に「11月27日(金)」のように年なしで保存した設定も、大会日を基準に年を補って判定します。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],

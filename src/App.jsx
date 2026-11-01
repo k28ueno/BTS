@@ -32,6 +32,43 @@ const TEST_DB_SETUP_SQL = TEST_DB_TABLES.map(t => `CREATE TABLE IF NOT EXISTS ${
   'GRANT ALL ON entries_test, matches_test, settings_test TO anon, authenticated;'
 ]).join('\n');
 
+// 参加者向け画面（管理者ログイン前）で取得するエントリーの項目。連絡先・メール・パスワード・参加費区分は
+// 参加者向け画面では使わないため含めない（管理者ログイン後だけ全項目を取得する）
+const ENTRY_PUBLIC_COLUMNS = [
+  'id', 'cls', 'club',
+  'p1name', 'p1lastname', 'p1firstname', 'p1lastfurigana', 'p1firstfurigana', 'p1club',
+  'p2name', 'p2lastname', 'p2firstname', 'p2lastfurigana', 'p2firstfurigana', 'p2club',
+  'checkedin', 'group', 'tournamentposition', 'club_rank', 'tie_rank'
+].join(',');
+const mapEntryRow = (d) => ({
+  id: d.id,
+  cls: d.cls,
+  contact: d.contact ?? '',
+  email: d.email || '',
+  club: d.club || '',
+  p1Name: d.p1name,
+  p1LastName: d.p1lastname || '',
+  p1FirstName: d.p1firstname || '',
+  p1LastFurigana: d.p1lastfurigana || '',
+  p1FirstFurigana: d.p1firstfurigana || '',
+  p1Club: d.p1club,
+  p1Fee: d.p1fee,
+  p2Name: d.p2name,
+  p2LastName: d.p2lastname || '',
+  p2FirstName: d.p2firstname || '',
+  p2LastFurigana: d.p2lastfurigana || '',
+  p2FirstFurigana: d.p2firstfurigana || '',
+  p2Club: d.p2club,
+  p2Fee: d.p2fee,
+  feeCategory: d.p1fee || '一般',
+  password: d.password ?? '',
+  checkedIn: d.checkedin,
+  group: d.group,
+  tournamentPosition: d.tournamentposition,
+  clubRank: d.club_rank,
+  tieRank: d.tie_rank ?? null
+});
+
 // 管理者パスワード。設定画面で変更するまでは初期パスワードで認証する。
 // 変更後はsettings.admin_password_hashにPBKDF2（SHA-256・ソルト付き）のハッシュだけを保存し、
 // パスワード自体は保存しない。初期パスワードはソース内に平文で残るため、必ず変更して使うこと
@@ -389,6 +426,9 @@ export default function App() {
   const [adminPassword, setAdminPassword] = useState('');
   const adminSessionTokenRef = useRef(null); // このタブが保持している管理者セッションのロックトークン
   const adminLastActivityRef = useRef(Date.now()); // 自動ログオフ判定用の最終操作時刻
+  const adminLoggedInRef = useRef(false); // fetchEntriesが全項目／公開項目のどちらを取得するか判定するための参照（定期取得のクロージャから最新値を読むためref）
+  const wasAdminLoggedInRef = useRef(false);
+  const entriesFetchSeqRef = useRef(0); // エントリー取得の追い越し防止（古い取得結果で新しい結果を上書きしない）
   const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league');
@@ -1333,6 +1373,14 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // 管理者ログイン中だけ連絡先・メール・パスワードを含む全項目を取得する。
+  // ログイン／ログアウトの切替時に取得し直し、ログアウト後は個人情報を画面の状態から取り除く
+  useEffect(() => {
+    adminLoggedInRef.current = isAdminLoggedIn;
+    if (isAdminLoggedIn || wasAdminLoggedInRef.current) fetchEntries();
+    wasAdminLoggedInRef.current = isAdminLoggedIn;
+  }, [isAdminLoggedIn]);
+
   // カードを画面上端/下端付近までドラッグしたら、ページ全体を自動スクロールする。
   // 優先対戦リスト内だけでなく、コート配置エリアが画面外（スクロール先）にある場合にも
   // ドラッグ移動できるようにするため、window単位で監視する
@@ -1410,36 +1458,11 @@ export default function App() {
         // タイムスタンプが発生し、同着の行の並び順が取得のたびに変わってしまうことが
         // あった（対戦カード生成時と後から画面表示する時で組の並びが食い違う原因になる）。
         // idを第二キーにして、常に同じ順序で取得できるようにする
-        const { data, error } = await supabase.from('entries').select('*').order('created_at', { ascending: true }).order('id', { ascending: true });
+        const seq = ++entriesFetchSeqRef.current;
+        const { data, error } = await supabase.from('entries').select(adminLoggedInRef.current ? '*' : ENTRY_PUBLIC_COLUMNS).order('created_at', { ascending: true }).order('id', { ascending: true });
         if (!error && data) {
-          const formatted = data.map(d => ({
-            id: d.id,
-            cls: d.cls,
-            contact: d.contact,
-            email: d.email || '',
-            club: d.club || '',
-            p1Name: d.p1name,
-            p1LastName: d.p1lastname || '',
-            p1FirstName: d.p1firstname || '',
-            p1LastFurigana: d.p1lastfurigana || '',
-            p1FirstFurigana: d.p1firstfurigana || '',
-            p1Club: d.p1club,
-            p1Fee: d.p1fee,
-            p2Name: d.p2name,
-            p2LastName: d.p2lastname || '',
-            p2FirstName: d.p2firstname || '',
-            p2LastFurigana: d.p2lastfurigana || '',
-            p2FirstFurigana: d.p2firstfurigana || '',
-            p2Club: d.p2club,
-            p2Fee: d.p2fee,
-            feeCategory: d.p1fee || '一般',
-            password: d.password,
-            checkedIn: d.checkedin,
-            group: d.group,
-            tournamentPosition: d.tournamentposition,
-            clubRank: d.club_rank,
-            tieRank: d.tie_rank ?? null
-          }));
+          if (seq !== entriesFetchSeqRef.current) return;
+          const formatted = data.map(mapEntryRow);
           setEntries(prev => {
             // 通信の一時的な不調等で0件が返ってきた場合に、既存のエントリーデータを全消去してしまわないよう保護する
             // （意図した全削除は各削除処理側で直接setEntries([])しているため、この定期再取得では反映不要）
@@ -3291,7 +3314,7 @@ export default function App() {
     setEntryForm({ club: '', p1Name: '', p1LastName: '', p1FirstName: '', p1LastFurigana: '', p1FirstFurigana: '', p1Club: '', p2Name: '', p2LastName: '', p2FirstName: '', p2LastFurigana: '', p2FirstFurigana: '', p2Club: '', feeCategory: '一般', cls: config.classes[0] || '', contact: '', email: '', clubRank: '' });
   };
 
-  const handleEditLogin = (e) => {
+  const handleEditLogin = async (e) => {
     e.preventDefault();
     if (isEntryDeadlinePassed(config)) {
       setDialog({ title: "受付期間終了", message: ENTRY_DEADLINE_PASSED_MESSAGE(config), onClose: () => setDialog(null) });
@@ -3301,7 +3324,18 @@ export default function App() {
       setDialog({ title: "エラー", message: "パスワードは半角数字4桁で入力してください。", onClose: () => setDialog(null) });
       return;
     }
-    const target = entries.find(ent => ent.id === editLogin.id && ent.password === editLogin.password);
+    // 参加者向け画面には他の人の連絡先・パスワードを配信しないため、IDとパスワードが一致する1件だけをDBに照会する
+    let target = null;
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.from('entries').select('*').eq('id', editLogin.id).eq('password', editLogin.password).maybeSingle();
+      if (error) {
+        setDialog({ title: "エラー", message: "登録内容を確認できませんでした。通信状況を確認して再度お試しください。", onClose: () => setDialog(null) });
+        return;
+      }
+      target = data ? mapEntryRow(data) : null;
+    } else {
+      target = entries.find(ent => ent.id === editLogin.id && ent.password === editLogin.password) || null;
+    }
     if (target) {
       setEntryForm({ ...target, feeCategory: target.feeCategory || target.p1Fee || '一般' });
       // 既存のふりがなを氏名の再入力で誤って上書きしないよう、編集開始時は自動補完を無効化しておく

@@ -429,6 +429,9 @@ export default function App() {
   const adminLoggedInRef = useRef(false); // fetchEntriesが全項目／公開項目のどちらを取得するか判定するための参照（定期取得のクロージャから最新値を読むためref）
   const wasAdminLoggedInRef = useRef(false);
   const entriesFetchSeqRef = useRef(0); // エントリー取得の追い越し防止（古い取得結果で新しい結果を上書きしない）
+  const presenceChannelRef = useRef(null); // アクセス中の端末数を数えるRealtime Presenceのチャンネル
+  const [onlineCount, setOnlineCount] = useState(null); // アクセス中の端末数（接続できていない間はnull）
+  const [onlineAdminCount, setOnlineAdminCount] = useState(0);
   const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
   const [drawClass, setDrawClass] = useState('4部');
   const [drawType, setDrawType] = useState('league');
@@ -1379,6 +1382,39 @@ export default function App() {
     adminLoggedInRef.current = isAdminLoggedIn;
     if (isAdminLoggedIn || wasAdminLoggedInRef.current) fetchEntries();
     wasAdminLoggedInRef.current = isAdminLoggedIn;
+  }, [isAdminLoggedIn]);
+
+  // サイトを開いている端末数を、Supabase RealtimeのPresence（接続中の端末が共有する在席情報）で数える。
+  // テーブルは使わず、閉じる／接続が切れると自動的に数から外れる。1つのタブ＝1台として数える
+  // （同じ人が複数タブを開けば複数と数え、画面を閉じたスマホは暫くして数から外れる）。
+  // テストDBに切り替えている端末は別チャンネルに入り、本番の人数に混ざらない
+  useEffect(() => {
+    if (!supabaseClient) return;
+    const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const channel = supabaseClient.channel(isTestDb ? 'bts-online-test' : 'bts-online', { config: { presence: { key } } });
+    presenceChannelRef.current = channel;
+    channel.on('presence', { event: 'sync' }, () => {
+      const metas = Object.values(channel.presenceState()).flat();
+      setOnlineCount(Object.keys(channel.presenceState()).length);
+      setOnlineAdminCount(metas.filter(m => m && m.role === 'admin').length);
+    });
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.track({ role: adminLoggedInRef.current ? 'admin' : 'visitor' });
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        setOnlineCount(null);
+      }
+    });
+    return () => {
+      presenceChannelRef.current = null;
+      supabaseClient.removeChannel(channel);
+    };
+  }, []);
+
+  // 管理者ログインの有無が変わったら、在席情報の役割（管理者／来訪者）を更新する
+  useEffect(() => {
+    const channel = presenceChannelRef.current;
+    if (channel && channel.state === 'joined') channel.track({ role: isAdminLoggedIn ? 'admin' : 'visitor' });
   }, [isAdminLoggedIn]);
 
   // カードを画面上端/下端付近までドラッグしたら、ページ全体を自動スクロールする。
@@ -7627,6 +7663,7 @@ export default function App() {
                       ['エントリーをExcelで一括登録したい', 'エントリー管理画面の「📄 インポート用ひな形」から、取り込める列見出し・記入例入りのExcelファイルをダウンロードできます（1行目が記入例のため、実際のデータを入力したらその行は削除するか上書きしてください）。入力後、「Excelインポート」を押すと、削除操作と同様にローカルバックアップを取るかどうかを選べる確認ダイアログがまず表示され、選択後にファイル選択画面が開きます。ファイルを選ぶと列見出しを自動判定した「列の対応確認」画面が開くので（ID・パスワードは対象外で、システムが自動採番します）、対応が誤っていればプルダウンで選び直し、「次へ」で内容を確認してから反映します。読み込んだ行は常に新規エントリーとして追加されます（既存エントリーの更新はできません。個別に「編集」から行ってください）。'],
                       ['リーグ戦表・トーナメント表を印刷したい', 'ドロー編成の画面にある「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンを押すと、A4横向きの印刷ダイアログが開きます。「リーグ戦表」は勝敗・順位が空欄の表（手書き用）、「リーグ戦表(勝敗付)」は現在の結果・順位が入った表、「トーナメント表」は決勝トーナメントの組み合わせ表です。PDFで保存したい場合は、印刷ダイアログの送信先で「PDFに保存」を選んでください。'],
                       ['本番データに影響せず練習・動作確認がしたい（テストDB）', 'データ管理の一番上にある「データベースの切替（本番 / テスト）」で「テストDBに切り替える」を押すと、この端末だけテスト用データベースに切り替わります（他の端末や公開サイトの利用者は本番のままです）。接続中は画面上部に赤い帯が表示され、「本番DBに戻す」で戻せます。テストDBでは、エントリー登録・テストデータ生成・全データ削除・ドロー・試合進行などを本番に影響なく試せます。マスタ設定も本番とは別に保存されます。切替の際は画面が再読み込みされ、管理者ログインが外れます（管理者パスワードは本番と共通です）。初回のみ、テスト用テーブルを作るSQLをSupabaseで実行する必要があります（未実行の場合は、切替時にSQLが表示されます）。'],
+                      ['今サイトにアクセスしている人数を知りたい', '管理者ログイン中は、画面上部のヘッダーに「👥 アクセス中 〇台」と表示されます（参加者の画面には表示されません）。サイトを開いている端末（タブ）の数で、同じ人が複数のタブを開けば複数と数えます。画面を閉じた端末は、数秒〜数分で数から外れます。スマホは接続が切れやすいため、実際より少なめに出ることがあります。数字にマウスを合わせると、そのうち管理者画面を開いている台数がわかります。テストDBに切り替えている端末は、本番とは別に数えられます。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (
@@ -7661,7 +7698,15 @@ export default function App() {
           <div className="font-bold text-[#2c5f4e] text-lg flex items-center gap-2 cursor-pointer" onClick={() => setCurrentTab('home')}>
              <IconTrophy /> 大会運営ポータル
           </div>
-          <div className="flex gap-2 md:gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
+             {isAdminLoggedIn && onlineCount !== null && (
+               <span
+                 title={`現在このサイトを開いている端末数（うち管理者画面 ${onlineAdminCount}台）。画面を閉じた端末は暫くして数から外れます`}
+                 className="text-xs md:text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1 whitespace-nowrap"
+               >
+                 👥 アクセス中 {onlineCount}台
+               </span>
+             )}
              <button onClick={() => { if(isAdminLoggedIn) { setCurrentTab('admin'); } else { setCurrentTab('adminLogin'); } }} className="text-xs md:text-sm font-bold text-gray-600 hover:text-gray-900 px-3 py-2 flex items-center gap-1"><IconSettings /> 事務局操作</button>
           </div>
         </div>

@@ -26,6 +26,8 @@ const isTestDb = isSupabaseConfigured && readIsTestDb();
 // 書き込みの結果を一括で監視するため、各呼び出し箇所でエラーを確認し忘れても、失敗が気づかれないままにならない。
 // 通知先（画面側のハンドラ）はアプリ起動時に登録する
 let dbWriteErrorHandler = null;
+// 書き込みが成功したことの通知先。他の端末へ「更新した」と知らせて、すぐ取り直してもらうために使う
+let dbWriteSuccessHandler = null;
 const DB_WRITE_METHODS = ['insert', 'update', 'upsert', 'delete'];
 const observeDbWrite = (builder, table, method) => {
   const originalThen = builder.then.bind(builder);
@@ -39,6 +41,7 @@ const observeDbWrite = (builder, table, method) => {
   builder.then = (onFulfilled, onRejected) => originalThen(
     (result) => {
       if (result && result.error) notify(result.error);
+      else if (dbWriteSuccessHandler && table !== 'admin_session') dbWriteSuccessHandler(table);
       return onFulfilled ? onFulfilled(result) : result;
     },
     (err) => {
@@ -75,6 +78,13 @@ const TOURNAMENT_LAYOUT_16_TOP2 = {
   7: ['A1', '--', 'B2', 'C2', 'D1', 'G2', 'E1', 'F2', 'B1', '--', 'G1', 'A2', 'C1', 'E2', 'F1', 'D2'],
   8: ['A1', 'G2', 'H1', 'B2', 'D1', 'F2', 'E1', 'C2', 'B1', 'H2', 'G1', 'A2', 'C1', 'E2', 'F1', 'D2']
 };
+
+// 確定した審判（matches.locked_referee）をDBに保存するために必要な列を追加するSQL（Supabaseで一度だけ実行する）
+const LOCKED_REFEREE_COLUMN_SQL = [
+  'ALTER TABLE IF EXISTS matches ADD COLUMN IF NOT EXISTS locked_referee jsonb;',
+  'ALTER TABLE IF EXISTS matches_test ADD COLUMN IF NOT EXISTS locked_referee jsonb;'
+].join('\n');
+const isMissingColumnError = (error, column) => !!error && (error.code === '42703' || error.code === 'PGRST204' || new RegExp(column).test(error.message || ''));
 
 // 参加者向け画面（管理者ログイン前）で取得するエントリーの項目。連絡先・メール・パスワード・参加費区分は
 // 参加者向け画面では使わないため含めない（管理者ログイン後だけ全項目を取得する）
@@ -482,6 +492,12 @@ export default function App() {
   const [connectionLost, setConnectionLost] = useState(false); // 定期取得が続けて失敗している（サーバーと通信できない）
   const readFailureCountRef = useRef(0);
   const lastResyncRef = useRef(0);
+  const lockedSyncRef = useRef({}); // 試合ID → DBと同期済みの確定審判（JSON文字列）。差分だけを書き込むために保持する
+  const lockedSyncDisabledRef = useRef(false); // DBに保存用の列が無い場合に書き込みを止める
+  const matchesRef = useRef([]);
+  const broadcastTablesRef = useRef(new Set()); // 他の端末へ「更新した」と知らせる予定のテーブル
+  const broadcastTimerRef = useRef(null);
+  const pollTickRef = useRef(0);
   const [onlineCount, setOnlineCount] = useState(null); // アクセス中の端末数（接続できていない間はnull）
   const [onlineAdminCount, setOnlineAdminCount] = useState(0);
   const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
@@ -1424,6 +1440,9 @@ export default function App() {
     const interval = setInterval(() => {
       fetchEntries();
       fetchMatches();
+      // 設定（お知らせ・日程・ルールなど）は、参加者の画面だけ約1分ごとに取り直す
+      // （管理者は編集中のマスタ設定フォームを上書きしないよう対象外）
+      if (++pollTickRef.current % 4 === 0 && !adminLoggedInRef.current) fetchSettings(true);
     }, 15000);
     return () => clearInterval(interval);
   }, []);
@@ -1435,6 +1454,52 @@ export default function App() {
     if (isAdminLoggedIn || wasAdminLoggedInRef.current) fetchEntries();
     wasAdminLoggedInRef.current = isAdminLoggedIn;
   }, [isAdminLoggedIn]);
+
+  useEffect(() => { matchesRef.current = matches; }, [matches]);
+
+  // 確定した審判（lockedReferees）の変更を、matches.locked_refereeへ保存する。
+  // 保存するのは管理者の端末だけで、他の端末は取得して表示する。差分だけを書き込み、
+  // 保存用の列がまだ無い場合は、一度だけSQLを案内して書き込みを止める
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isAdminLoggedIn || lockedSyncDisabledRef.current) return;
+    const synced = lockedSyncRef.current;
+    const writes = [];
+    Object.entries(lockedReferees).forEach(([id, obj]) => {
+      const json = JSON.stringify(obj);
+      if (synced[id] !== json) writes.push({ id, obj, json });
+    });
+    Object.keys(synced).forEach(id => {
+      if (!(id in lockedReferees)) writes.push({ id, obj: null, json: null });
+    });
+    if (writes.length === 0) return;
+    // 書き込み前に同期済みとして記録し、同じ内容を何度も書かないようにする（失敗したら戻す）
+    writes.forEach(({ id, json }) => { if (json) synced[id] = json; else delete synced[id]; });
+    (async () => {
+      const table = isTestDb ? 'matches_test' : 'matches';
+      for (const { id, obj, json } of writes) {
+        if (!obj && !matchesRef.current.some(m => m.id === id)) continue; // 既に削除された試合は何もしない
+        const { error } = await supabaseClient.from(table).update({ locked_referee: obj }).eq('id', id);
+        if (!error) continue;
+        if (json) delete synced[id]; else synced[id] = synced[id] || 'x';
+        if (isMissingColumnError(error, 'locked_referee')) {
+          lockedSyncDisabledRef.current = true;
+          setDialog(prev => prev || {
+            title: "審判の確定情報を保存する準備が必要です",
+            message: (
+              <div className="text-left space-y-2 text-sm">
+                <p>確定した審判を全端末で同じ表示にするため、SupabaseのSQL Editorで次のSQLを一度だけ実行してください（実行するまでは、審判の表示が端末ごとにずれることがあります）。</p>
+                <pre className="bg-gray-100 border rounded p-2 text-xs overflow-x-auto select-all whitespace-pre-wrap">{LOCKED_REFEREE_COLUMN_SQL}</pre>
+              </div>
+            ),
+            onClose: () => setDialog(null)
+          });
+          return;
+        }
+      }
+      if (dbWriteSuccessHandler) dbWriteSuccessHandler('matches');
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedReferees, isAdminLoggedIn]);
 
   // DBへの書き込みに失敗したら、画面上部に警告を出し、画面だけ更新されて実際は保存されていない状態が残らないよう、
   // DBの最新の状態を取得し直す（短時間に失敗が続いても、取得し直しは1.5秒に1回まで）
@@ -1459,6 +1524,36 @@ export default function App() {
     const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     const channel = supabaseClient.channel(isTestDb ? 'bts-online-test' : 'bts-online', { config: { presence: { key } } });
     presenceChannelRef.current = channel;
+
+    // 他の端末がデータを更新したら、すぐに取り直す（定期取得の15秒待ちを短縮する）。短時間に続いた通知は1回にまとめる
+    let refreshTimer = null;
+    const pendingTables = new Set();
+    channel.on('broadcast', { event: 'refresh' }, ({ payload }) => {
+      ((payload && payload.tables) || []).forEach(t => pendingTables.add(t));
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        const tables = [...pendingTables];
+        pendingTables.clear();
+        if (tables.includes('entries')) fetchEntries();
+        if (tables.includes('matches')) fetchMatches();
+        if (tables.includes('settings') && !adminLoggedInRef.current) fetchSettings(true);
+      }, 300);
+    });
+
+    // 自分の書き込みが成功したら、他の端末へ「更新した」と知らせる（短時間の複数の更新は1回にまとめる）
+    dbWriteSuccessHandler = (table) => {
+      if (!['entries', 'matches', 'settings'].includes(table)) return;
+      broadcastTablesRef.current.add(table);
+      if (broadcastTimerRef.current) return;
+      broadcastTimerRef.current = setTimeout(() => {
+        broadcastTimerRef.current = null;
+        const tables = [...broadcastTablesRef.current];
+        broadcastTablesRef.current.clear();
+        if (channel.state === 'joined') channel.send({ type: 'broadcast', event: 'refresh', payload: { tables } });
+      }, 400);
+    };
+
     channel.on('presence', { event: 'sync' }, () => {
       const metas = Object.values(channel.presenceState()).flat();
       setOnlineCount(Object.keys(channel.presenceState()).length);
@@ -1473,6 +1568,8 @@ export default function App() {
     });
     return () => {
       presenceChannelRef.current = null;
+      dbWriteSuccessHandler = null;
+      if (refreshTimer) clearTimeout(refreshTimer);
       supabaseClient.removeChannel(channel);
     };
   }, []);
@@ -1500,7 +1597,9 @@ export default function App() {
     return () => window.removeEventListener('dragover', handleWindowDragOver);
   }, []);
 
-  const fetchSettings = async () => {
+  // background=trueは、参加者の画面が表示中の状態（選択中のクラスや入力途中のフォーム）を保ったまま、
+  // 設定（お知らせ・日程・ルールなど）だけを最新にする
+  const fetchSettings = async (background = false) => {
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle();
@@ -1535,6 +1634,14 @@ export default function App() {
             matchRules: data.matchrules || {}
           };
           setConfig(loadedConfig);
+          if (background) {
+            const firstClass = loadedConfig.classes && loadedConfig.classes[0];
+            if (firstClass) {
+              setSelectedClass(prev => (loadedConfig.classes.includes(prev) ? prev : firstClass));
+              setEntryForm(prev => (loadedConfig.classes.includes(prev.cls) ? prev : { ...prev, cls: firstClass }));
+            }
+            return;
+          }
           setClassRows(loadedConfig.classes.map(parseClassSuffix));
           setSponsorsText(loadedConfig.sponsors.join(','));
           const defaultTime = formatHHMM(loadedConfig.timeStart);
@@ -1629,6 +1736,26 @@ export default function App() {
             }
             return formatted;
           });
+          // 確定した審判はDBに保存されたものを正とする（端末ごとに別々に計算して表示がずれるのを防ぐ）。
+          // 保存用の列がまだ無い場合（locked_refereeが返ってこない場合）は、従来どおり端末内の計算にとどめる
+          if (data.length > 0 && 'locked_referee' in data[0]) {
+            setLockedReferees(prev => {
+              const next = { ...prev };
+              let changed = false;
+              data.forEach(row => {
+                if (row.locked_referee) {
+                  if (JSON.stringify(next[row.id]) !== JSON.stringify(row.locked_referee)) { next[row.id] = row.locked_referee; changed = true; }
+                  lockedSyncRef.current[row.id] = JSON.stringify(row.locked_referee);
+                } else if (next[row.id] && row.court_number === null && row.status !== 'completed') {
+                  // コートから外れた試合の古い確定は捨てる
+                  delete next[row.id];
+                  delete lockedSyncRef.current[row.id];
+                  changed = true;
+                }
+              });
+              return changed ? next : prev;
+            });
+          }
           noteReadResult(true);
         } else {
           noteReadResult(false);
@@ -7850,6 +7977,7 @@ export default function App() {
                       ['今サイトにアクセスしている人数を知りたい', '管理者ログイン中は、画面上部のヘッダーに「👥 アクセス中 〇台」と表示されます（参加者の画面には表示されません）。サイトを開いている端末（タブ）の数で、同じ人が複数のタブを開けば複数と数えます。画面を閉じた端末は、数秒〜数分で数から外れます。スマホは接続が切れやすいため、実際より少なめに出ることがあります。数字にマウスを合わせると、そのうち管理者画面を開いている台数がわかります。テストDBに切り替えている端末は、本番とは別に数えられます。'],
                       ['エントリーを削除したい（対戦カードを作成した後・当日の欠場）', 'エントリー管理の「削除」で、予選の対戦カードがまだ待機中（コート未配置・結果なし）の組は、作成済みの対戦カードも一緒に削除されます（他の組の対戦カードや結果には影響しません）。既に試合が始まっている・結果が入力済み・決勝トーナメントの対戦カードに含まれる組は削除できません。その場合は、「コート進行・スコア」のスコア入力で「棄権」を選ぶと、相手の不戦勝として記録されます。'],
                       ['画面の上にオレンジ色の警告が出た（保存できませんでした／サーバーと通信できません）', '「〇〇をサーバーに保存できませんでした」は、直前の操作がサーバーに保存されなかったことを示します。画面は自動的にサーバーの最新の状態に戻るので、表示を確認して、同じ操作をやり直してください（繰り返し出る場合は、会場のネット接続を確認してください。「閉じる」を押すまで表示が残ります）。「サーバーと通信できません」は、約45秒続けて最新の状態を取得できなかったときに出る警告で、その間の操作は保存されません。通信が戻ると自動で消えます。大会中にこの警告が続く場合は、紙のスコアシートでの運用に切り替え、復旧後に入力してください。'],
+                      ['審判の表示が端末ごとに違う／参加者の画面の更新が遅い', '確定した審判は、matchesテーブルの「locked_referee」列に保存され、全端末で同じ表示になります。初めて使うときは、Supabaseの SQL Editor で、表示されるSQL（ALTER TABLE matches ADD COLUMN IF NOT EXISTS locked_referee jsonb; など）を一度だけ実行してください。実行するまでは、審判の表示が端末ごとにずれることがあります（管理者が最初に試合をコートへ配置したときに、案内が表示されます）。データを更新すると、他の端末へすぐ通知され、数秒で表示が更新されます（通知が届かない場合でも、15秒ごとの自動取得で更新されます）。お知らせなどの設定は、参加者の画面で約1分ごとに更新されます。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (

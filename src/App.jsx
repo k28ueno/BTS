@@ -2733,6 +2733,70 @@ export default function App() {
     }
   };
 
+  // 決勝トーナメントの枠を変えたときに、まだ試合が始まっていない決勝トーナメントの対戦カードを、新しい配置で作り直す。
+  // 不戦勝で上の段へ進んでいる組は、元の位置（その段の最も左の1回戦の枠）へ戻してから、配置し直す
+  // change: { entryId, position }（positionがnullなら「未配置に戻す」）
+  const rebuildTournamentWithChange = async (cls, change) => {
+    // 上の段にいる組を、その段が受け持つ1回戦の枠のうち、空いている最も左の枠へ戻す
+    // （動かす先の枠や、他の組がいる枠とは重ならないようにする。重なると、画面では空きに見える枠にいた組が押し出されてしまう）
+    const taken = new Set();
+    if (change.position != null && change.position < 100) taken.add(change.position);
+    entries.forEach(e => {
+      if (e.cls === cls && e.id !== change.entryId && e.tournamentPosition != null && e.tournamentPosition < 100) taken.add(e.tournamentPosition);
+    });
+    const firstRoundSlotOf = new Map();
+    entries.forEach(e => {
+      if (e.cls !== cls || e.id === change.entryId || e.tournamentPosition == null || e.tournamentPosition < 100) return;
+      const level = Math.floor(e.tournamentPosition / 100);
+      const first = (e.tournamentPosition - level * 100 - 1) * Math.pow(2, level) + 1;
+      const last = first + Math.pow(2, level) - 1;
+      let slot = first;
+      while (slot <= last && taken.has(slot)) slot++;
+      if (slot > last) slot = first;
+      taken.add(slot);
+      firstRoundSlotOf.set(e.id, slot);
+    });
+    let working = entries.map(e => {
+      if (e.id === change.entryId) return { ...e, tournamentPosition: change.position };
+      if (firstRoundSlotOf.has(e.id)) return { ...e, tournamentPosition: firstRoundSlotOf.get(e.id) };
+      if (change.position != null && e.cls === cls && e.tournamentPosition === change.position) return { ...e, tournamentPosition: null };
+      return e;
+    });
+    const oldMatchIds = matches.filter(m => m.cls === cls && m.matchType === 'tournament').map(m => m.id);
+    const remainingMatches = matches.filter(m => !oldMatchIds.includes(m.id));
+    const changedEntries = working.filter((e, idx) => e.cls === cls && e.tournamentPosition !== entries[idx].tournamentPosition);
+
+    setEntries(working);
+    setMatches(remainingMatches);
+    setTapMoveSelection(null);
+    if (isSupabaseConfigured) {
+      if (oldMatchIds.length > 0) await supabase.from('matches').delete().in('id', oldMatchIds);
+      await Promise.all(changedEntries.map(e => supabase.from('entries').update({ tournamentposition: e.tournamentPosition }).eq('id', e.id)));
+    }
+    await generateTournamentMatches(cls, { entries: working, matches: remainingMatches });
+  };
+
+  // 決勝トーナメントの対戦カードが既に作られているクラスで枠を動かそうとしたときの扱い。
+  // 試合が始まっていれば動かせない。始まっていなければ、確認のうえで対戦カードを作り直す。
+  // 対戦カードが無ければfalseを返し、呼び出し元が通常どおり枠を動かす
+  const guardTournamentChange = (cls, change) => {
+    const existing = matches.filter(m => m.cls === cls && m.matchType === 'tournament');
+    if (existing.length === 0) return false;
+    if (existing.some(m => m.status !== 'waiting' || m.courtNumber !== null || isMatchScored(m))) {
+      setDialog({ title: "配置不可", message: "決勝トーナメントの試合が既に始まっているため、枠を変更できません。", onClose: () => setDialog(null) });
+      return true;
+    }
+    setDialog({
+      title: "決勝トーナメントの対戦カードを作り直します",
+      message: "対戦カードは作成済みですが、まだ試合は始まっていません。枠を変更すると、決勝トーナメントの対戦カードを、新しい配置で作り直します（試合番号も振り直されます）。よろしいですか？",
+      confirmText: "変更して作り直す",
+      confirmBg: "bg-orange-500 hover:bg-orange-600",
+      onConfirm: async () => { setDialog(null); await rebuildTournamentWithChange(cls, change); },
+      onClose: () => setDialog(null)
+    });
+    return true;
+  };
+
   const moveEntryToTournamentSlot = async (entryId, position) => {
     if (!entryId) return;
 
@@ -2771,6 +2835,9 @@ export default function App() {
       return;
     }
 
+    // 決勝トーナメントの対戦カードが既に作られている場合は、ここでは動かさず、作り直しの確認へ進む
+    if (guardTournamentChange(cls, { entryId, position })) return;
+
     setEntries(entries.map(ent => {
       if (ent.id === entryId) return { ...ent, tournamentPosition: position };
       if (ent.tournamentPosition === position) return { ...ent, tournamentPosition: null };
@@ -2795,6 +2862,8 @@ export default function App() {
 
   const clearEntryTournamentPosition = async (entryId) => {
     if (!entryId) return;
+    const targetEntry = entries.find(ent => ent.id === entryId);
+    if (targetEntry && guardTournamentChange(targetEntry.cls, { entryId, position: null })) return;
     setEntries(entries.map(ent => ent.id === entryId ? { ...ent, tournamentPosition: null } : ent));
     if (isSupabaseConfigured) {
       await supabase.from('entries').update({ tournamentposition: null }).eq('id', entryId);
@@ -3226,6 +3295,18 @@ export default function App() {
       await Promise.all(updates.map(u => supabase.from('entries').update({ tournamentposition: u.tournamentposition }).eq('id', u.id)));
     }
 
+    // 決勝トーナメントの対戦カードが既に作られている（まだ試合は始まっていない）場合は、配置と食い違わないよう、
+    // 対戦カードも新しい配置で作り直す
+    const staleTournamentMatches = matches.filter(m => m.cls === drawClass && m.matchType === 'tournament');
+    if (staleTournamentMatches.length > 0) {
+      const staleIds = staleTournamentMatches.map(m => m.id);
+      const remainingMatches = matches.filter(m => !staleIds.includes(m.id));
+      setMatches(remainingMatches);
+      if (isSupabaseConfigured) await supabase.from('matches').delete().in('id', staleIds);
+      await generateTournamentMatches(drawClass, { entries: newEntries, matches: remainingMatches });
+      return;
+    }
+
     if (assignedCount > 0) {
       setDialog({ title: "順位反映完了", message: `【${drawClass}】の全予選結果に基づき、${assignedCount} 組を決勝トーナメント枠に割り当てました。手動で枠を変更することも可能です。`, onClose: () => setDialog(null) });
     } else {
@@ -3258,19 +3339,22 @@ export default function App() {
 
   // 決勝トーナメントの対戦カードを生成する。両者揃った枠は試合を作成し、
   // 片方だけ埋まっている枠（不戦勝）はもう一方の枠へ自動的に勝ち上がらせる
-  const generateTournamentMatches = async (cls) => {
+  // overridesは、枠を変更して対戦カードを作り直すときに、まだ画面の状態へ反映されていない最新の組・試合を渡すために使う
+  const generateTournamentMatches = async (cls, overrides = {}) => {
+    const baseEntries = overrides.entries || entries;
+    const baseMatches = overrides.matches || matches;
     const slotCount = getTournamentSlotCount(cls);
     if (slotCount < 2) {
       setDialog({ title: "生成不可", message: `【${cls}】は決勝トーナメント枠が設定されていません。`, onClose: () => setDialog(null) });
       return;
     }
 
-    let workingEntries = entries.map(e => ({ ...e }));
+    let workingEntries = baseEntries.map(e => ({ ...e }));
     const newMatches = [];
     const advancedUpdates = [];
     let createdCount = 0;
     // 決勝トーナメントの試合番号は、予選（グループ内連番）とは独立してクラス単位で1から採番する
-    let nextMatchNo = getNextMatchNo(matches.filter(m => m.cls === cls && m.matchType === 'tournament'));
+    let nextMatchNo = getNextMatchNo(baseMatches.filter(m => m.cls === cls && m.matchType === 'tournament'));
     // 生成時点の試合ルールをこのクラスの決勝トーナメント全試合にスナップショット保存する
     const tournamentMatchRule = getMatchRule(cls, 'tournament');
 
@@ -3297,13 +3381,13 @@ export default function App() {
         // この枠は既に対戦カードが完了済み＝勝者は既にスコア確定時に次ラウンドへ
         // 勝ち上がり済みのはず。片方の枠に残ったままの敗者を不戦勝扱いで
         // 誤って次ラウンドへ進めてしまわないよう、完了済みの枠ペアはスキップする
-        if (matches.some(m => m.id === matchId && m.status === 'completed')) continue;
+        if (baseMatches.some(m => m.id === matchId && m.status === 'completed')) continue;
         const entA = workingEntries.find(e => e.cls === cls && e.tournamentPosition === slotA);
         const entB = workingEntries.find(e => e.cls === cls && e.tournamentPosition === slotB);
         const { nextSlot } = getTournamentSlotInfo(slotA);
 
         if (entA && entB) {
-          if (!matches.some(m => m.id === matchId)) {
+          if (!baseMatches.some(m => m.id === matchId)) {
             newMatches.push({
               id: matchId,
               cls,
@@ -3340,7 +3424,7 @@ export default function App() {
 
     // 決勝トーナメントの対戦カードを生成したら、予選で使っていたコートは解放し、
     // 決勝の試合をすぐ空きコートへ配置できるようにする（試合結果自体は保持したまま）
-    const clsCompletedLeagueOnCourt = matches.filter(m =>
+    const clsCompletedLeagueOnCourt = baseMatches.filter(m =>
       m.cls === cls && m.matchType === 'league' && m.status === 'completed' && m.courtNumber !== null
     );
 
@@ -8055,6 +8139,7 @@ export default function App() {
                       ['スコアを間違えて入力してしまった', '該当試合の「スコア修正」ボタンからいつでもゲーム別に修正できます。「コート進行・スコア」画面のほか、「試合結果明細」画面の各行からも同じボタンで修正できます。ただし、その予選試合のクラスで決勝の対戦カードが既にコール済（〜完了）の場合は、順位表・決勝トーナメントの枠との食い違いを防ぐため予選の修正はできません（ボタンが「修正不可」と表示されます）。'],
                       ['当日急にペア（選手）が変わった', 'エントリー管理の「編集」で氏名・所属を変更して保存すれば、グループ分け・対戦カード・決勝トーナメント表・コートの審判表示などへそのまま反映されます（作り直し不要）。受付期間終了後でも、管理者による編集は可能です。'],
                       ['グループ分けをやり直したい', '予選リーグが「終了済」になる前であれば、組をドラッグ／タップで別グループへ移動すると対戦カードが自動的に再生成されます。終了済クラスは結果保護のため変更できません。'],
+                      ['決勝トーナメントの枠（組み合わせ・不戦勝の組）を手動で変えたい', 'ドロー編成の「決勝トーナメント」タブで、組をドラッグ（またはタップして枠をタップ）すると、自動で入った配置を自由に変えられます。埋まっている枠へ置くと、元にいた組は「未配置」に戻ります（入れ替えは2回の操作です）。決勝トーナメントの対戦カードを作成済みでも、まだ試合が始まっていなければ、枠を変えたときに確認画面が出て、対戦カードを新しい配置で作り直します（試合番号も振り直されます）。コートに置いた・結果が入った試合が1つでもあるクラスは、枠を変更できません。「予選順位からトーナメント位置を自動初期反映」を押し直した場合も、未開始なら対戦カードを作り直します。'],
                       ['予選リーグのグループを4つ以上に増やしたい／減らしたい', 'グループ一覧の右端にある「＋グループを追加」ボタンを押すと、次のグループ（D、E…）が空の状態で表示され、A〜Cと同様に組をドラッグ／タップで配置できます。組が0件で一番右端のグループには「✕」が表示され、押すとそのグループを非表示に戻せます（間のグループは削除できません）。'],
                       ['対戦カードを全部作り直したい', 'データ管理の「試合結果のみ初期化」で、エントリー情報を残したまま試合結果とコート進行状態だけをリセットできます。'],
                       ['決勝トーナメントの枠数がおかしい', '決勝の枠数（2/4/8枠）は「グループ数×決勝進出条件」から自動計算されます。進出条件はマスタ設定の「決勝トーナメント進出条件」で変更できます。'],

@@ -7115,7 +7115,11 @@ export default function App() {
                                        )}
                                        {activeMatch.status === 'recepted' && (
                                           <button
-                                            onClick={() => handleMatchStatusChange(activeMatch.id, 'in_progress')}
+                                            onClick={async () => {
+                                               await handleMatchStatusChange(activeMatch.id, 'in_progress');
+                                               // 試合受付のタイミングでスコアシートを渡す必要があるため、状態遷移とあわせて印刷ダイアログを開く
+                                               handlePrintScoreSheet(activeMatch.id);
+                                            }}
                                             className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              試合受付
@@ -7124,7 +7128,7 @@ export default function App() {
                                        {activeMatch.status === 'in_progress' && (
                                           <button
                                             onClick={() => openScoreModal(activeMatch)}
-                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
+                                            className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow-xs"
                                           >
                                              スコア入力
                                           </button>
@@ -7920,7 +7924,7 @@ export default function App() {
                  <div className="flex flex-wrap items-center gap-1.5">
                     {[
                       { label: '空き', sub: '対戦カードを配置', badge: 'bg-gray-100 text-gray-500 border-gray-300' },
-                      { label: '要コール', sub: '「コール」→「コール完了」でスコアシート印刷', badge: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
+                      { label: '要コール', sub: '「コール」ボタンを押す', badge: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
                       { label: '試合受付', sub: '「試合受付」ボタンを押す', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
                       { label: '試合中', sub: '試合終了後スコアを入力', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
                       { label: '試合済', sub: '次の試合を配置すると自動解除', badge: 'bg-green-100 text-green-700 border-green-300' },
@@ -8009,7 +8013,7 @@ export default function App() {
                       ['管理者ログインができない（既に他の端末でログイン中）', '同時にログインできるのは2台までです。使い終わったら必ず「ログアウト」してください。3台目は、先にどれかをログアウトするまでログインできません（画面を閉じた端末は、約1分で自動的に枠が空きます）。一定時間操作がない場合は自動的にログオフされます（既定10分、マスタ設定の「管理者ログイン設定」で変更でき、「ログオフしない」を選ぶと自動ログオフを行いません）。2台目のログインを初めて使うときは、Supabaseで表示されるSQL（admin_sessionテーブルに2台目の枠を追加するもの）を一度だけ実行する必要があります。'],
                       ['一方の組が欠場・棄権した', 'コート進行画面のスコア入力から「棄権」を選択すると、出場した側の不戦勝として記録されます（得失点差には反映されません）。誤操作の場合は「スコア解除」で取り消せます。'],
                       ['試合結果を新聞社等に提出したい', '「結果PDF」画面で各クラスの優勝・準優勝・3位（実施した場合）をまとめて表示し、ブラウザの印刷機能からPDF保存できます。'],
-                      ['試合のスコア用紙（得点用紙）を印刷したい', '個別の印刷ボタンはありません。コート進行画面で「コール」を押してコールアナウンスを読み上げ、「コール完了（試合受付へ）」を押すと、その試合専用の記入用紙（A4横向き）の印刷ダイアログが自動的に開きます。「試合受付」ボタンでは印刷されません。'],
+                      ['試合のスコア用紙（得点用紙）を印刷したい', '個別の印刷ボタンはありません。コート進行画面で「試合受付」ボタンを押すと、その試合専用の記入用紙（A4横向き）の印刷ダイアログが自動的に開きます。'],
                       ['選手名の入っていない予備の用紙を用意しておきたい', 'コート進行画面上部の「スコアシート(白紙)印刷」を押すと、選手名・クラス・試合番号・コート番号を空欄にした手書き用のスコアシートを印刷できます（システムが使えない場合の紙運用の備えとして利用できます）。複数枚必要な場合は印刷ダイアログの部数指定で枚数を増やしてください。'],
                       ['試合ルールを変更したのに既存の試合に反映されない', '仕様です。ルール変更は、変更後に新しく生成する試合にのみ適用されます。既に生成済みの試合のルールを変えたい場合は、対象試合を含む対戦カードを作り直してください。'],
                       ['エントリーをExcelで一括登録したい', 'エントリー管理画面の「📄 インポート用ひな形」から、取り込める列見出し・記入例入りのExcelファイルをダウンロードできます（1行目が記入例のため、実際のデータを入力したらその行は削除するか上書きしてください）。入力後、「Excelインポート」を押すと、削除操作と同様にローカルバックアップを取るかどうかを選べる確認ダイアログがまず表示され、選択後にファイル選択画面が開きます。ファイルを選ぶと列見出しを自動判定した「列の対応確認」画面が開くので（ID・パスワードは対象外で、システムが自動採番します）、対応が誤っていればプルダウンで選び直し、「次へ」で内容を確認してから反映します。読み込んだ行は常に新規エントリーとして追加されます（既存エントリーの更新はできません。個別に「編集」から行ってください）。'],
@@ -8387,12 +8391,7 @@ export default function App() {
                   閉じる
                 </button>
                 <button
-                  onClick={() => {
-                    handleMatchStatusChange(callAnnouncement.match.id, 'recepted');
-                    // 選手に渡すスコアシートは、コール完了のタイミングで印刷する
-                    handlePrintScoreSheet(callAnnouncement.match.id);
-                    setCallAnnouncement(null);
-                  }}
+                  onClick={() => { handleMatchStatusChange(callAnnouncement.match.id, 'recepted'); setCallAnnouncement(null); }}
                   className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2.5 rounded-lg font-bold"
                 >
                   コール完了（試合受付へ）

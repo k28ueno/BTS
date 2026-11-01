@@ -22,8 +22,40 @@ const readIsTestDb = () => {
   try { return localStorage.getItem(DB_MODE_STORAGE_KEY) === 'test'; } catch (e) { return false; }
 };
 const isTestDb = isSupabaseConfigured && readIsTestDb();
+// DBへの書き込み（登録・更新・削除）が失敗したときに画面へ知らせるための仕組み。
+// 書き込みの結果を一括で監視するため、各呼び出し箇所でエラーを確認し忘れても、失敗が気づかれないままにならない。
+// 通知先（画面側のハンドラ）はアプリ起動時に登録する
+let dbWriteErrorHandler = null;
+const DB_WRITE_METHODS = ['insert', 'update', 'upsert', 'delete'];
+const observeDbWrite = (builder, table, method) => {
+  const originalThen = builder.then.bind(builder);
+  const notify = (error) => {
+    if (!dbWriteErrorHandler) return;
+    // admin_sessionはログイン処理側で独自に扱う。エントリーIDの重複（23505）は採番のやり直しで解決する想定の失敗
+    if (table === 'admin_session') return;
+    if (table === 'entries' && method === 'insert' && error && error.code === '23505') return;
+    dbWriteErrorHandler({ table, method, code: error && error.code, message: (error && error.message) || '' });
+  };
+  builder.then = (onFulfilled, onRejected) => originalThen(
+    (result) => {
+      if (result && result.error) notify(result.error);
+      return onFulfilled ? onFulfilled(result) : result;
+    },
+    (err) => {
+      notify(err);
+      if (onRejected) return onRejected(err);
+      throw err;
+    }
+  );
+  return builder;
+};
 const supabase = supabaseClient && {
-  from: (table) => supabaseClient.from(isTestDb && TEST_DB_TABLES.includes(table) ? table + TEST_DB_SUFFIX : table)
+  from: (table) => {
+    const query = supabaseClient.from(isTestDb && TEST_DB_TABLES.includes(table) ? table + TEST_DB_SUFFIX : table);
+    const wrapper = { select: (...args) => query.select(...args) };
+    DB_WRITE_METHODS.forEach(method => { wrapper[method] = (...args) => observeDbWrite(query[method](...args), table, method); });
+    return wrapper;
+  }
 };
 // テストDB用テーブルの作成SQL（Supabaseの SQL Editor で一度だけ実行する）
 const TEST_DB_SETUP_SQL = TEST_DB_TABLES.map(t => `CREATE TABLE IF NOT EXISTS ${t}${TEST_DB_SUFFIX} (LIKE ${t} INCLUDING ALL);`).concat([
@@ -446,6 +478,10 @@ export default function App() {
   const wasAdminLoggedInRef = useRef(false);
   const entriesFetchSeqRef = useRef(0); // エントリー取得の追い越し防止（古い取得結果で新しい結果を上書きしない）
   const presenceChannelRef = useRef(null); // アクセス中の端末数を数えるRealtime Presenceのチャンネル
+  const [dbWriteError, setDbWriteError] = useState(null); // 直近のDB書き込み失敗（画面上部に警告を表示する）
+  const [connectionLost, setConnectionLost] = useState(false); // 定期取得が続けて失敗している（サーバーと通信できない）
+  const readFailureCountRef = useRef(0);
+  const lastResyncRef = useRef(0);
   const [onlineCount, setOnlineCount] = useState(null); // アクセス中の端末数（接続できていない間はnull）
   const [onlineAdminCount, setOnlineAdminCount] = useState(0);
   const entryImportFileInputRef = useRef(null); // エントリー管理のExcelインポート用（非表示のfile input）
@@ -1400,6 +1436,20 @@ export default function App() {
     wasAdminLoggedInRef.current = isAdminLoggedIn;
   }, [isAdminLoggedIn]);
 
+  // DBへの書き込みに失敗したら、画面上部に警告を出し、画面だけ更新されて実際は保存されていない状態が残らないよう、
+  // DBの最新の状態を取得し直す（短時間に失敗が続いても、取得し直しは1.5秒に1回まで）
+  useEffect(() => {
+    dbWriteErrorHandler = (info) => {
+      setDbWriteError(prev => ({ ...info, count: (prev ? prev.count : 0) + 1 }));
+      const now = Date.now();
+      if (now - lastResyncRef.current > 1500) {
+        lastResyncRef.current = now;
+        setTimeout(() => { fetchEntries(); fetchMatches(); }, 500);
+      }
+    };
+    return () => { dbWriteErrorHandler = null; };
+  }, []);
+
   // サイトを開いている端末数を、Supabase RealtimeのPresence（接続中の端末が共有する在席情報）で数える。
   // テーブルは使わず、閉じる／接続が切れると自動的に数から外れる。1つのタブ＝1台として数える
   // （同じ人が複数タブを開けば複数と数え、画面を閉じたスマホは暫くして数から外れる）。
@@ -1503,6 +1553,16 @@ export default function App() {
     }
   };
 
+  // 定期取得の成否を記録する。続けて3回（約45秒）失敗したら「通信できません」と表示し、成功したら解除する
+  const noteReadResult = (ok) => {
+    if (ok) {
+      readFailureCountRef.current = 0;
+      setConnectionLost(false);
+    } else if (++readFailureCountRef.current >= 3) {
+      setConnectionLost(true);
+    }
+  };
+
   const fetchEntries = async () => {
     if (isSupabaseConfigured) {
       try {
@@ -1524,9 +1584,13 @@ export default function App() {
             }
             return formatted;
           });
+          noteReadResult(true);
+        } else {
+          noteReadResult(false);
         }
       } catch (err) {
         console.error("Network error:", err);
+        noteReadResult(false);
       }
     }
   };
@@ -1565,9 +1629,13 @@ export default function App() {
             }
             return formatted;
           });
+          noteReadResult(true);
+        } else {
+          noteReadResult(false);
         }
       } catch (err) {
         console.error("Matches fetch error:", err);
+        noteReadResult(false);
       }
     }
   };
@@ -3978,7 +4046,9 @@ export default function App() {
     if (!isAdminLoggedIn || !isSupabaseConfigured) return;
     const beat = () => {
       if (adminSessionTokenRef.current) {
-        supabase.from('admin_session').update({ updated_at: new Date().toISOString() }).eq('id', adminSessionSlotRef.current || 1).eq('token', adminSessionTokenRef.current);
+        // supabase-jsのクエリは、awaitや.then()で結果を受け取るまで送信されない。呼び出すだけでは生存確認が届かず、
+        // 管理者のロックが約1分で「異常終了」と見なされて、他の端末に奪われてしまうため、必ず実行する
+        supabase.from('admin_session').update({ updated_at: new Date().toISOString() }).eq('id', adminSessionSlotRef.current || 1).eq('token', adminSessionTokenRef.current).then(() => {});
       }
     };
     beat();
@@ -7779,6 +7849,7 @@ export default function App() {
                       ['本番データに影響せず練習・動作確認がしたい（テストDB）', 'データ管理の一番上にある「データベースの切替（本番 / テスト）」で「テストDBに切り替える」を押すと、この端末だけテスト用データベースに切り替わります（他の端末や公開サイトの利用者は本番のままです）。接続中は画面上部に赤い帯が表示され、「本番DBに戻す」で戻せます。テストDBでは、エントリー登録・テストデータ生成・全データ削除・ドロー・試合進行などを本番に影響なく試せます。マスタ設定も本番とは別に保存されます。切替の際は画面が再読み込みされ、管理者ログインが外れます（管理者パスワードは本番と共通です）。初回のみ、テスト用テーブルを作るSQLをSupabaseで実行する必要があります（未実行の場合は、切替時にSQLが表示されます）。'],
                       ['今サイトにアクセスしている人数を知りたい', '管理者ログイン中は、画面上部のヘッダーに「👥 アクセス中 〇台」と表示されます（参加者の画面には表示されません）。サイトを開いている端末（タブ）の数で、同じ人が複数のタブを開けば複数と数えます。画面を閉じた端末は、数秒〜数分で数から外れます。スマホは接続が切れやすいため、実際より少なめに出ることがあります。数字にマウスを合わせると、そのうち管理者画面を開いている台数がわかります。テストDBに切り替えている端末は、本番とは別に数えられます。'],
                       ['エントリーを削除したい（対戦カードを作成した後・当日の欠場）', 'エントリー管理の「削除」で、予選の対戦カードがまだ待機中（コート未配置・結果なし）の組は、作成済みの対戦カードも一緒に削除されます（他の組の対戦カードや結果には影響しません）。既に試合が始まっている・結果が入力済み・決勝トーナメントの対戦カードに含まれる組は削除できません。その場合は、「コート進行・スコア」のスコア入力で「棄権」を選ぶと、相手の不戦勝として記録されます。'],
+                      ['画面の上にオレンジ色の警告が出た（保存できませんでした／サーバーと通信できません）', '「〇〇をサーバーに保存できませんでした」は、直前の操作がサーバーに保存されなかったことを示します。画面は自動的にサーバーの最新の状態に戻るので、表示を確認して、同じ操作をやり直してください（繰り返し出る場合は、会場のネット接続を確認してください。「閉じる」を押すまで表示が残ります）。「サーバーと通信できません」は、約45秒続けて最新の状態を取得できなかったときに出る警告で、その間の操作は保存されません。通信が戻ると自動で消えます。大会中にこの警告が続く場合は、紙のスコアシートでの運用に切り替え、復旧後に入力してください。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (
@@ -7803,6 +7874,21 @@ export default function App() {
     <div className={`min-h-screen font-sans bg-gray-50 text-gray-800 pb-20 ${(printMatchId || printBlankSheetCount || printDrawSheet) ? 'printing-score-sheet' : ''}`}>
       {/* 修正: 右上の「エントリー」「修正・取消」ボタンを削除し、「管理」ボタンのみ配置 */}
       <header className="bg-white shadow-sm sticky top-0 z-50">
+        {dbWriteError && (
+          <div className="bg-orange-600 text-white text-sm font-bold px-4 py-2 flex items-center justify-center gap-3 flex-wrap" title={`${dbWriteError.message}${dbWriteError.code ? `（${dbWriteError.code}）` : ''}`}>
+            <span>
+              ⚠️ {({ entries: 'エントリー', matches: '試合', settings: '設定' }[dbWriteError.table] || 'データ')}の{({ insert: '登録', update: '更新', upsert: '更新', delete: '削除' }[dbWriteError.method] || '保存')}をサーバーに保存できませんでした
+              {dbWriteError.count > 1 ? `（計${dbWriteError.count}件）` : ''}。通信状況を確認して、操作をやり直してください。画面は、サーバーの最新の状態に戻しています。
+            </span>
+            <button type="button" onClick={() => { fetchEntries(); fetchMatches(); }} className="bg-white text-orange-700 px-3 py-0.5 rounded shadow-sm hover:bg-orange-50">最新の状態に更新</button>
+            <button type="button" onClick={() => setDbWriteError(null)} className="bg-orange-700 text-white px-3 py-0.5 rounded shadow-sm hover:bg-orange-800">閉じる</button>
+          </div>
+        )}
+        {connectionLost && (
+          <div className="bg-orange-600 text-white text-sm font-bold px-4 py-2 flex items-center justify-center gap-3 flex-wrap">
+            <span>⚠️ サーバーと通信できません。表示が最新でない可能性があり、操作は保存されません。通信状況を確認してください（復旧すると自動で消えます）。</span>
+          </div>
+        )}
         {isTestDb && (
           <div className="bg-red-600 text-white text-sm font-bold px-4 py-1.5 flex items-center justify-center gap-3 flex-wrap">
             <span>テストDB接続中（本番データではありません）</span>

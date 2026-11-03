@@ -225,6 +225,9 @@ const fetchAdminPasswordHash = async () => {
 
 // 管理者ログインの排他制御・自動ログオフに関する定数
 const ADMIN_HEARTBEAT_MS = 15000; // ロックを維持するための生存確認間隔
+// 参加費の標準の区分。名前の変更・削除はできない（エントリーに区分が未設定の場合の既定値や、金額が見つからない場合の
+// 既定の金額の判定に使うため）。ほかの区分（例：親子ペア）は、マスタ設定で追加・削除できる
+const FIXED_FEE_CATEGORIES = ['一般', '高校生まで'];
 const ADMIN_MAX_SESSIONS = 2; // 同時にログインできる管理者の台数（admin_sessionテーブルの id=1..台数 の行を、1台ずつの枠として使う）
 const ADMIN_SESSION_SLOT_IDS = Array.from({ length: ADMIN_MAX_SESSIONS }, (_, i) => i + 1);
 const ADMIN_SESSION_SLOT_SQL = `INSERT INTO admin_session (id, token, updated_at) VALUES ${ADMIN_SESSION_SLOT_IDS.slice(1).map(id => `(${id}, NULL, now())`).join(', ')} ON CONFLICT (id) DO NOTHING;`;
@@ -586,6 +589,8 @@ export default function App() {
   const wasAdminLoggedInRef = useRef(false);
   const entriesFetchSeqRef = useRef(0); // エントリー取得の追い越し防止（古い取得結果で新しい結果を上書きしない）
   const presenceChannelRef = useRef(null); // アクセス中の端末数を数えるRealtime Presenceのチャンネル
+  const [newFeeName, setNewFeeName] = useState(''); // マスタ設定：追加する参加費の区分名
+  const [newFeePrice, setNewFeePrice] = useState(''); // マスタ設定：追加する参加費の金額
   const [dbWriteError, setDbWriteError] = useState(null); // 直近のDB書き込み失敗（画面上部に警告を表示する）
   const [connectionLost, setConnectionLost] = useState(false); // 定期取得が続けて失敗している（サーバーと通信できない）
   const readFailureCountRef = useRef(0);
@@ -4012,6 +4017,13 @@ export default function App() {
         return;
       }
 
+      // 区分は、マスタ設定にあるものだけ受け付ける（表記の揺れがあると、金額が正しく計算されないため）
+      const feeCategoryText = String(getCell(row, 'feeCategory') ?? '').trim() || '一般';
+      if (!Object.prototype.hasOwnProperty.call(config.fees, feeCategoryText)) {
+        errors.push(`${rowNum}行目: 区分「${feeCategoryText}」がマスタ設定にありません（${Object.keys(config.fees).join('・')}のいずれか）`);
+        return;
+      }
+
       const clubRankCell = getCell(row, 'clubRank');
       const record = {
         cls, club,
@@ -4022,7 +4034,7 @@ export default function App() {
         p2LastName, p2FirstName,
         p2LastFurigana: String(getCell(row, 'p2LastFurigana') ?? '').trim(),
         p2FirstFurigana: String(getCell(row, 'p2FirstFurigana') ?? '').trim(),
-        feeCategory: String(getCell(row, 'feeCategory') ?? '').trim() || '一般',
+        feeCategory: feeCategoryText,
         contact: String(getCell(row, 'contact') ?? '').trim(),
         email: String(getCell(row, 'email') ?? '').trim(),
         checkedIn: false // 受付済はインポート対象外。実際の受付処理は当日「受付処理」画面から行う
@@ -5586,8 +5598,17 @@ export default function App() {
              <div><strong className="block text-base text-gray-500">日程</strong>{config.date}</div>
              <div><strong className="block text-base text-gray-500">タイムスケジュール</strong>開館:{config.timeOpen} / 受付:{config.timeReception}〜 / 試合開始:{config.timeStart}</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">会場</strong>{config.venue}</div>
-             <div className="md:col-span-2"><strong className="block text-base text-gray-500">参加費（1組あたり）</strong>一般: {config.fees['一般']}円 / 高校生まで: {config.fees['高校生まで']}円</div>
+             <div className="md:col-span-2"><strong className="block text-base text-gray-500">参加費（1組あたり）</strong>{Object.entries(config.fees).map(([feeName, feePrice]) => `${feeName}: ${feePrice}円`).join(' / ')}</div>
              <div className="md:col-span-2"><strong className="block text-base text-gray-500">申込期間</strong><span className="text-red-500 font-bold">{config.entryStartDate ? `${formatPeriodDate(config.entryStartDate, config)} 〜 ` : ''}{formatPeriodDate(config.deadline, config)}</span></div>
+             <div className="md:col-span-2">
+               <strong className="block text-base text-gray-500">エントリー状況（登録済み）</strong>
+               <div className="flex flex-wrap gap-x-5 gap-y-1">
+                 {config.classes.map(cls => (
+                   <span key={cls}>{cls}: <strong>{entries.filter(e => e.cls === cls).length}</strong>組</span>
+                 ))}
+                 <span className="font-bold text-[#2c5f4e]">合計: {entries.length}組</span>
+               </div>
+             </div>
              <div className="md:col-span-2 bg-yellow-50 border-l-4 border-yellow-400 p-3 text-base mt-2 whitespace-pre-wrap"><strong className="block mb-1">注意事項</strong>{config.notes}</div>
            </div>
         </div>
@@ -5668,6 +5689,7 @@ export default function App() {
 
       <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
         <h3 className="font-extrabold text-lg text-gray-800">① 大会にエントリーする</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「大会要項」には、参加費の区分と、クラスごとの登録済みの組数（エントリー状況）が表示されます。</p>
         <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「大会にエントリー」から、出場クラス・所属クラブ・ペアのお名前（姓・名）とふりがな・連絡先を入力して登録します。メールアドレスの入力は任意です。</p>
         <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
           <li>お名前を漢字で入力すると、ふりがな欄にはひらがなの読みが自動で入ります（自動入力後も自由に修正できます）。</li>
@@ -6400,8 +6422,55 @@ export default function App() {
                   </div>
                 </div>
 
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 一般 (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['一般']} onChange={e=>setConfig({...config, fees: {...config.fees, '一般': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
-                <div><label className="block font-bold text-sm mb-1 text-gray-700">参加費: 高校生まで (円/組)</label><input type="number" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.fees['高校生まで']} onChange={e=>setConfig({...config, fees: {...config.fees, '高校生まで': parseInt(e.target.value) || 0}})} onFocus={e=>e.target.select()} /></div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="block font-bold text-sm text-gray-700">参加費の区分（円/組）</label>
+                  {Object.entries(config.fees).map(([feeName, feePrice]) => {
+                    const isFixedFee = FIXED_FEE_CATEGORIES.includes(feeName);
+                    const usedCount = entries.filter(ent => (ent.feeCategory || ent.p1Fee || '一般') === feeName).length;
+                    return (
+                      <div key={feeName} className="flex items-center gap-2 flex-wrap">
+                        <span className="w-full sm:w-64 font-bold text-gray-700">{feeName}</span>
+                        <input type="number" min="0" className="w-32 p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={feePrice} onChange={e => setConfig({ ...config, fees: { ...config.fees, [feeName]: parseInt(e.target.value) || 0 } })} onFocus={e => e.target.select()} />
+                        <span className="text-sm text-gray-600">円</span>
+                        {isFixedFee ? (
+                          <span className="text-xs text-gray-400">標準の区分（名前の変更・削除はできません）</span>
+                        ) : usedCount > 0 ? (
+                          <span className="text-xs text-gray-500">登録済み{usedCount}組が使っているため、削除できません</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { const next = { ...config.fees }; delete next[feeName]; setConfig({ ...config, fees: next }); }}
+                            className="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-bold px-2.5 py-1 rounded border border-red-200"
+                          >
+                            削除
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center gap-2 flex-wrap pt-1">
+                    <input type="text" maxLength={30} placeholder="区分名（例：親子ペア（大人＋中学生まで））" className="w-full sm:w-64 p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={newFeeName} onChange={e => setNewFeeName(e.target.value)} />
+                    <input type="number" min="0" placeholder="金額" className="w-32 p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={newFeePrice} onChange={e => setNewFeePrice(e.target.value)} />
+                    <span className="text-sm text-gray-600">円</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = newFeeName.trim();
+                        const price = parseInt(newFeePrice, 10);
+                        if (!name) { setDialog({ title: "区分を追加できません", message: "区分名を入力してください。", onClose: () => setDialog(null) }); return; }
+                        if (Object.prototype.hasOwnProperty.call(config.fees, name)) { setDialog({ title: "区分を追加できません", message: "同じ名前の区分が既にあります。", onClose: () => setDialog(null) }); return; }
+                        if (isNaN(price) || price < 0) { setDialog({ title: "区分を追加できません", message: "金額を0以上の数字で入力してください。", onClose: () => setDialog(null) }); return; }
+                        setConfig({ ...config, fees: { ...config.fees, [name]: price } });
+                        setNewFeeName('');
+                        setNewFeePrice('');
+                      }}
+                      className="bg-[#2c5f4e] hover:bg-[#1f4236] text-white font-bold px-4 py-2 rounded shadow-sm"
+                    >
+                      区分を追加
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">※追加・変更したあと、画面上部の「設定を保存」で反映されます。区分はペア単位で1つ選びます（エントリー登録・修正の画面と、受付処理の参加費の合計にも反映されます）。</p>
+                </div>
                 <div className="md:col-span-2"><label className="block font-bold text-sm mb-1 text-gray-700">注意事項</label><textarea className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none h-24" value={config.notes} onChange={e=>setConfig({...config, notes: e.target.value})} /></div>
               </div>
 
@@ -8121,7 +8190,7 @@ export default function App() {
                  <h4 className="font-extrabold text-xl text-gray-800 mb-4 flex items-center gap-2">② 左メニュー各画面の役割</h4>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
-                      ['マスタ設定', '大会名・日程・コート数・決勝進出条件・出場クラス・エントリー受付開始日/締切・お知らせ・協賛企業・試合ルール（クラス×予選/決勝ごとのゲーム数・点数・MAX点数・デュース）など、大会全体の基本設定を行います。お知らせは入力どおりの改行でトップ画面に表示されます。協賛企業は五十音順の枠でトップ画面に表示されます。管理者パスワードの変更もここで行えます（「設定を保存」とは別に、専用のボタンで即時に変更されます）。'],
+                      ['マスタ設定', '大会名・日程・コート数・決勝進出条件・出場クラス・エントリー受付開始日/締切・お知らせ・協賛企業・試合ルール（クラス×予選/決勝ごとのゲーム数・点数・MAX点数・デュース）など、大会全体の基本設定を行います。お知らせは入力どおりの改行でトップ画面に表示されます。協賛企業は五十音順の枠でトップ画面に表示されます。管理者パスワードの変更もここで行えます（「設定を保存」とは別に、専用のボタンで即時に変更されます）。参加費は区分ごと（一般・高校生まで・親子ペアなど、追加も可能）に金額を設定します。'],
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。「Excelエクスポート」で全件をExcel（.xlsx）にダウンロードでき、「Excelインポート」でExcelファイルから一括登録できます（ID・パスワードはシステムが自動採番するため対象外。既存エントリーの更新は「編集」から個別に行います）。インポート時は列見出しの表記ゆれ・並び順の違いを自動判定したうえで「列の対応確認」画面が開くので、対応がおかしければプルダウンで修正してから反映できます。'],
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。「未受付のみ」にチェックを入れると、まだ受付していない組だけに絞り込めます。ドローは未受付でも作れますが、コートへ配置できるのは受付済の組だけです（未受付の組が含まれる試合をコートへ配置しようとすると「未受付エラー」が表示され、配置できません）。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。予選は最大8グループ、決勝トーナメントは最大16枠に対応しており、予選順位からの自動反映では、枠が余って不戦勝（1回戦の免除）が出る場合、予選の成績（勝率→1試合あたりの得失点差→1試合あたりの総得点の順）が上位の組から優先して免除されます（グループごとに組数が違うため、勝ち数ではなく率で比べます）。5〜8グループでは、同じグループの2組が準決勝より前に当たらない範囲で、1位・2位それぞれの成績順にできるだけ近い配置にします。自動で配置したあとでも、手動で自由に変更できます（下の「決勝トーナメントの枠を手動で変えたい」を参照）。'],
@@ -8249,6 +8318,7 @@ export default function App() {
                       ['審判の表示が端末ごとに違う／参加者の画面の更新が遅い', '確定した審判は、matchesテーブルの「locked_referee」列に保存され、全端末で同じ表示になります。初めて使うときは、Supabaseの SQL Editor で、表示されるSQL（ALTER TABLE matches ADD COLUMN IF NOT EXISTS locked_referee jsonb; など）を一度だけ実行してください。実行するまでは、審判の表示が端末ごとにずれることがあります（管理者が最初に試合をコートへ配置したときに、案内が表示されます）。データを更新すると、他の端末へすぐ通知され、数秒で表示が更新されます（通知が届かない場合でも、15秒ごとの自動取得で更新されます）。お知らせなどの設定は、参加者の画面で約1分ごとに更新されます。なお、通信量（無料プランの転送量）を抑えるため、更新の通知を受け取れている間は自動取得を30秒ごとに減らし、画面が見えていない（別のタブ・画面オフ）間は取得を止めます（表示に戻ると、すぐ最新になります）。'],
                       ['エントリーの受付期間（受付開始日・申込締切）が正しく効かない／警告が出た', 'マスタ設定の「開催日」「エントリー受付開始日」「申込締切」は、日付の選択欄から選んでください（年も一緒に保存されるため、大会が1月で締切が12月のように年をまたぐ場合も正しく判定されます）。日付として読み取れない値になっている場合や、申込締切が大会日より後、受付開始日が申込締切より後の場合は、設定欄の下に黄色い警告が出ます。読み取れない日付は、受付期間の制限が効かず、期限後も登録内容の修正・取消ができてしまうため、警告が出たら選び直してください。なお、過去に「11月27日(金)」のように年なしで保存した設定も、大会日を基準に年を補って判定します。'],
                       ['コートに置いた試合を、別のコートへ移したい', 'まだコール前（「コール」ボタンが出ている状態）の試合は、コートのカードをドラッグして、別のコートへドロップすると移動できます。移動先のコートで、審判が決め直されます（前のコートで決めた審判や、手動で変えた審判は引き継ぎません）。移動先に、まだ試合が始まっていない別の試合がある場合、その試合は待機中の一覧に戻ります。コール済み・試合中の試合は、移動できません（「戻る」で前の状態に戻してから移してください）。'],
+                      ['参加費の区分（親子ペアなど）を追加・変更したい', 'マスタ設定の「参加費の区分（円/組）」で、区分名と金額を入力して「区分を追加」を押し、画面上部の「設定を保存」で反映します（例：親子ペア（大人＋中学生まで）3,000円）。追加した区分は、トップ画面の参加費の表示、エントリー登録・修正画面の選択肢、受付処理の参加費の合計に、自動で反映されます。区分はペア単位で1つ選びます。「一般」「高校生まで」は標準の区分のため、金額の変更だけができます（名前の変更・削除はできません）。追加した区分も、登録済みのエントリーが使っている間は削除できません。Excelインポートの「区分」列は、マスタ設定にある区分名とまったく同じ表記だけ受け付け、違う表記の行は、取り込まずに、理由を表示します（空欄は「一般」）。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (

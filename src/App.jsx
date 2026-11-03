@@ -6148,6 +6148,7 @@ export default function App() {
         <button onClick={() => setCurrentTab('home')} className="text-sm text-gray-500 hover:text-gray-800">トップへ戻る</button>
       </div>
       <p className="text-sm text-gray-600 mb-4">お名前または所属クラブ名の一部を入力して検索できます（部分一致）。ご自身のエントリーが正しく登録されているかご確認いただけます。</p>
+      <p className="text-xs text-gray-500 mb-4">※プライバシー保護のため、検索結果のお名前は、最後の1文字を「○」で伏せて表示します（例：山田太郎さん→山田太○）。</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-1">お名前（一部でも可）</label>

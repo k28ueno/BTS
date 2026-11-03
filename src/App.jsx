@@ -6075,7 +6075,7 @@ export default function App() {
                 </label>
               ))}
             </div>
-            <p className="text-xs text-gray-500 mt-1">※ペアのどちらか1人でも一般が含まれる場合は「一般」を選択してください。</p>
+            <p className="text-xs text-gray-500 mt-1">※ペアのどちらか1人でも一般が含まれる場合は「一般」を選択してください。ただし、大人と中学生までの親子ペアは「親子ペア(大人＋中学生まで)」を選択してください。</p>
           </div>
         </div>
 

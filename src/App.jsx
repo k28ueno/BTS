@@ -1945,15 +1945,31 @@ export default function App() {
     const styleEl = document.createElement('style');
     styleEl.textContent = '@page { size: A4 landscape; margin: 8mm; }';
     document.head.appendChild(styleEl);
-    const timer = setTimeout(() => window.print(), 50);
+    // 印刷用の画面は印刷ボタンを押した時点で作られるため、画像（QRコード）の読み込みが間に合わないと、
+    // 公開サイトのようにネットワークから取得する環境では、印刷のプレビューで画像が空白になる。
+    // 画像の読み込み・描画の準備が終わるのを待ってから印刷の画面を開く（待ちすぎないよう最長3秒）
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const images = [...document.querySelectorAll('.print-only-area img')];
+      const ready = Promise.all(images.map(img => (img.decode ? img.decode().catch(() => {}) : Promise.resolve())));
+      await Promise.race([ready, new Promise(resolve => setTimeout(resolve, 3000))]);
+      if (!cancelled) window.print();
+    }, 50);
     const clearOnAfterPrint = () => setPrintDrawSheet(null);
     window.addEventListener('afterprint', clearOnAfterPrint);
     return () => {
+      cancelled = true;
       clearTimeout(timer);
       window.removeEventListener('afterprint', clearOnAfterPrint);
       styleEl.remove();
     };
   }, [printDrawSheet]);
+
+  // 印刷に載せるQRコードの画像を、アプリを開いたときに先に読み込んでおく（印刷ボタンを押したときに、すぐ使えるようにする）
+  useEffect(() => {
+    const preload = new Image();
+    preload.src = portalQr;
+  }, []);
 
   const handlePrintScoreSheet = (matchId) => {
     setPrintMatchId(matchId);

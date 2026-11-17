@@ -136,6 +136,93 @@ const planSeededSlots = (groups, slotCount) => {
   return plan;
 };
 
+// 決勝トーナメントの進出条件。値は、各グループから進出する組数（上位N位まで）
+const ADVANCEMENT_OPTIONS = [
+  { value: 'top1', label: '各グループ 1位のみ進出', perGroup: 1 },
+  { value: 'top2', label: '各グループ 2位まで進出（1位・2位）', perGroup: 2 },
+  { value: 'top3', label: '各グループ 3位まで進出（1位〜3位）', perGroup: 3 }
+];
+const ADVANCEMENT_DEFAULT = 'top2';
+const normalizeAdvancement = (value) => (ADVANCEMENT_OPTIONS.some(o => o.value === value) ? value : ADVANCEMENT_DEFAULT);
+// 決勝トーナメントの枠数の上限（これを超える進出組数は、現在は扱えない）
+const TOURNAMENT_MAX_SLOTS = 16;
+// 進出条件は、settings.advancementcondition の1列に保存する。部ごとの指定が無いときは、従来どおり
+// 'top1'・'top2'・'top3' の文字列のまま。部ごとの指定があるときだけ、JSON文字列（標準の条件と、部ごとの条件）にする
+// （古い画面は、JSON文字列を「1位のみ」ではないものとして読み、2位までとして動くだけで、壊れない）
+const serializeAdvancement = (config) => {
+  const byClass = {};
+  Object.entries(config.advancementByClass || {}).forEach(([cls, v]) => {
+    if (ADVANCEMENT_OPTIONS.some(o => o.value === v) && (config.classes || []).includes(cls)) byClass[cls] = v;
+  });
+  const base = normalizeAdvancement(config.advancementCondition);
+  return Object.keys(byClass).length === 0 ? base : JSON.stringify({ default: base, byClass });
+};
+const parseAdvancement = (raw) => {
+  const text = String(raw || '').trim();
+  if (text.startsWith('{')) {
+    try {
+      const obj = JSON.parse(text);
+      return { advancementCondition: normalizeAdvancement(obj.default), advancementByClass: obj.byClass && typeof obj.byClass === 'object' ? obj.byClass : {} };
+    } catch (e) { /* 読み取れない場合は標準の条件にする */ }
+  }
+  return { advancementCondition: normalizeAdvancement(text), advancementByClass: {} };
+};
+
+// 標準的なシード配置で、各グループ3位まで進出する場合の配置を、予選の成績順に決める。
+// teams: [{ key(グループ), rank(0=1位,1=2位,2=3位), seed(成績順に基づく理想のシード番号) }]
+// 1位は理想のシード番号のまま固定し、2位・3位の層は、層ごとにシード番号の割り当てを入れ替えて探索する。
+// 同じグループの組どうしが当たる最初の回戦が、準決勝以降なら同等とし、その中で成績順に近いものを選ぶ
+// （1グループだけの場合など、避けられない場合は、できるだけ後の回戦にする）。返り値：[{ key, rank, slot }]
+const planSeededLayers = (teams, slotCount) => {
+  const order = standardSeedOrder(slotCount);
+  const slotOfSeed = {};
+  order.forEach((seed, idx) => { slotOfSeed[seed] = idx + 1; });
+  const semifinalRound = Math.max(1, Math.log2(slotCount) - 1);
+  const layers = [...new Set(teams.map(t => t.rank))].sort((a, b) => a - b);
+  const fixedTeams = teams.filter(t => t.rank === 0);
+  const movableLayers = layers.filter(r => r !== 0).map(r => teams.filter(t => t.rank === r));
+  const groupKeys = [...new Set(teams.map(t => t.key))];
+  const assignment = new Map();
+  fixedTeams.forEach(t => assignment.set(t, t.seed));
+  let best = null;
+  const evaluate = () => {
+    let minRound = Infinity;
+    let distance = 0;
+    groupKeys.forEach(k => {
+      const members = teams.filter(t => t.key === k);
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          minRound = Math.min(minRound, meetRoundOfSlots(slotOfSeed[assignment.get(members[i])], slotOfSeed[assignment.get(members[j])]));
+        }
+      }
+    });
+    teams.forEach(t => { distance += Math.abs(assignment.get(t) - t.seed); });
+    const tier = Math.min(minRound, semifinalRound);
+    if (!best || tier > best.tier || (tier === best.tier && (distance < best.distance || (distance === best.distance && minRound > best.minRound)))) {
+      best = { tier, minRound, distance, snapshot: new Map(assignment) };
+    }
+  };
+  const permuteLayer = (li) => {
+    if (li === movableLayers.length) { evaluate(); return; }
+    const layerTeams = movableLayers[li];
+    const pool = layerTeams.map(t => t.seed).sort((a, b) => a - b);
+    const used = new Array(pool.length).fill(false);
+    const rec = (idx) => {
+      if (idx === layerTeams.length) { permuteLayer(li + 1); return; }
+      for (let p = 0; p < pool.length; p++) {
+        if (used[p]) continue;
+        used[p] = true;
+        assignment.set(layerTeams[idx], pool[p]);
+        rec(idx + 1);
+        used[p] = false;
+      }
+    };
+    rec(0);
+  };
+  permuteLayer(0);
+  return teams.map(t => ({ key: t.key, rank: t.rank, slot: slotOfSeed[best.snapshot.get(t)] }));
+};
+
 // 参加者向けの画面で、氏名をそのまま表示しないための伏せ字。名（下の名前）の先頭の1文字を「○」に置き換える
 // （例：山田太郎→山田○郎、山田葵→山田○）。姓は、ご本人が自分のエントリーを見分けられるよう、そのまま表示する。
 // 姓・名を別々に持っていない古いデータ（氏名1本だけ）は、名の位置が分からないため、最後の1文字を伏せる
@@ -539,6 +626,7 @@ export default function App() {
     mainCourts: {}, // { [クラス名]: [コート番号, ...] }。クラス間でコート番号が重複しないように運用する「原則の担当コート」（強制ではなく表示上のガイド）
     fees: { '一般': 4000, '高校生まで': 2000 },
     advancementCondition: 'top2',
+    advancementByClass: {}, // 部ごとの進出条件（{ [クラス名]: 'top1' | 'top2' | 'top3' }）。指定が無い部は、advancementConditionに従う
     avgMatchDuration: 15,
     lunchBreakStart: '',
     lunchBreakEnd: '',
@@ -1843,7 +1931,7 @@ export default function App() {
             courts: data.courts || 8,
             mainCourts: data.maincourts || {},
             fees: data.fees || { '一般': 4000, '高校生まで': 2000 },
-            advancementCondition: data.advancementcondition || 'top2',
+            ...parseAdvancement(data.advancementcondition),
             avgMatchDuration: data.avgmatchduration || 15,
             lunchBreakStart: data.lunchbreakstart || '',
             lunchBreakEnd: data.lunchbreakend || '',
@@ -2176,7 +2264,7 @@ export default function App() {
         courts: config.courts,
         maincourts: config.mainCourts,
         fees: config.fees,
-        advancementcondition: config.advancementCondition,
+        advancementcondition: serializeAdvancement(config),
         avgmatchduration: config.avgMatchDuration,
         lunchbreakstart: config.lunchBreakStart,
         lunchbreakend: config.lunchBreakEnd,
@@ -2506,7 +2594,7 @@ export default function App() {
                 courts: data.config.courts,
                 maincourts: data.config.mainCourts || {},
                 fees: data.config.fees,
-                advancementcondition: data.config.advancementCondition,
+                advancementcondition: serializeAdvancement(data.config),
                 avgmatchduration: data.config.avgMatchDuration,
                 lunchbreakstart: data.config.lunchBreakStart,
                 lunchbreakend: data.config.lunchBreakEnd,
@@ -3394,8 +3482,17 @@ export default function App() {
       clsEntries.some(e => e.group === g)
     );
     const groupCount = activeGroups.length;
-    const advCondition = config.advancementCondition || 'top2';
-    const numPerGroup = advCondition === 'top1' ? 1 : 2;
+    const numPerGroup = getNumPerGroup(drawClass);
+
+    // 進出組数（グループ数×進出条件）が、扱える枠数の上限を超える場合は、自動配置できない
+    if (groupCount * numPerGroup > TOURNAMENT_MAX_SLOTS) {
+      setDialog({
+        title: "自動反映不可",
+        message: `【${drawClass}】は、進出組数が ${groupCount * numPerGroup} 組（${groupCount}グループ×${numPerGroup}組）で、決勝トーナメントの最大（${TOURNAMENT_MAX_SLOTS}枠）を超えるため、自動で配置できません。マスタ設定の進出条件を、進出組数が少なくなる条件（2位まで・1位のみ）に変えてください。`,
+        onClose: () => setDialog(null)
+      });
+      return;
+    }
 
     // 不戦勝（1回戦の免除）や配置の優先は、予選の成績が上位の組を優先する。
     // 各グループの1位・2位を、グループをまたいで成績順に並べ（勝率→1試合あたりの得失点差→1試合あたりの総得点→グループ名）、
@@ -3407,7 +3504,18 @@ export default function App() {
     const slotCount = getTournamentSlotCount(drawClass);
 
     let slotMapping = [];
-    if (numPerGroup === 1) {
+    if (numPerGroup === 3) {
+      // 各グループ3位まで進出：1位・2位・3位それぞれの成績順をシード順にして、同じグループの組が準決勝より前に当たらない
+      // 配置の中で、成績順に最も近いものを選ぶ（枠が余る場合は、成績上位の組が1回戦を免除される）
+      const ranked = [0, 1, 2].map(rank => activeGroups.filter(g => standingsByGroup[g][rank]).sort((a, b) => comparePerformance(standingsByGroup[a][rank], standingsByGroup[b][rank])));
+      const teams = [];
+      let seedBase = 0;
+      ranked.forEach((groupsInLayer, rank) => {
+        groupsInLayer.forEach((g, idx) => teams.push({ key: g, rank, seed: seedBase + idx + 1 }));
+        seedBase += groupsInLayer.length;
+      });
+      slotMapping = planSeededLayers(teams, slotCount).map(p => ({ group: p.key, rank: p.rank, slot: p.slot }));
+    } else if (numPerGroup === 1) {
       if (groupCount === 1 || (groupCount & (groupCount - 1)) === 0) {
         // 各グループ1位のみ進出で、グループ数が2の累乗（枠が余らない）の場合は、グループの並び順どおりに配置する
         slotMapping = activeGroups.map((g, i) => ({ group: g, rank: 0, slot: i + 1 }));
@@ -3734,7 +3842,7 @@ export default function App() {
       return;
     }
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
-    const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
+    const numPerGroup = getNumPerGroup(cls);
     const qualifierCount = activeGroups.length * numPerGroup;
     const slotCount = qualifierCount <= 2 ? 2 : qualifierCount <= 4 ? 4 : qualifierCount <= 8 ? 8 : 16;
     let levelSize = slotCount, level = 0;
@@ -5128,13 +5236,17 @@ export default function App() {
     return leagueMatches.length > 0 && leagueMatches.every(m => m.status === 'completed');
   };
 
-  // 予選が全試合終了しているクラスについて、グループ順位が進出条件（上位1 or 2）に入っている組だけを返す。
+  // そのクラスの進出条件（各グループから進出する組数）。部ごとの指定があればそれ、無ければ標準の条件
+  const getAdvancementCondition = (cls) => normalizeAdvancement((config.advancementByClass || {})[cls] || config.advancementCondition);
+  const getNumPerGroup = (cls) => (ADVANCEMENT_OPTIONS.find(o => o.value === getAdvancementCondition(cls)) || { perGroup: 2 }).perGroup;
+
+  // 予選が全試合終了しているクラスについて、グループ順位が進出条件（上位1〜3位）に入っている組だけを返す。
   // 予選が終わっていない、または進出条件外の組は「決勝進出組」として扱わない
   const getTournamentQualifiedEntries = (cls) => {
     if (!isLeagueComplete(cls)) return [];
     const clsEntries = entries.filter(e => e.cls === cls);
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
-    const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
+    const numPerGroup = getNumPerGroup(cls);
     const qualified = [];
     activeGroups.forEach(g => {
       // 予選順位・勝敗を画面表示でも使えるよう、進出組にはグループ内順位(groupRank)を付与しておく
@@ -5152,12 +5264,19 @@ export default function App() {
     const clsEntries = entries.filter(e => e.cls === cls);
     if (clsEntries.length === 0) return 0;
     const activeGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g));
-    const numPerGroup = (config.advancementCondition || 'top2') === 'top1' ? 1 : 2;
+    const numPerGroup = getNumPerGroup(cls);
     const qualifierCount = activeGroups.length * numPerGroup;
     if (qualifierCount <= 2) return 2;
     if (qualifierCount <= 4) return 4;
     if (qualifierCount <= 8) return 8;
-    return 16;
+    return TOURNAMENT_MAX_SLOTS;
+  };
+
+  // そのクラスの進出組数（グループ数×進出条件）が、扱える枠数の上限を超えていないか
+  const getQualifierCount = (cls) => {
+    const clsEntries = entries.filter(e => e.cls === cls);
+    const groupCount = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].filter(g => clsEntries.some(e => e.group === g)).length;
+    return groupCount * getNumPerGroup(cls);
   };
 
   // 決勝（最終ラウンド）の枠番号を求める（renderTournamentTreeの採番方式と対応させる）
@@ -6476,12 +6595,24 @@ export default function App() {
                   <h4 className="font-bold text-md text-[#2c5f4e] mb-3">トーナメント・シミュレーション設定</h4>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-sm mb-1 text-gray-700">決勝トーナメント進出条件</label>
-                  <select className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.advancementCondition} onChange={e=>setConfig({...config, advancementCondition: e.target.value})}>
-                     <option value="top1">各グループ 1位のみ進出</option>
-                     <option value="top2">各グループ 2位まで進出（1位・2位）</option>
-                  </select>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="block font-bold text-sm text-gray-700">決勝トーナメント進出条件（部ごと）</label>
+                  {config.classes.map(cls => {
+                    const cond = normalizeAdvancement((config.advancementByClass || {})[cls] || config.advancementCondition);
+                    return (
+                      <div key={`adv-${cls}`} className="flex items-center gap-2 flex-wrap">
+                        <span className="w-full sm:w-48 font-bold text-gray-700">{cls}</span>
+                        <select
+                          className="flex-1 min-w-[16rem] p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none"
+                          value={cond}
+                          onChange={e => setConfig({ ...config, advancementByClass: { ...(config.advancementByClass || {}), [cls]: e.target.value } })}
+                        >
+                          {ADVANCEMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-gray-500">※「3位まで進出」は、進出組数（グループ数×3）が16組以内のとき（5グループまで）に使えます。16組を超える部は、決勝トーナメントを自動で配置できません。保存は、画面上部の「設定を保存」で行います。</p>
                 </div>
 
                 <div>
@@ -8391,7 +8522,7 @@ export default function App() {
                       ['マスタ設定', '大会名・日程・コート数・決勝進出条件・出場クラス・エントリー受付開始日/締切・お知らせ・協賛企業・試合ルール（クラス×予選/決勝ごとのゲーム数・点数・MAX点数・デュース）など、大会全体の基本設定を行います。お知らせは入力どおりの改行でトップ画面に表示されます。協賛企業は五十音順の枠でトップ画面に表示されます。管理者パスワードの変更もここで行えます（「設定を保存」とは別に、専用のボタンで即時に変更されます）。参加費は区分ごと（一般・高校生まで・親子ペアなど、追加も可能）に金額を設定します。'],
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。「Excelエクスポート」で全件をExcel（.xlsx）にダウンロードでき、「Excelインポート」でExcelファイルから一括登録できます（ID・パスワードはシステムが自動採番するため対象外。既存エントリーの更新は「編集」から個別に行います）。インポート時は列見出しの表記ゆれ・並び順の違いを自動判定したうえで「列の対応確認」画面が開くので、対応がおかしければプルダウンで修正してから反映できます。'],
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。「未受付のみ」にチェックを入れると、まだ受付していない組だけに絞り込めます。ドローは未受付でも作れますが、コートへ配置できるのは受付済の組だけです（未受付の組が含まれる試合をコートへ配置しようとすると「未受付エラー」が表示され、配置できません）。'],
-                      ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（リーグ戦表の右下には、参加者が進行状況・対戦表を見られるポータルのQRコードが「進行状況・対戦表はコチラ」の見出しつきで印刷されます）（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。予選は最大8グループ、決勝トーナメントは最大16枠に対応しており、予選順位からの自動反映では、枠が余って不戦勝（1回戦の免除）が出る場合、予選の成績（勝率→1試合あたりの得失点差→1試合あたりの総得点の順）が上位の組から優先して免除されます（グループごとに組数が違うため、勝ち数ではなく率で比べます）。5〜8グループでは、同じグループの2組が準決勝より前に当たらない範囲で、1位・2位それぞれの成績順にできるだけ近い配置にします。自動で配置したあとでも、手動で自由に変更できます（下の「決勝トーナメントの枠を手動で変えたい」を参照）。'],
+                      ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（リーグ戦表の右下には、参加者が進行状況・対戦表を見られるポータルのQRコードが「進行状況・対戦表はコチラ」の見出しつきで印刷されます）（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。予選は最大8グループ、決勝トーナメントは最大16枠に対応しており、予選順位からの自動反映では、枠が余って不戦勝（1回戦の免除）が出る場合、予選の成績（勝率→1試合あたりの得失点差→1試合あたりの総得点の順）が上位の組から優先して免除されます（グループごとに組数が違うため、勝ち数ではなく率で比べます）。5〜8グループでは、同じグループの2組が準決勝より前に当たらない範囲で、1位・2位それぞれの成績順にできるだけ近い配置にします。進出条件を「3位まで」にした部（進出組数が16組以内＝5グループまで）は、1位・2位・3位それぞれの成績順をシード順にして、同様に、同じグループの組が準決勝より前に当たらない範囲で、成績順に近い配置にします（1グループだけの場合は、3組が必ず当たるため、できるだけ後の回戦にします）。自動で配置したあとでも、手動で自由に変更できます（下の「決勝トーナメントの枠を手動で変えたい」を参照）。'],
                       ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
@@ -8496,7 +8627,7 @@ export default function App() {
                       ['決勝トーナメントの枠（組み合わせ・不戦勝の組）を手動で変えたい', 'ドロー編成の「決勝トーナメント」タブでは、自動配置（「予選順位からトーナメント位置を自動初期反映」）と手動配置のどちらでもできます。手動では、予選が終わると、左の「未配置」に並ぶ決勝進出組を、ドラッグ（またはタップして枠をタップ）して、自由に配置できます（自動のボタンを押さずに、最初から手動で配置しても構いません）。自動で入った配置を、あとから手動で変えることもできます。埋まっている枠へ置くと、元にいた組は「未配置」に戻ります（入れ替えは2回の操作です）。決勝トーナメントの対戦カードを作成済みでも、まだ試合が始まっていなければ、枠を変えたときに確認画面が出て、対戦カードを新しい配置で作り直します（試合番号も振り直されます）。コートに置いた・結果が入った試合が1つでもあるクラスは、枠を変更できません。「予選順位からトーナメント位置を自動初期反映」を押し直した場合も、未開始なら対戦カードを作り直します。'],
                       ['予選リーグのグループを4つ以上に増やしたい／減らしたい', 'グループ一覧の右端にある「＋グループを追加」ボタンを押すと、次のグループ（D、E…）が空の状態で表示され、A〜Cと同様に組をドラッグ／タップで配置できます。組が0件で一番右端のグループには「✕」が表示され、押すとそのグループを非表示に戻せます（間のグループは削除できません）。'],
                       ['対戦カードを全部作り直したい', 'データ管理の「試合結果のみ初期化」で、エントリー情報を残したまま試合結果とコート進行状態だけをリセットできます。'],
-                      ['決勝トーナメントの枠数がおかしい', '決勝の枠数（2/4/8枠）は「グループ数×決勝進出条件」から自動計算されます。進出条件はマスタ設定の「決勝トーナメント進出条件」で変更できます。'],
+                      ['決勝トーナメントの枠数がおかしい', '決勝の枠数（2/4/8/16枠）は「グループ数×進出条件」から自動計算されます。進出条件はマスタ設定の「決勝トーナメント進出条件（部ごと）」で、部ごとに「1位のみ」「2位まで」「3位まで」から選べます。進出組数（グループ数×進出する順位の数）が16組を超える部（「3位まで」で6グループ以上など）は、決勝トーナメントを自動で配置できません。進出条件を変えるか、手動で配置してください。'],
                       ['作業前にバックアップを取りたい', 'データ管理の「①データをローカルに退避」からJSONファイルとして保存できます。テストデータ生成前には自動でバックアップの要否を確認するダイアログが出ます。'],
                       ['管理者パスワードを変更したい', 'マスタ設定の「管理者パスワードの変更」で、現在のパスワードと新しいパスワード（8文字以上）を入力して変更できます。変更後のパスワードは暗号化（ソルト付きハッシュ）して保存されます。初回のみ、Supabaseで「ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_password_hash text;」を実行する必要があります（未実行の場合は、変更時に手順が表示されます）。変更するまでは初期パスワードでログインできます。変更したパスワードは、テストDBに切り替えている間も同じものを使います。'],
                       ['管理者パスワードを忘れた', '現在のパスワードがわからないと画面からは変更できません。Supabaseの SQL Editor で「UPDATE settings SET admin_password_hash = NULL WHERE id = 1;」を実行すると、初期パスワードでログインできるようになります。ログイン後、すぐにマスタ設定の「管理者パスワードの変更」で新しいパスワードを設定してください。'],

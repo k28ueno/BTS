@@ -5853,7 +5853,7 @@ export default function App() {
 
       <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
         <h3 className="font-extrabold text-lg text-gray-800">③ 当日の進行状況・対戦表を見る</h3>
-        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「当日の進行状況・対戦表」から、以下の内容をリアルタイムで確認できます。パスワードの入力を求められた場合は、大会当日に会場でお知らせするパスワードを入力してください（一度入力すると、その端末では次から入力は不要です）。</p>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「当日の進行状況・対戦表」から、以下の内容をリアルタイムで確認できます。パスワードの入力を求められた場合は、事務局からお知らせするパスワードを入力してください（一度入力すると、その端末では次から入力は不要です）。</p>
         <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
           <li><strong>コート進行</strong>：どのコートで、どの試合が行われているか、スコアを確認できます。</li>
           <li><strong>予選リーグ表</strong>：グループ内の対戦カードと結果を一覧で確認できます。</li>
@@ -6357,7 +6357,7 @@ export default function App() {
   const viewDashboardLock = (
     <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-blue-600">
       <h2 className="text-2xl font-bold mb-2 text-center">当日の進行状況・対戦表</h2>
-      <p className="text-sm text-gray-600 mb-6 text-center leading-relaxed">この画面を見るには、パスワードが必要です。大会当日に、会場でお知らせするパスワードを入力してください。</p>
+      <p className="text-sm text-gray-600 mb-6 text-center leading-relaxed">この画面を見るには、パスワードが必要です。事務局からお知らせするパスワードを入力してください。</p>
       <form onSubmit={handleViewerPasswordSubmit} className="space-y-4">
         <input
           type="password"

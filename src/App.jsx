@@ -151,6 +151,24 @@ const maskNameForPublic = (lastName, firstName, fullName) => {
   return chars.join('');
 };
 
+// 確定した審判（matches.locked_referee）をDBに保存するために必要な列を追加するSQL（Supabaseで一度だけ実行する）
+const LOCKED_REFEREE_COLUMN_SQL = [
+  'ALTER TABLE IF EXISTS matches ADD COLUMN IF NOT EXISTS locked_referee jsonb;',
+  'ALTER TABLE IF EXISTS matches_test ADD COLUMN IF NOT EXISTS locked_referee jsonb;'
+].join('\n');
+// DBの列が無い（SQL未実行）ことによるエラーかどうかを判定する
+const isMissingColumnError = (error, column) => !!error && (error.code === '42703' || error.code === 'PGRST204' || new RegExp(column).test(error.message || ''));
+
+// 「当日の進行状況・対戦表」の閲覧パスワードを保存する列（settings.viewer_password）を追加するSQL。Supabaseで一度だけ実行する
+const VIEWER_PASSWORD_COLUMN_SQL = [
+  'ALTER TABLE settings ADD COLUMN IF NOT EXISTS viewer_password text;',
+  'ALTER TABLE IF EXISTS settings_test ADD COLUMN IF NOT EXISTS viewer_password text;'
+].join('\n');
+const VIEWER_PASSWORD_MIN_LENGTH = 4;
+const VIEWER_UNLOCK_STORAGE_KEY = 'bts_viewer_unlock';
+// 全角の英数字なども、半角と同じに扱う（スマホで全角のまま入力されても一致させるため）
+const normalizeViewerPassword = (text) => String(text || '').normalize('NFKC').trim();
+
 // 設定（settings）の取得項目。管理者パスワードのハッシュ（admin_password_hash）など、画面で使わない列は
 // 含めない（select('*')だと、全来訪者の画面へハッシュまで届いてしまうため）
 const SETTINGS_COLUMNS = [
@@ -605,6 +623,13 @@ export default function App() {
   const wasAdminLoggedInRef = useRef(false);
   const entriesFetchSeqRef = useRef(0); // エントリー取得の追い越し防止（古い取得結果で新しい結果を上書きしない）
   const presenceChannelRef = useRef(null); // アクセス中の端末数を数えるRealtime Presenceのチャンネル
+  // 「当日の進行状況・対戦表」の閲覧パスワード
+  const [dashboardAccess, setDashboardAccess] = useState('checking'); // 参加者側：'checking'｜'locked'（入力が必要）｜'open'
+  const [viewerPasswordInput, setViewerPasswordInput] = useState(''); // 参加者側：入力中のパスワード
+  const [viewerPasswordError, setViewerPasswordError] = useState('');
+  const [viewerPasswordCurrent, setViewerPasswordCurrent] = useState(null); // 管理者側：現在のパスワード（null＝未取得、''＝未設定）
+  const [viewerPasswordNew, setViewerPasswordNew] = useState(''); // 管理者側：設定する新しいパスワード
+  const [viewerPasswordShown, setViewerPasswordShown] = useState(false);
   const [newFeeName, setNewFeeName] = useState(''); // マスタ設定：追加する参加費の区分名
   const [newFeePrice, setNewFeePrice] = useState(''); // マスタ設定：追加する参加費の金額
   const [dbWriteError, setDbWriteError] = useState(null); // 直近のDB書き込み失敗（画面上部に警告を表示する）
@@ -1646,6 +1671,52 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lockedReferees, isAdminLoggedIn]);
+
+  // 進行状況・対戦表を開くとき、閲覧パスワードが設定されていれば、入力を求める。
+  // 設定の有無は、パスワード自体を取得せずに「設定済みか」だけを問い合わせ、入力済みの確認も、一致する行があるかで確かめる。
+  // 管理者ログイン中、パスワード未設定、DBに保存用の列が無い場合は、そのまま表示する
+  const checkDashboardAccess = async (typedPassword) => {
+    if (!isSupabaseConfigured || adminLoggedInRef.current) { setDashboardAccess('open'); return true; }
+    try {
+      const { data: configured, error } = await supabase.from('settings').select('id').eq('id', 1).not('viewer_password', 'is', null).maybeSingle();
+      if (error) { setDashboardAccess('open'); return true; } // 列が無い等：パスワードなしで動作する
+      if (!configured) { setDashboardAccess('open'); return true; }
+      let candidate = typedPassword;
+      if (candidate == null) { try { candidate = localStorage.getItem(VIEWER_UNLOCK_STORAGE_KEY); } catch (e) { candidate = null; } }
+      if (candidate) {
+        const { data: matched } = await supabase.from('settings').select('id').eq('id', 1).eq('viewer_password', normalizeViewerPassword(candidate)).maybeSingle();
+        if (matched) {
+          try { localStorage.setItem(VIEWER_UNLOCK_STORAGE_KEY, normalizeViewerPassword(candidate)); } catch (e) { /* 保存できなくても閲覧はできる */ }
+          setDashboardAccess('open');
+          return true;
+        }
+        try { localStorage.removeItem(VIEWER_UNLOCK_STORAGE_KEY); } catch (e) { /* ignore */ }
+      }
+      setDashboardAccess('locked');
+      return false;
+    } catch (err) {
+      console.error('閲覧パスワードの確認に失敗しました:', err);
+      setDashboardAccess('locked');
+      return false;
+    }
+  };
+  useEffect(() => {
+    if (currentTab !== 'dashboard') return;
+    setDashboardAccess('checking');
+    setViewerPasswordInput('');
+    setViewerPasswordError('');
+    checkDashboardAccess(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTab, isAdminLoggedIn]);
+
+  // 管理者：マスタ設定を開いたとき、現在の閲覧パスワードを取得する
+  useEffect(() => {
+    if (!isAdminLoggedIn || adminTab !== 'settings' || !isSupabaseConfigured) return;
+    (async () => {
+      const { data, error } = await supabase.from('settings').select('viewer_password').eq('id', 1).maybeSingle();
+      setViewerPasswordCurrent(error ? null : ((data && data.viewer_password) || ''));
+    })();
+  }, [isAdminLoggedIn, adminTab]);
 
   // DBへの書き込みに失敗したら、画面上部に警告を出し、画面だけ更新されて実際は保存されていない状態が残らないよう、
   // DBの最新の状態を取得し直す（短時間に失敗が続いても、取得し直しは1.5秒に1回まで）
@@ -4342,6 +4413,46 @@ export default function App() {
     });
   };
 
+  // マスタ設定画面：進行状況・対戦表の閲覧パスワードの設定・解除（「設定を保存」とは別に、その場で保存する）
+  const saveViewerPassword = async (rawPassword) => {
+    const value = normalizeViewerPassword(rawPassword);
+    if (!isSupabaseConfigured) { setDialog({ title: "設定できません", message: "データベースに接続していないため、設定できません。", onClose: () => setDialog(null) }); return; }
+    if (value && value.length < VIEWER_PASSWORD_MIN_LENGTH) {
+      setDialog({ title: "設定できません", message: `パスワードは${VIEWER_PASSWORD_MIN_LENGTH}文字以上で入力してください。`, onClose: () => setDialog(null) });
+      return;
+    }
+    const { error } = await supabaseClient.from(isTestDb ? 'settings_test' : 'settings').update({ viewer_password: value || null }).eq('id', 1);
+    if (error) {
+      if (isMissingColumnError(error, 'viewer_password')) {
+        setDialog({
+          title: "データベースの準備が必要です",
+          message: (
+            <div className="text-left space-y-2 text-sm">
+              <p>閲覧パスワードを保存する列がまだありません。SupabaseのSQL Editorで次のSQLを一度だけ実行してから、もう一度お試しください。</p>
+              <pre className="bg-gray-100 border rounded p-2 text-xs overflow-x-auto select-all whitespace-pre-wrap">{VIEWER_PASSWORD_COLUMN_SQL}</pre>
+            </div>
+          ),
+          onClose: () => setDialog(null)
+        });
+      } else {
+        setDialog({ title: "保存できませんでした", message: "通信状況を確認して、もう一度お試しください。", onClose: () => setDialog(null) });
+      }
+      return;
+    }
+    setViewerPasswordCurrent(value);
+    setViewerPasswordNew('');
+    setDialog({
+      title: value ? "閲覧パスワードを設定しました" : "閲覧パスワードを解除しました",
+      message: value ? (
+        <div className="text-left space-y-2 text-sm">
+          <p>「当日の進行状況・対戦表」を開くには、このパスワードの入力が必要になります。参加者へお知らせください。</p>
+          <p className="font-mono font-bold text-lg">パスワード：{value}</p>
+        </div>
+      ) : "「当日の進行状況・対戦表」は、パスワードなしで誰でも見られる状態になりました。",
+      onClose: () => setDialog(null)
+    });
+  };
+
   // マスタ設定画面：管理者パスワードの変更
   const [pwChangeForm, setPwChangeForm] = useState({ current: '', next: '', confirm: '' });
   const handleChangeAdminPassword = async () => {
@@ -5742,7 +5853,7 @@ export default function App() {
 
       <div className="bg-white border-2 rounded-xl p-6 shadow-sm space-y-3">
         <h3 className="font-extrabold text-lg text-gray-800">③ 当日の進行状況・対戦表を見る</h3>
-        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「当日の進行状況・対戦表」から、以下の内容をリアルタイムで確認できます。</p>
+        <p className="text-sm text-gray-600 leading-relaxed">トップ画面の「当日の進行状況・対戦表」から、以下の内容をリアルタイムで確認できます。パスワードの入力を求められた場合は、大会当日に会場でお知らせするパスワードを入力してください（一度入力すると、その端末では次から入力は不要です）。</p>
         <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
           <li><strong>コート進行</strong>：どのコートで、どの試合が行われているか、スコアを確認できます。</li>
           <li><strong>予選リーグ表</strong>：グループ内の対戦カードと結果を一覧で確認できます。</li>
@@ -6236,6 +6347,34 @@ export default function App() {
     </div>
   );
 
+  const handleViewerPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!viewerPasswordInput.trim()) return;
+    const ok = await checkDashboardAccess(viewerPasswordInput);
+    if (!ok) setViewerPasswordError('パスワードが違います。');
+  };
+
+  const viewDashboardLock = (
+    <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-blue-600">
+      <h2 className="text-2xl font-bold mb-2 text-center">当日の進行状況・対戦表</h2>
+      <p className="text-sm text-gray-600 mb-6 text-center leading-relaxed">この画面を見るには、パスワードが必要です。大会当日に、会場でお知らせするパスワードを入力してください。</p>
+      <form onSubmit={handleViewerPasswordSubmit} className="space-y-4">
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder="パスワード"
+          className="w-full p-3 border rounded bg-gray-50"
+          value={viewerPasswordInput}
+          onChange={e => { setViewerPasswordInput(e.target.value); setViewerPasswordError(''); }}
+          autoFocus
+        />
+        {viewerPasswordError && <p className="text-sm text-red-600 font-bold text-center">{viewerPasswordError}</p>}
+        <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow">表示する</button>
+        <button type="button" onClick={() => setCurrentTab('home')} className="w-full text-gray-500 hover:text-gray-800 font-bold py-2">トップへ戻る</button>
+      </form>
+    </div>
+  );
+
   const viewAdminLogin = (
     <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border-t-4 border-gray-800">
       <h2 className="text-xl font-bold mb-6 text-center">管理者ログイン</h2>
@@ -6666,6 +6805,31 @@ export default function App() {
                 <label className="block font-bold text-sm mb-1 text-gray-700">協賛企業（カンマ `,` 区切り、トップ画面の下部に表示）</label>
                 <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={sponsorsText} onChange={e=>{ setSponsorsText(e.target.value); setConfig({...config, sponsors: e.target.value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean)}); }} placeholder="例: 株式会社〇〇, 〇〇商店, 〇〇クリニック" />
                 <p className="text-xs text-gray-500 mt-1">※半角「,」の入力が難しい場合は、全角「、」「，」でも区切れます。空欄の場合は表示されません。</p>
+              </div>
+
+              <div className="border-t pt-4 mt-2">
+                <h4 className="font-bold text-md text-[#2c5f4e] mb-1">進行状況・対戦表の閲覧パスワード</h4>
+                <p className="text-xs text-gray-500 mb-3">トップ画面の「当日の進行状況・対戦表」を開くときに、入力を求めるパスワードです。参加者へは、会場などでお知らせください。未設定の間は、誰でも見られます。管理者ログイン中は、入力なしで見られます。「設定を保存」とは別に、ボタンを押した時点で、すぐ保存されます。</p>
+                <div className="flex items-center gap-3 flex-wrap mb-2">
+                  <span className="text-sm font-bold text-gray-700">現在：</span>
+                  {viewerPasswordCurrent === null ? (
+                    <span className="text-sm text-gray-400">（取得できません。データベースの準備が必要な場合があります）</span>
+                  ) : viewerPasswordCurrent === '' ? (
+                    <span className="text-sm font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">未設定（誰でも閲覧できます）</span>
+                  ) : (
+                    <>
+                      <span className="text-sm font-mono font-bold bg-gray-100 border rounded px-2 py-0.5">{viewerPasswordShown ? viewerPasswordCurrent : '●'.repeat(viewerPasswordCurrent.length)}</span>
+                      <button type="button" onClick={() => setViewerPasswordShown(v => !v)} className="text-xs text-blue-600 hover:underline">{viewerPasswordShown ? '隠す' : '表示'}</button>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap max-w-xl">
+                  <input type="text" maxLength={30} placeholder={`新しいパスワード（${VIEWER_PASSWORD_MIN_LENGTH}文字以上）`} className="flex-1 min-w-[12rem] p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={viewerPasswordNew} onChange={e => setViewerPasswordNew(e.target.value)} />
+                  <button type="button" onClick={() => saveViewerPassword(viewerPasswordNew)} disabled={!viewerPasswordNew.trim()} className={`font-bold px-4 py-2 rounded shadow-sm ${viewerPasswordNew.trim() ? 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>パスワードを設定</button>
+                  {viewerPasswordCurrent && (
+                    <button type="button" onClick={() => setDialog({ title: "閲覧パスワードの解除", message: "パスワードを解除して、誰でも「当日の進行状況・対戦表」を見られる状態にします。よろしいですか？", confirmText: "解除する", confirmBg: "bg-red-600 hover:bg-red-700", onConfirm: () => { setDialog(null); saveViewerPassword(''); }, onClose: () => setDialog(null) })} className="text-sm bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-2 rounded border border-red-200">解除</button>
+                  )}
+                </div>
               </div>
 
               <div className="border-t pt-4 mt-2">
@@ -8354,6 +8518,7 @@ export default function App() {
                       ['コートに置いた試合を、別のコートへ移したい', 'まだコール前（「コール」ボタンが出ている状態）の試合は、コートのカードをドラッグして、別のコートへドロップすると移動できます。移動先のコートで、審判が決め直されます（前のコートで決めた審判や、手動で変えた審判は引き継ぎません）。移動先に、まだ試合が始まっていない別の試合がある場合、その試合は待機中の一覧に戻ります。コール済み・試合中の試合は、移動できません（「戻る」で前の状態に戻してから移してください）。'],
                       ['参加費の区分（親子ペアなど）を追加・変更したい', 'マスタ設定の「参加費の区分（円/組）」で、区分名と金額を入力して「区分を追加」を押し、画面上部の「設定を保存」で反映します（例：親子ペア（大人＋中学生まで）3,000円）。追加した区分は、トップ画面の参加費の表示、エントリー登録・修正画面の選択肢、受付処理の参加費の合計に、自動で反映されます。区分はペア単位で1つ選びます。「一般」「高校生まで」は標準の区分のため、金額の変更だけができます（名前の変更・削除はできません）。追加した区分も、登録済みのエントリーが使っている間は削除できません。Excelインポートの「区分」列は、マスタ設定にある区分名とまったく同じ表記だけ受け付け、違う表記の行は、取り込まずに、理由を表示します（空欄は「一般」）。'],
                       ['参加者向けの「エントリー確認」で、名前が「○」で表示される', 'プライバシー保護のため、トップ画面の「確認」の検索結果では、お名前の名（下の名前）の先頭の1文字を「○」で伏せて表示しています（検索自体は、元のお名前の一部でできます）。管理画面のエントリー管理・受付処理では、お名前はそのまま表示されます。'],
+                      ['「当日の進行状況・対戦表」を、パスワードを知っている人だけに見せたい', 'マスタ設定の「進行状況・対戦表の閲覧パスワード」に、4文字以上のパスワードを入力して「パスワードを設定」を押すと、トップ画面の「当日の進行状況・対戦表」を開くときに、入力が必要になります（その場で保存されます）。パスワードは、設定画面に表示されるので、あとから確認できます。解除すると、誰でも見られる状態に戻ります。管理者ログイン中は、入力なしで見られます。参加者は、一度入力すると、その端末では次から入力不要です（パスワードを変えると、再入力になります）。全角で入力されても、半角と同じに扱います（大文字・小文字は区別します）。初めて使うときは、Supabaseで表示されるSQL（settingsテーブルに viewer_password 列を追加するもの）を、一度だけ実行する必要があります。なお、これは画面上の入口で、データそのものを守る仕組みではありません（参加者向けの画面の閲覧を、ひと手間かけさせるためのものです）。'],
                       ['コートの状態操作を間違えた（コールし忘れ・受付し忘れ等で先に進みすぎた）', 'コートカード右上の「戻る」ボタンでひとつ前の状態に戻せます。試合済から戻す場合はスコアも自動的にクリアされます。'],
                       ['受付状態を誤って「未」に戻してしまいそうで心配', '「済」から「未」に変更する操作（受付取消）は、確認ダイアログが表示されてから実行されます。「未」から「済」への通常の受付操作は従来通り即座に反映されます。'],
                     ].map(([q, a]) => (
@@ -8423,7 +8588,7 @@ export default function App() {
         {currentTab === 'search' && viewEntrySearch}
         {currentTab === 'entry' && viewEntryForm}
         {currentTab === 'editLogin' && viewEditLogin}
-        {currentTab === 'dashboard' && viewDashboard}
+        {currentTab === 'dashboard' && (dashboardAccess === 'open' ? viewDashboard : dashboardAccess === 'locked' ? viewDashboardLock : <div className="text-center text-gray-400 py-20">確認しています...</div>)}
         {currentTab === 'adminLogin' && viewAdminLogin}
         {currentTab === 'admin' && (isAdminLoggedIn ? viewAdmin : viewAdminLogin)}
       </main>

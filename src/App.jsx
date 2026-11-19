@@ -2074,6 +2074,18 @@ export default function App() {
 
   // 印刷対象の試合が確定した後（＝スコアシートの印刷用DOMが描画された後）に印刷ダイアログを開く。
   // 印刷ダイアログが閉じたら選択状態を解除し、他の画面表示に影響を残さないようにする
+  // スコアシートはA4横向きで印刷する。名前付きページ（CSS）の指定は、ブラウザによっては無視されて縦向きになるため、
+  // リーグ戦表と同じく、無名の@pageルールを印刷中だけ動的に差し込んで確実に横向きにする
+  const useLandscapePrintPage = (active) => {
+    useEffect(() => {
+      if (!active) return;
+      const styleEl = document.createElement('style');
+      styleEl.textContent = '@page { size: A4 landscape; margin: 8mm; }';
+      document.head.appendChild(styleEl);
+      return () => { styleEl.remove(); };
+    }, [active]);
+  };
+  useLandscapePrintPage(!!printMatchId);
   useEffect(() => {
     if (!printMatchId) return;
     const timer = setTimeout(() => window.print(), 50);
@@ -2086,6 +2098,7 @@ export default function App() {
   }, [printMatchId]);
 
   // 予備用紙（白紙スコアシート）も同じ仕組みで、印刷用DOMが描画された後にダイアログを開く
+  useLandscapePrintPage(!!printBlankSheetCount);
   useEffect(() => {
     if (!printBlankSheetCount) return;
     const timer = setTimeout(() => window.print(), 50);

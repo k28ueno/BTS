@@ -6960,7 +6960,7 @@ export default function App() {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">画像を登録すると、表彰状の印鑑がこの画像に差し替わります。未登録の場合は団体名・代表者名から自動生成した丸印が表示されます。</p>
+                  <p className="text-xs text-gray-500 mt-1">画像を登録すると、表彰状の印鑑がこの画像に差し替わります。未登録の場合は、印鑑は何も印刷されません（印鑑を押す欄は空きます）。</p>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">※「表彰状」画面で発行する各クラスの優勝・準優勝・3位の賞状に表示されます。</p>
               </div>
@@ -8152,46 +8152,6 @@ export default function App() {
               if (result.thirdPlace) certList.push({ cls, rankLabel: '3位', team: result.thirdPlace });
             });
 
-            // 円形の印鑑（丸印）をSVGで描画する。外周に発行団体名、内側の2列に
-            // 「協会長」と代表者名を縦書きで配置する、実物の角印に近い見た目にする。
-            // マスタ設定の団体名・代表者名を変更すれば自動的にこの印影にも反映される
-            const renderSealSvg = (sealClassName = 'cert-seal-svg') => {
-              const outerText = (config.orgName || '').replace(/\s|　/g, '');
-              const chiefChars = (config.chiefName || '○○○').replace(/\s|　/g, '');
-              const titleChars = '協会長';
-              const cx = 100, cy = 100;
-              const N = outerText.length || 1;
-              const outerChars = outerText.split('').map((ch, i) => {
-                const angleDeg = -90 + (360 / N) * i;
-                const rad = angleDeg * Math.PI / 180;
-                const x = cx + 88 * Math.cos(rad);
-                const y = cy + 88 * Math.sin(rad);
-                return (
-                  <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle"
-                        transform={`rotate(${angleDeg + 90} ${x} ${y})`}
-                        fontSize="15" fontFamily="'Shippori Mincho B1', serif" fontWeight="700" fill="currentColor">
-                    {ch}
-                  </text>
-                );
-              });
-              const renderColumn = (chars, xPos) => chars.split('').map((ch, i) => (
-                <text key={i} x={xPos} y={cy + (i - (chars.length - 1) / 2) * 26} textAnchor="middle" dominantBaseline="middle"
-                      fontSize="24" fontFamily="'Shippori Mincho B1', serif" fontWeight="700" fill="currentColor">
-                  {ch}
-                </text>
-              ));
-              return (
-                <svg viewBox="0 0 200 200" className={sealClassName} aria-hidden="true">
-                  <circle cx={cx} cy={cy} r="94" fill="none" stroke="currentColor" strokeWidth="2.5" />
-                  <circle cx={cx} cy={cy} r="82" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                  {outerChars}
-                  <circle cx={cx} cy={cy} r="58" fill="none" stroke="currentColor" strokeWidth="4" />
-                  {renderColumn(titleChars, 128)}
-                  {renderColumn(chiefChars, 72)}
-                </svg>
-              );
-            };
-
             // 「令和8年12月6日(日)」形式から曜日を除き、数字の前に全角スペースを挟んだ
             // 「令和　8年　12月6日」形式に変換する（バドミントン記念柄テンプレート専用の日付表記）
             const formatBadmintonDate = (dateStr) => {
@@ -8239,7 +8199,7 @@ export default function App() {
                 <div className="cert-badmin-chief"><span className="cert-badmin-chief-label">会長</span>{withStandardDigits(config.chiefName || '○○　○○')}</div>
                 {config.sealImageUrl ? (
                   <img src={config.sealImageUrl} alt="印鑑" className="cert-badmin-seal" style={{ objectFit: 'contain' }} />
-                ) : renderSealSvg('cert-badmin-seal')}
+                ) : null}
               </div>
             );
 
@@ -8269,7 +8229,7 @@ export default function App() {
                       <p className="cert-chief">会長　{config.chiefName || '○○　○○'}</p>
                       {config.sealImageUrl ? (
                         <img src={config.sealImageUrl} alt="印鑑" className="cert-seal-svg" style={{ objectFit: 'contain' }} />
-                      ) : renderSealSvg()}
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -8563,7 +8523,7 @@ export default function App() {
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。コールのあと「コール完了（試合受付へ）」を押すと「スコアシートを印刷しますか？」と確認が出て、「はい」を選んだときだけ印刷の画面が開きます（「いいえ」なら印刷せずに進みます）。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
-                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。バドミントン記念柄では、「ベース印刷（名前等なし）」でクラス名・入賞名・選手名・所属名を抜いた用紙だけを先に印刷しておき、その用紙に「本印刷（名前等のみ）」で、抜いた項目だけを重ねて印刷することもできます。背景のグラフィックは、印刷の設定にかかわらず印刷されます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],
+                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。バドミントン記念柄では、「ベース印刷（名前等なし）」でクラス名・入賞名・選手名・所属名を抜いた用紙だけを先に印刷しておき、その用紙に「本印刷（名前等のみ）」で、抜いた項目だけを重ねて印刷することもできます。背景のグラフィックは、印刷の設定にかかわらず印刷されます。印鑑は、マスタ設定で印影画像をアップロードしたときだけ印刷されます（未登録の場合は何も印刷されません）。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。「表彰状テスト」では、予選・決勝トーナメントを実際に進行させなくても、選択したクラスの決勝結果をランダムなダミーデータで作成し、表彰状のデザイン確認ができます。「データベースの切替（本番 / テスト）」では、この端末だけ本番DBとテストDBを切り替えられます（詳しくは下の「よくある操作・困ったときは」をご覧ください）。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">

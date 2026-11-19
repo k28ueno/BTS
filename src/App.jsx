@@ -3821,6 +3821,13 @@ export default function App() {
     const semifinalLevel = totalLevels - 2;
     const semifinalLabel = tournamentRoundLabel(semifinalLevel, slotCount);
     const semifinalMatches = matches.filter(m => m.cls === cls && m.matchType === 'tournament' && m.group === semifinalLabel);
+    if (semifinalMatches.length === 1 && semifinalMatches[0].status === 'completed') {
+      const onlyLoserId = getUncontestedThirdPlaceId(cls);
+      if (onlyLoserId != null) {
+        setDialog({ title: "3位決定戦は不要です", message: `【${cls}】は準決勝の片方が不戦勝（負けた組がいない）のため、3位決定戦は行いません。準決勝で敗れた ${getTeamNameWithClub(onlyLoserId)} が3位に確定しています。`, onClose: () => setDialog(null) });
+        return;
+      }
+    }
     if (semifinalMatches.length !== 2 || !semifinalMatches.every(m => m.status === 'completed')) {
       setDialog({ title: "生成不可", message: "準決勝の2試合がまだ両方とも終了していないため、3位決定戦は作成できません。", onClose: () => setDialog(null) });
       return;
@@ -5352,6 +5359,19 @@ export default function App() {
     return matches.some(m => m.cls === cls && m.matchType === 'tournament' && (m.status === 'completed' || m.courtNumber !== null));
   };
 
+  // 準決勝が1試合しかない（もう一方は不戦勝で、負けた組がいない）場合は、準決勝で敗れた1組が、
+  // 3位決定戦をしなくても3位に確定する。その組のIDを返す（該当しない場合はnull）
+  const getUncontestedThirdPlaceId = (cls) => {
+    const slotCount = getTournamentSlotCount(cls);
+    const totalLevels = Math.log2(slotCount);
+    if (!(totalLevels >= 2)) return null;
+    const semifinalLabel = tournamentRoundLabel(totalLevels - 2, slotCount);
+    const semifinalMatches = matches.filter(m => m.cls === cls && m.matchType === 'tournament' && m.group === semifinalLabel);
+    if (semifinalMatches.length !== 1 || semifinalMatches[0].status !== 'completed') return null;
+    const semifinalResult = getMatchResult(semifinalMatches[0]);
+    return semifinalResult && semifinalResult.loserId != null ? semifinalResult.loserId : null;
+  };
+
   // 決勝が終了しているクラスの優勝・準優勝ペアを求める（新聞掲載用PDFで使用）。未終了ならnull
 
   const getClassFinalResult = (cls) => {
@@ -5371,6 +5391,11 @@ export default function App() {
     if (thirdPlaceMatch && thirdPlaceMatch.status === 'completed') {
       const tpResult = getMatchResult(thirdPlaceMatch);
       if (tpResult) thirdPlace = entries.find(e => e.id === tpResult.winnerId) || null;
+    }
+    // 3位決定戦が無くても、準決勝の片方が不戦勝で、負けた組が1組だけなら、その組が3位
+    if (!thirdPlace && !thirdPlaceMatch) {
+      const uncontestedId = getUncontestedThirdPlaceId(cls);
+      if (uncontestedId != null) thirdPlace = entries.find(e => String(e.id) === String(uncontestedId)) || null;
     }
 
     return { champion, runnerUp, thirdPlace };
@@ -5599,6 +5624,7 @@ export default function App() {
     // 3位決定戦（任意）：準決勝で敗れた2組の対戦。生成されていれば結果を表示する
     const thirdPlaceMatch = matches.find(m => m.id === `T3-${cls}`);
     const thirdPlaceResult = thirdPlaceMatch && thirdPlaceMatch.status === 'completed' ? getMatchResult(thirdPlaceMatch) : null;
+    const uncontestedThirdPlaceId = getUncontestedThirdPlaceId(cls);
     const renderThirdPlaceSlot = (teamId) => {
       const isWinner = thirdPlaceResult && String(thirdPlaceResult.winnerId) === String(teamId);
       const isLoser = thirdPlaceResult && !isWinner;
@@ -5630,6 +5656,12 @@ export default function App() {
         {thirdPlaceResult && (
           <div className="flex items-center gap-2 bg-orange-50 border border-orange-300 text-orange-800 font-extrabold text-base px-4 py-3 rounded-lg mb-4">
              🥉 3位: {getTeamNameWithClub(thirdPlaceResult.winnerId)}
+          </div>
+        )}
+        {!thirdPlaceMatch && champion && uncontestedThirdPlaceId != null && (
+          <div className="flex items-center gap-2 bg-orange-50 border border-orange-300 text-orange-800 font-extrabold text-base px-4 py-3 rounded-lg mb-4">
+             🥉 3位: {getTeamNameWithClub(uncontestedThirdPlaceId)}
+             <span className="text-xs font-bold text-orange-700">（準決勝の片方が不戦勝のため、3位決定戦なしで確定）</span>
           </div>
         )}
         <div className="flex gap-8 p-4 min-w-max">
@@ -8523,7 +8555,7 @@ export default function App() {
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。コールのあと「コール完了（試合受付へ）」を押すと「スコアシートを印刷しますか？」と確認が出て、「はい」を選んだときだけ印刷の画面が開きます（「いいえ」なら印刷せずに進みます）。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
-                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。バドミントン記念柄では、「ベース印刷（名前等なし）」でクラス名・入賞名・選手名・所属名を抜いた用紙だけを先に印刷しておき、その用紙に「本印刷（名前等のみ）」で、抜いた項目だけを重ねて印刷することもできます。背景のグラフィックは、印刷の設定にかかわらず印刷されます。印鑑は、マスタ設定で印影画像をアップロードしたときだけ印刷されます（未登録の場合は何も印刷されません）。'],
+                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も。準決勝の片方が不戦勝で、負けた組が1組だけのときは、3位決定戦なしでその組が3位）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。バドミントン記念柄では、「ベース印刷（名前等なし）」でクラス名・入賞名・選手名・所属名を抜いた用紙だけを先に印刷しておき、その用紙に「本印刷（名前等のみ）」で、抜いた項目だけを重ねて印刷することもできます。背景のグラフィックは、印刷の設定にかかわらず印刷されます。印鑑は、マスタ設定で印影画像をアップロードしたときだけ印刷されます（未登録の場合は何も印刷されません）。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。「表彰状テスト」では、予選・決勝トーナメントを実際に進行させなくても、選択したクラスの決勝結果をランダムなダミーデータで作成し、表彰状のデザイン確認ができます。「データベースの切替（本番 / テスト）」では、この端末だけ本番DBとテストDBを切り替えられます（詳しくは下の「よくある操作・困ったときは」をご覧ください）。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">

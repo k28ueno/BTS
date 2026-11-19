@@ -166,3 +166,20 @@
   transform: rotate(-7deg);
   opacity: .92;
 }
+/* 表彰状の背景画像・色は、印刷の画面で「背景のグラフィック」を入にしなくても、常に印刷する */
+.certificate-print-area, .certificate-print-area * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+/* ベース印刷：クラス名・入賞名・選手名・所属名を抜く（背景と定型文だけ） */
+.cert-mode-base .cert-badmin-class,
+.cert-mode-base .cert-badmin-rank,
+.cert-mode-base .cert-badmin-pair-names,
+.cert-mode-base .cert-badmin-club { display: none !important; }
+/* 本印刷：抜いた項目だけを印刷する（背景と定型文は出さない） */
+.cert-mode-overlay .cert-badmin-rule,
+.cert-mode-overlay .cert-badmin-body,
+.cert-mode-overlay .cert-badmin-date,
+.cert-mode-overlay .cert-badmin-org,
+.cert-mode-overlay .cert-badmin-chief,
+.cert-mode-overlay .cert-badmin-seal { display: none !important; }

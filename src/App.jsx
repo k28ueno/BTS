@@ -760,6 +760,7 @@ export default function App() {
   const [receptionSortSnapshot, setReceptionSortSnapshot] = useState({});
   const [scoreModal, setScoreModal] = useState(null);
   const [printMatchId, setPrintMatchId] = useState(null); // スコアシート印刷対象の試合ID
+  const [certPrintMode, setCertPrintMode] = useState(null); // 表彰状の印刷中の種類：'all'（全体）／'base'（クラス名・入賞名・選手名・所属名を抜いたベース）／'overlay'（抜いた項目だけ）。nullは印刷していない
   const [printBlankSheetCount, setPrintBlankSheetCount] = useState(null); // 白紙スコアシートの印刷トリガー（1件固定）。nullは非表示
   const [printDrawSheet, setPrintDrawSheet] = useState(null); // リーグ戦表／トーナメント表のA4印刷対象 { type: 'league'|'tournament', cls }。nullは非表示
 
@@ -2136,6 +2137,25 @@ export default function App() {
       styleEl.remove();
     };
   }, [printDrawSheet]);
+
+  // 表彰状の印刷。印刷の種類（全体／ベース／抜いた項目のみ）が決まり、その内容で画面が描き直された後に印刷の画面を開く。
+  // 用紙の向きは、名前付きページの指定がブラウザによって反映されないことがあるため、印刷中だけ無名の@pageを差し込んで確実にそろえる
+  useEffect(() => {
+    if (!certPrintMode) return;
+    const styleEl = document.createElement('style');
+    styleEl.textContent = config.certTemplate === 'badminton'
+      ? '@page { size: A4 portrait; margin: 0; }'
+      : '@page { size: A4 landscape; margin: 0; }';
+    document.head.appendChild(styleEl);
+    const timer = setTimeout(() => window.print(), 100);
+    const finish = () => setCertPrintMode(null);
+    window.addEventListener('afterprint', finish);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('afterprint', finish);
+      styleEl.remove();
+    };
+  }, [certPrintMode]);
 
   // 印刷に載せるQRコードの画像を、アプリを開いたときに先に読み込んでおく（印刷ボタンを押したときに、すぐ使えるようにする）
   useEffect(() => {
@@ -8201,8 +8221,8 @@ export default function App() {
             const renderBadmintonCert = ({ cls, rankLabel, team }, idx) => (
               <div
                 key={`badmin-${cls}-${rankLabel}-${idx}`}
-                className="cert-page-badmin shadow-md mb-8 mx-auto"
-                style={{ maxWidth: 640, backgroundImage: `url(${certBadmintonBg})`, '--cert-badmin-font': badmintonCertFontFamily }}
+                className={`cert-page-badmin shadow-md mb-8 mx-auto ${certPrintMode === 'base' ? 'cert-mode-base' : certPrintMode === 'overlay' ? 'cert-mode-overlay' : ''}`}
+                style={{ maxWidth: 640, backgroundImage: certPrintMode === 'overlay' ? 'none' : `url(${certBadmintonBg})`, '--cert-badmin-font': badmintonCertFontFamily }}
               >
                 <div className="cert-badmin-class">{withStandardDigits(cls)}</div>
                 <div className="cert-badmin-rank">{rankLabel}</div>
@@ -8261,29 +8281,36 @@ export default function App() {
                 <h3 className="text-xl font-bold mb-4">表彰状</h3>
                 <div className="mb-6 flex flex-wrap items-center gap-4">
                   <button
-                    onClick={() => {
-                      // named page（@page + pageプロパティ）でのA4縦横切り替えはブラウザによって
-                      // 反映されないことがあり、その場合は用紙が横向きのまま縦長デザインが
-                      // 2ページに割れてしまう。印刷実行の直前に無名の@pageルールを動的に注入し、
-                      // 確実にテンプレートに合った向きで印刷されるようにする
-                      const styleEl = document.createElement('style');
-                      styleEl.textContent = config.certTemplate === 'badminton'
-                        ? '@page { size: A4 portrait; margin: 0; }'
-                        : '@page { size: A4 landscape; margin: 0; }';
-                      document.head.appendChild(styleEl);
-                      const cleanup = () => { styleEl.remove(); window.removeEventListener('afterprint', cleanup); };
-                      window.addEventListener('afterprint', cleanup);
-                      window.print();
-                    }}
+                    onClick={() => setCertPrintMode('all')}
                     disabled={certList.length === 0}
                     className={`font-bold px-5 py-2.5 rounded shadow-sm flex items-center gap-2 ${certList.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
                   >
                     🖨️ 印刷 / PDF保存
                   </button>
+                  {config.certTemplate === 'badminton' && (
+                    <>
+                      <button
+                        onClick={() => setCertPrintMode('base')}
+                        disabled={certList.length === 0}
+                        title="クラス名・入賞名・選手名・所属名を抜いた、用紙のベース（背景と定型文）だけを印刷します"
+                        className={`font-bold px-5 py-2.5 rounded shadow-sm flex items-center gap-2 ${certList.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white border border-[#2c5f4e] text-[#2c5f4e] hover:bg-gray-50'}`}
+                      >
+                        🖨️ ベース印刷（名前等なし）
+                      </button>
+                      <button
+                        onClick={() => setCertPrintMode('overlay')}
+                        disabled={certList.length === 0}
+                        title="ベース印刷した用紙に重ねて、クラス名・入賞名・選手名・所属名だけを印刷します"
+                        className={`font-bold px-5 py-2.5 rounded shadow-sm flex items-center gap-2 ${certList.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white border border-[#2c5f4e] text-[#2c5f4e] hover:bg-gray-50'}`}
+                      >
+                        🖨️ 本印刷（名前等のみ）
+                      </button>
+                    </>
+                  )}
                   {certList.length === 0 ? (
                     <p className="text-sm text-gray-500">まだ決勝が終了しているクラスがありません。決勝トーナメントの優勝・準優勝が決まると、ここに表示されます（3位決定戦を実施した場合は3位の賞状も追加されます）。</p>
                   ) : config.certTemplate === 'badminton' ? (
-                    <p className="text-sm text-gray-500">A4縦向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。デザインはマスタ設定の「表彰状設定」で変更できます。</p>
+                    <p className="text-sm text-gray-500">A4縦向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。先に「ベース印刷」で、クラス名・入賞名・選手名・所属名を抜いた用紙を必要枚数つくり、その用紙に「本印刷」で、抜いた項目だけを重ねて印刷できます。デザインはマスタ設定の「表彰状設定」で変更できます。</p>
                   ) : (
                     <p className="text-sm text-gray-500">A4横向きで、賞状ごとに改ページして印刷します（{certList.length}枚）。発行団体名・代表者名・印鑑画像はマスタ設定の「表彰状設定」で変更できます。</p>
                   )}
@@ -8536,7 +8563,7 @@ export default function App() {
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。コールのあと「コール完了（試合受付へ）」を押すと「スコアシートを印刷しますか？」と確認が出て、「はい」を選んだときだけ印刷の画面が開きます（「いいえ」なら印刷せずに進みます）。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
-                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],
+                      ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。バドミントン記念柄では、「ベース印刷（名前等なし）」でクラス名・入賞名・選手名・所属名を抜いた用紙だけを先に印刷しておき、その用紙に「本印刷（名前等のみ）」で、抜いた項目だけを重ねて印刷することもできます。背景のグラフィックは、印刷の設定にかかわらず印刷されます。印鑑は団体名・代表者名から自動生成した丸印を表示しますが、マスタ設定から実際の印影画像をアップロードして差し替えることもできます。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。「表彰状テスト」では、予選・決勝トーナメントを実際に進行させなくても、選択したクラスの決勝結果をランダムなダミーデータで作成し、表彰状のデザイン確認ができます。「データベースの切替（本番 / テスト）」では、この端末だけ本番DBとテストDBを切り替えられます（詳しくは下の「よくある操作・困ったときは」をご覧ください）。'],
                     ].map(([title, desc]) => (
                       <div key={title} className="bg-gray-50 border rounded-lg p-3">

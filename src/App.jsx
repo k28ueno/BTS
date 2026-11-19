@@ -5359,6 +5359,14 @@ export default function App() {
     return matches.some(m => m.cls === cls && m.matchType === 'tournament' && (m.status === 'completed' || m.courtNumber !== null));
   };
 
+  // 決勝進出組のうち、まだトーナメントに配置されていない組（左の「未配置 / 決勝進出組」に並べる組）。
+  // 決勝トーナメントで既に試合を終えて負けた組は、枠の位置が空になるが、配置待ちではないため含めない
+  const getUnplacedQualifiedEntries = (cls) => getTournamentQualifiedEntries(cls).filter(e =>
+    !e.tournamentPosition &&
+    !matches.some(m => m.cls === cls && m.matchType === 'tournament' && m.status === 'completed' &&
+      (String(m.team1Id) === String(e.id) || String(m.team2Id) === String(e.id)))
+  );
+
   // 準決勝が1試合しかない（もう一方は不戦勝で、負けた組がいない）場合は、準決勝で敗れた1組が、
   // 3位決定戦をしなくても3位に確定する。その組のIDを返す（該当しない場合はnull）
   const getUncontestedThirdPlaceId = (cls) => {
@@ -7553,7 +7561,7 @@ export default function App() {
                    >
                       <h4 className="font-bold mb-3 border-b-2 pb-2">未配置 / 決勝進出組</h4>
                       <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                         {getTournamentQualifiedEntries(drawClass).filter(e => !e.tournamentPosition).map(ent => {
+                         {getUnplacedQualifiedEntries(drawClass).map(ent => {
                            const isSelected = tapMoveSelection && tapMoveSelection.kind === 'entry' && tapMoveSelection.id === ent.id;
                            return (
                             <div
@@ -7573,7 +7581,7 @@ export default function App() {
                             </div>
                            );
                          })}
-                         {isDrawClassLeagueFinished && getTournamentQualifiedEntries(drawClass).filter(e => !e.tournamentPosition).length === 0 && (
+                         {isDrawClassLeagueFinished && getUnplacedQualifiedEntries(drawClass).length === 0 && (
                             <div className="text-xs text-gray-400 text-center py-8">決勝進出組はすべて配置済みです</div>
                          )}
                       </div>

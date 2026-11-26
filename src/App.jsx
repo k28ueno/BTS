@@ -766,7 +766,9 @@ export default function App() {
 
   const [testGenCounts, setTestGenCounts] = useState({});
 
-  const [simCurrentTime, setSimCurrentTime] = useState('08:50');
+  const [simCurrentTime, setSimCurrentTime] = useState('08:50'); // 基準時間の手動の値（初期値は試合開始時刻。入力で変更する）
+  const [simTimeMode, setSimTimeMode] = useState('manual'); // 基準時間の決め方：'manual'（手動）／'auto'（現在の時刻に自動で更新）
+  const [simAutoTime, setSimAutoTime] = useState('08:50'); // 自動の場合の基準時間（現在の時刻）
   const [simCourtMode, setSimCourtMode] = useState('shared'); // シミュレーションのコートの使い方：'shared'（共用）／'fixed'（クラス別メインコートに固定）
 
   const [lastCourtReferees, setLastCourtReferees] = useState({});
@@ -1643,25 +1645,18 @@ export default function App() {
     }
   }, [config.classes]);
 
-  // 基準時間は初期値として試合開始時刻をセットするが、その時刻を実際の現在時刻が過ぎたら
-  // 自動的に現在時刻へ更新する（手動で未来の時刻に変更している間は、その時刻を過ぎるまで上書きしない）
-  const advanceSimTimeIfPast = () => {
-    const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    setSimCurrentTime(prev => {
-      const [ph, pm] = (prev || '00:00').split(':').map(n => parseInt(n, 10) || 0);
-      const prevMinutes = ph * 60 + pm;
-      if (nowMinutes <= prevMinutes) return prev;
-      const h = String(now.getHours()).padStart(2, '0');
-      const m = String(now.getMinutes()).padStart(2, '0');
-      return `${h}:${m}`;
-    });
-  };
-
+  // シミュレーションの基準時間が「自動」の場合は、現在の時刻を反映し、その後も更新し続ける。
+  // 「手動」の場合は、初期値（試合開始時刻）か入力した値のままで、自動では変えない
   useEffect(() => {
-    const interval = setInterval(advanceSimTimeIfPast, 30000);
+    if (simTimeMode !== 'auto') return;
+    const updateToNow = () => {
+      const now = new Date();
+      setSimAutoTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+    };
+    updateToNow();
+    const interval = setInterval(updateToNow, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [simTimeMode]);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -1953,7 +1948,6 @@ export default function App() {
           setSponsorsText(loadedConfig.sponsors.join(','));
           const defaultTime = formatHHMM(loadedConfig.timeStart);
           setSimCurrentTime(defaultTime);
-          advanceSimTimeIfPast();
 
           if(loadedConfig.classes && loadedConfig.classes.length > 0) {
              setSelectedClass(loadedConfig.classes[0]);
@@ -5524,7 +5518,8 @@ export default function App() {
     // 予選消化→決勝トーナメントの順に直列で進むものとして見積もる（安全側＝長めの試算になる）
     const totalMinutes = leagueMinutes + tournamentMinutes;
 
-    const [baseH, baseM] = (simCurrentTime || '08:50').split(':').map(n => parseInt(n, 10) || 0);
+    const baseTime = (simTimeMode === 'auto' ? simAutoTime : simCurrentTime) || '08:50';
+    const [baseH, baseM] = baseTime.split(':').map(n => parseInt(n, 10) || 0);
 
     // 昼休みが設定されている場合、終了予定時刻の試算にその休憩時間を加味する。
     // ・基準時間が昼休み中であれば、休憩明けから残り試合の消化を開始するとみなす
@@ -5612,6 +5607,7 @@ export default function App() {
       totalMatches: sum('totalMatches'),
       hours: Math.floor(totalMinutes / 60),
       minutes: totalMinutes % 60,
+      baseTime,
       endTimeStr,
       lunchApplied,
       fixed,
@@ -7710,11 +7706,21 @@ export default function App() {
                         </select>
                      </div>
                      <div className="flex items-center gap-3 bg-amber-50 border border-amber-300 px-4 py-2 rounded-xl shadow-sm">
-                        <span className="text-sm font-bold text-amber-900">基準時間（変更可）:</span>
+                        <span className="text-sm font-bold text-amber-900">基準時間:</span>
+                        <select
+                          className="p-1.5 border-2 border-amber-400 rounded-lg bg-white font-bold text-sm text-amber-900 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
+                          value={simTimeMode}
+                          onChange={e => setSimTimeMode(e.target.value)}
+                          aria-label="基準時間の決め方"
+                        >
+                          <option value="manual">手動</option>
+                          <option value="auto">自動（現在の時刻）</option>
+                        </select>
                         <input
                           type="time"
-                          className="p-1.5 border-2 border-amber-400 rounded-lg bg-white font-mono font-extrabold text-xl text-amber-900 outline-none focus:ring-2 focus:ring-[#2c5f4e]"
-                          value={simCurrentTime}
+                          className={`p-1.5 border-2 border-amber-400 rounded-lg font-mono font-extrabold text-xl text-amber-900 outline-none focus:ring-2 focus:ring-[#2c5f4e] ${simTimeMode === 'auto' ? 'bg-amber-100 cursor-not-allowed' : 'bg-white'}`}
+                          value={simTimeMode === 'auto' ? simAutoTime : simCurrentTime}
+                          disabled={simTimeMode === 'auto'}
                           onChange={e => setSimCurrentTime(e.target.value)}
                         />
                      </div>
@@ -7812,7 +7818,7 @@ export default function App() {
                        )}
                     </div>
                     <div className="text-center">
-                       <span className="block text-xs text-slate-400 mb-1">大会予想終了時刻 ({simCurrentTime}時点基準)</span>
+                       <span className="block text-xs text-slate-400 mb-1">大会予想終了時刻 ({simResult.baseTime}時点基準)</span>
                        {simCourtMode === 'shared' ? (
                          <>
                            <span className="text-2xl font-extrabold text-orange-400">{simResult.endTimeStr} 頃</span>
@@ -8709,7 +8715,7 @@ export default function App() {
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。「Excelエクスポート」で全件をExcel（.xlsx）にダウンロードでき、「Excelインポート」でExcelファイルから一括登録できます（ID・パスワードはシステムが自動採番するため対象外。既存エントリーの更新は「編集」から個別に行います）。インポート時は列見出しの表記ゆれ・並び順の違いを自動判定したうえで「列の対応確認」画面が開くので、対応がおかしければプルダウンで修正してから反映できます。'],
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。「未受付のみ」にチェックを入れると、まだ受付していない組だけに絞り込めます。ドローは未受付でも作れますが、コートへ配置できるのは受付済の組だけです（未受付の組が含まれる試合をコートへ配置しようとすると「未受付エラー」が表示され、配置できません）。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（リーグ戦表の右下には、参加者が進行状況・対戦表を見られるポータルのQRコードが「進行状況・対戦表はコチラ」の見出しつきで印刷されます）（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。予選は最大8グループ、決勝トーナメントは最大16枠に対応しており、予選順位からの自動反映では、枠が余って不戦勝（1回戦の免除）が出る場合、予選の成績（勝率→1試合あたりの得失点差→1試合あたりの総得点の順）が上位の組から優先して免除されます（グループごとに組数が違うため、勝ち数ではなく率で比べます）。5〜8グループでは、同じグループの2組が準決勝より前に当たらない範囲で、1位・2位それぞれの成績順にできるだけ近い配置にします。進出条件を「3位まで」にした部（進出組数が16組以内＝5グループまで）は、1位・2位・3位それぞれの成績順をシード順にして、同様に、同じグループの組が準決勝より前に当たらない範囲で、成績順に近い配置にします（1グループだけの場合は、3組が必ず当たるため、できるだけ後の回戦にします）。自動で配置したあとでも、手動で自由に変更できます（下の「決勝トーナメントの枠を手動で変えたい」を参照）。'],
-                      ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。決勝トーナメントの試合数は、終わった試合を差し引き、不戦勝の枠は数えません。3位決定戦は、対戦カードを生成すると数えます。「コートの使い方」で「コート固定」を選ぶと、各クラスがマスタ設定の「クラス別メインコート」だけを使う場合の、クラスごとの所要時間と終了予定、全体の終了予定（最も時間のかかるクラス）を確認できます。固定の場合は、同じ組は2面で同時に試合できないことも考えます。メインコートの無いクラスは、どのクラスのメインコートでもないコートを一緒に使います（そのコートも無いと算出できません）。'],
+                      ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。基準時間は「手動」と「自動」から選べます。手動は、最初は試合開始時刻で、入力して変更でき、時間が経っても変わりません。自動は、現在の時刻になり、時間の経過に合わせて更新されます（手動に戻すと、手動の値に戻ります）。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。決勝トーナメントの試合数は、終わった試合を差し引き、不戦勝の枠は数えません。3位決定戦は、対戦カードを生成すると数えます。「コートの使い方」で「コート固定」を選ぶと、各クラスがマスタ設定の「クラス別メインコート」だけを使う場合の、クラスごとの所要時間と終了予定、全体の終了予定（最も時間のかかるクラス）を確認できます。固定の場合は、同じ組は2面で同時に試合できないことも考えます。メインコートの無いクラスは、どのクラスのメインコートでもないコートを一緒に使います（そのコートも無いと算出できません）。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。コールのあと「コール完了（試合受付へ）」を押すと「スコアシートを印刷しますか？」と確認が出て、「はい」を選んだときだけ印刷の画面が開きます（「いいえ」なら印刷せずに進みます）。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。右側の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],

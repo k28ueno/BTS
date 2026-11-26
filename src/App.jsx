@@ -594,15 +594,54 @@ const isEntryDeadlinePassed = (config) => {
 
 const ENTRY_DEADLINE_PASSED_MESSAGE = (config) => `申込締切（${formatPeriodDate(config.deadline, config)}）を過ぎたため、登録内容の修正・取消はできません。内容の変更が必要な場合は、大会本部までご連絡ください。`;
 
-// 勝ち抜き戦の残りの試合を、指定した面数のコートで進めるのに必要なコマ数（1コマ＝1試合分の時間）を数える。
-// 次の回戦の試合は、その組み合わせを決める2試合が終わるまで始められないため、「試合数÷面数」より長くなることがある。
-// 先の回戦まで長く続く試合から順にコートへ入れる（勝ち抜き戦の形では、これが最短になる）。
-// list: [{ teamCount: 出場組数, completed: 終わった試合数（3位決定戦を除く）, thirdPlacePending: 未実施の3位決定戦があるか }]
-// 複数のクラスを渡した場合は、同じコートを一緒に使うものとして数える
-function countTournamentSlots(list, courtCount) {
+// シミュレーション用：残りの試合を、指定した面数のコートへ順に入れて、すべて終わるまでの時間（分）を求める。
+// tasks: [{ duration: 所要時間（分）, needs: [先に終わる必要がある試合], teams: [出場する組のID], depth: 勝ち上がりで後に続く回戦数 }]
+// コートが空くたびに、始められる試合（前の試合が終わり、出場する組が試合中でないもの）を入れる。
+// 後に長く続く試合と、残りの試合が多い組の試合を優先する
+function runCourtSchedule(tasks, courtCount) {
+  if (courtCount < 1) return 0;
+  const state = tasks.map(task => ({ ...task, task, started: false }));
+  const done = new Set();
+  const busyTeams = new Set();
+  let running = [];
+  let time = 0;
+  while (done.size < tasks.length) {
+    while (running.length < courtCount) {
+      // まだ始めていない試合の時間を、組ごとに合計する
+      const load = new Map();
+      state.forEach(t => { if (!t.started) (t.teams || []).forEach(id => load.set(id, (load.get(id) || 0) + t.duration)); });
+      let best = null;
+      let bestKey = null;
+      state.forEach(t => {
+        if (t.started || !(t.needs || []).every(n => done.has(n)) || (t.teams || []).some(id => busyTeams.has(id))) return;
+        const loads = (t.teams || []).map(id => load.get(id) || 0);
+        const key = [(t.depth || 0) * t.duration, Math.max(0, ...loads), loads.reduce((a, b) => a + b, 0), t.duration];
+        const diff = bestKey ? key.findIndex((v, i) => v !== bestKey[i]) : -1;
+        if (!bestKey || (diff >= 0 && key[diff] > bestKey[diff])) { best = t; bestKey = key; }
+      });
+      if (!best) break;
+      best.started = true;
+      (best.teams || []).forEach(id => busyTeams.add(id));
+      running.push({ ...best, end: time + best.duration });
+    }
+    if (running.length === 0) break;
+    time = Math.min(...running.map(t => t.end));
+    running.filter(t => t.end <= time + 1e-9).forEach(t => {
+      done.add(t.task);
+      (t.teams || []).forEach(id => busyTeams.delete(id));
+    });
+    running = running.filter(t => t.end > time + 1e-9);
+  }
+  return time;
+}
+
+// 勝ち抜き戦の残りの試合を作る。次の回戦の試合は、その組み合わせを決める2試合が終わるまで始められない。
+// list: [{ teamCount: 出場組数, completed: 終わった試合数（3位決定戦を除く）, thirdPlacePending: 未実施の3位決定戦があるか,
+//          duration: 1試合の所要時間（分） }]
+function buildTournamentTasks(list) {
   const tasks = [];
-  list.forEach(({ teamCount, completed, thirdPlacePending }) => {
-    if (teamCount < 2 || courtCount < 1) return;
+  list.forEach(({ teamCount, completed, thirdPlacePending, duration }) => {
+    if (teamCount < 2) return;
     let size = 2;
     while (size < teamCount) size *= 2;
     // 回戦ごとの試合を作る。1回戦は不戦勝の枠を除いた試合数、2回戦以降は枠数の半分ずつ
@@ -610,7 +649,7 @@ function countTournamentSlots(list, courtCount) {
     const levelCount = Math.log2(size);
     for (let level = 0; level < levelCount; level++) {
       const matchCount = level === 0 ? teamCount - size / 2 : size / Math.pow(2, level + 1);
-      levels.push(Array.from({ length: matchCount }, () => ({ needs: [], depth: levelCount - level, done: false })));
+      levels.push(Array.from({ length: matchCount }, () => ({ duration, needs: [], depth: levelCount - level })));
     }
     for (let level = 1; level < levelCount; level++) {
       levels[level - 1].forEach((match, i) => {
@@ -619,20 +658,17 @@ function countTournamentSlots(list, courtCount) {
         levels[level][next].needs.push(match);
       });
     }
-    // 終わった試合は、手前の回戦から順に済みにする
-    let doneCount = completed;
-    levels.forEach(level => level.forEach(match => { if (doneCount > 0) { match.done = true; doneCount--; } }));
-    levels.forEach(level => tasks.push(...level));
-    if (thirdPlacePending && levelCount >= 2) tasks.push({ needs: levels[levelCount - 2], depth: 1, done: false });
+    const classTasks = levels.flat();
+    if (thirdPlacePending && levelCount >= 2) classTasks.push({ duration, needs: [...levels[levelCount - 2]], depth: 1 });
+    // 終わった試合（手前の回戦から順）は取り除き、残った試合の「先に必要な試合」からも外す
+    const finished = new Set(levels.flat().slice(0, completed));
+    classTasks.forEach(task => {
+      if (finished.has(task)) return;
+      task.needs = task.needs.filter(n => !finished.has(n));
+      tasks.push(task);
+    });
   });
-  let slots = 0;
-  while (tasks.some(t => !t.done)) {
-    const ready = tasks.filter(t => !t.done && t.needs.every(n => n.done)).sort((a, b) => b.depth - a.depth);
-    if (ready.length === 0) break;
-    ready.slice(0, courtCount).forEach(t => { t.done = true; });
-    slots++;
-  }
-  return slots;
+  return tasks;
 }
 
 export default function App() {
@@ -668,7 +704,7 @@ export default function App() {
     fees: { '一般': 4000, '高校生まで': 2000 },
     advancementCondition: 'top2',
     advancementByClass: {}, // 部ごとの進出条件（{ [クラス名]: 'top1' | 'top2' | 'top3' }）。指定が無い部は、advancementConditionに従う
-    avgMatchDuration: 15,
+    avgGameDuration: 15, // 1ゲームの平均所要時間（分）。DBの列名は avgmatchduration
     lunchBreakStart: '',
     lunchBreakEnd: '',
     adminIdleTimeoutMinutes: DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES,
@@ -1077,6 +1113,33 @@ export default function App() {
     const end = new Date(m.completedAt).getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
     return (end - start) / 60000;
+  };
+
+  // 実際に行ったゲーム数（スコアが入っているゲーム。点数の記録が無い旧データは1ゲーム）
+  const getPlayedGameCount = (m) => {
+    const games = (Array.isArray(m.gameScores) ? m.gameScores : []).filter(g =>
+      g && g.team1 !== '' && g.team2 !== '' && g.team1 != null && g.team2 != null && (Number(g.team1) > 0 || Number(g.team2) > 0)).length;
+    if (games > 0) return games;
+    return m.team1Score != null && m.team2Score != null ? 1 : 0;
+  };
+
+  // 実績からの1ゲームの平均所要時間（分）。所要時間が分かる試合の、合計時間÷合計ゲーム数
+  const getGameDurationStats = (list) => {
+    let minutes = 0, gameCount = 0, matchCount = 0;
+    list.forEach(m => {
+      const duration = getMatchDurationMinutes(m);
+      const games = getPlayedGameCount(m);
+      if (duration === null || games === 0) return;
+      minutes += duration; gameCount += games; matchCount++;
+    });
+    return { average: gameCount > 0 ? minutes / gameCount : null, matchCount, gameCount };
+  };
+
+  // 試合ルールから見込むゲーム数。最後まで行う形式は全ゲーム数、先取の形式は最少と最多の平均（2セット先取なら2.5）
+  const getExpectedGameCount = (matchRule) => {
+    const gamesToWin = (matchRule && matchRule.gamesToWin) || 1;
+    const maxGames = gamesToWin * 2 - 1;
+    return matchRule && matchRule.forceAllGames ? maxGames : (gamesToWin + maxGames) / 2;
   };
 
   const getPairFee = (ent) => {
@@ -1970,7 +2033,7 @@ export default function App() {
             mainCourts: data.maincourts || {},
             fees: data.fees || { '一般': 4000, '高校生まで': 2000 },
             ...parseAdvancement(data.advancementcondition),
-            avgMatchDuration: data.avgmatchduration || 15,
+            avgGameDuration: data.avgmatchduration || 15,
             lunchBreakStart: data.lunchbreakstart || '',
             lunchBreakEnd: data.lunchbreakend || '',
             adminIdleTimeoutMinutes: data.adminidletimeoutminutes ?? DEFAULT_ADMIN_IDLE_TIMEOUT_MINUTES, // 0は「ログオフしない」
@@ -2375,7 +2438,7 @@ export default function App() {
         maincourts: config.mainCourts,
         fees: config.fees,
         advancementcondition: serializeAdvancement(config),
-        avgmatchduration: config.avgMatchDuration,
+        avgmatchduration: config.avgGameDuration,
         lunchbreakstart: config.lunchBreakStart,
         lunchbreakend: config.lunchBreakEnd,
         adminidletimeoutminutes: config.adminIdleTimeoutMinutes,
@@ -2391,27 +2454,27 @@ export default function App() {
     }
   };
 
-  // 実際の試合の「試合受付～スコア入力」所要時間の平均を計算し、マスタ設定の
-  // 「1試合の平均所要時間」に反映する（棄権試合や時刻未記録の試合は対象外）
+  // 実際の試合の「試合受付～スコア入力」の時間から、1ゲームの平均所要時間を計算し、マスタ設定の
+  // 「1ゲームの平均所要時間」に反映する（棄権試合や時刻未記録の試合は対象外）
   const handleApplyAverageMatchDuration = async () => {
-    const durations = matches.map(getMatchDurationMinutes).filter(d => d !== null);
-    if (durations.length === 0) {
+    const stats = getGameDurationStats(matches);
+    if (stats.average === null) {
       setDialog({ title: "対象なし", message: "所要時間を算出できる試合結果がまだありません（試合受付とスコア入力の両方が記録された試合が必要です）。", onClose: () => setDialog(null) });
       return;
     }
-    const avg = Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length);
+    const avg = Math.max(1, Math.round(stats.average));
 
     setDialog({
-      title: "平均試合時間の更新",
-      message: `実績のある${durations.length}試合から算出した平均所要時間は ${avg}分 です。マスタ設定の「1試合の平均所要時間」をこの値に更新します。よろしいですか？`,
+      title: "1ゲームの平均時間の更新",
+      message: `実績のある${stats.matchCount}試合（${stats.gameCount}ゲーム）から算出した、1ゲームの平均所要時間は ${avg}分 です。マスタ設定の「1ゲームの平均所要時間」をこの値に更新します。よろしいですか？`,
       confirmText: "更新する",
       confirmBg: "bg-[#2c5f4e] hover:bg-[#1f4236]",
       onConfirm: async () => {
-        setConfig(prev => ({ ...prev, avgMatchDuration: avg }));
+        setConfig(prev => ({ ...prev, avgGameDuration: avg }));
         if (isSupabaseConfigured) {
           await supabase.from('settings').update({ avgmatchduration: avg }).eq('id', 1);
         }
-        setDialog({ title: "更新完了", message: `平均試合時間を ${avg}分 に更新しました。`, onClose: () => setDialog(null) });
+        setDialog({ title: "更新完了", message: `1ゲームの平均時間を ${avg}分 に更新しました。`, onClose: () => setDialog(null) });
       },
       onClose: () => setDialog(null)
     });
@@ -2705,7 +2768,7 @@ export default function App() {
                 maincourts: data.config.mainCourts || {},
                 fees: data.config.fees,
                 advancementcondition: serializeAdvancement(data.config),
-                avgmatchduration: data.config.avgMatchDuration,
+                avgmatchduration: data.config.avgGameDuration,
                 lunchbreakstart: data.config.lunchBreakStart,
                 lunchbreakend: data.config.lunchBreakEnd,
                 adminidletimeoutminutes: data.config.adminIdleTimeoutMinutes,
@@ -5559,13 +5622,19 @@ export default function App() {
       const tournamentRemaining = tournament.remaining;
       const completedMatches = (leagueTotal - leagueRemaining) + tournament.completed;
 
-      // 予選で同時に進められる試合数の上限（同じ組は2面で同時に試合できないため、グループごとに「組数÷2」まで）
-      const leagueParallel = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].reduce(
-        (acc, g) => acc + Math.floor(entries.filter(e => e.cls === cls && e.group === g).length / 2), 0);
+      // 1試合の時間は「1ゲームの時間 × 試合ルールのゲーム数」。対戦カードがあれば、カードに保存されたルールを使う
+      const gameMinutes = config.avgGameDuration || 15;
+      const leagueTasks = leagueMatches.filter(m => m.status !== 'completed').map(m => ({
+        duration: gameMinutes * getExpectedGameCount(m.matchRule || getMatchRule(cls, 'league')),
+        teams: [m.team1Id, m.team2Id].filter(id => id != null).map(String)
+      }));
+      const pendingTournamentMatch = matches.find(m => m.cls === cls && m.matchType === 'tournament' && m.status !== 'completed');
+      const tournamentRule = (pendingTournamentMatch && pendingTournamentMatch.matchRule) || getMatchRule(cls, 'tournament');
+      const tournamentBracket = { ...tournament.bracket, duration: gameMinutes * getExpectedGameCount(tournamentRule) };
 
       return {
         cls, count, leagueTotal, leagueRemaining, tournamentTotal, tournamentRemaining,
-        leagueParallel, tournamentBracket: tournament.bracket,
+        leagueTasks, tournamentBracket,
         completedMatches,
         remainingMatches: leagueRemaining + tournamentRemaining,
         totalMatches: leagueTotal + tournamentTotal
@@ -5575,22 +5644,21 @@ export default function App() {
     const sum = (key) => classStats.reduce((acc, s) => acc + s[key], 0);
     const totalRemainingMatches = sum('remainingMatches');
     const courts = Math.max(config.courts || 1, 1);
-    const avgDuration = config.avgMatchDuration || 15;
 
     // 指定したクラスを、指定した面数のコートで進める場合の所要時間（予選→決勝トーナメントの順）。
-    // ・予選は、どの組み合わせからでも消化できる。ただし同じ組は2面で同時に試合できないため、使える面数には上限がある。
-    //   試合は1試合ずつの区切りで進むため、「残り試合数÷面数」は切り上げる
+    // ・予選は、どの組み合わせからでも消化できる。ただし同じ組は2面で同時に試合できない
     // ・決勝トーナメントは勝ち上がり式のため、コートが空いていても、前の試合の勝者が決まるまで次の試合を始められない
     // 予選が残っている間は決勝トーナメントの組み合わせが確定しないため、予選→決勝トーナメントの順に直列で進むものとして
     // 見積もる（安全側＝長めの試算になる）
     const estimateMinutes = (list, courtCount) => {
-      const total = (key) => list.reduce((acc, s) => acc + s[key], 0);
-      const leagueCourts = Math.min(courtCount, Math.max(total('leagueParallel'), 1));
-      const league = Math.ceil(total('leagueRemaining') / leagueCourts) * avgDuration;
-      const tournament = countTournamentSlots(list.map(s => s.tournamentBracket), courtCount) * avgDuration;
-      // 勝ち上がり待ちが無い（常に全部のコートが埋まる）場合の、決勝トーナメントの時間
-      const tournamentThroughput = Math.ceil(total('tournamentRemaining') / courtCount) * avgDuration;
-      return { league, tournament, tournamentThroughput, total: league + tournament };
+      const league = Math.ceil(runCourtSchedule(list.flatMap(s => s.leagueTasks), courtCount) - 1e-9);
+      const tournamentTasks = buildTournamentTasks(list.map(s => s.tournamentBracket));
+      const tournament = Math.ceil(runCourtSchedule(tournamentTasks, courtCount) - 1e-9);
+      // 勝ち上がり待ちで時間が延びているか（全部のコートが埋まり続ける場合より、1試合分以上長い）
+      const work = tournamentTasks.reduce((acc, t) => acc + t.duration, 0);
+      const longest = Math.max(0, ...tournamentTasks.map(t => t.duration));
+      const tournamentWaiting = tournament >= work / courtCount + longest;
+      return { league, tournament, tournamentWaiting: tournament > 0 && tournamentWaiting, total: league + tournament };
     };
 
     // コート共用：全クラスが、全部のコートを自由に使う
@@ -5684,7 +5752,7 @@ export default function App() {
       fixed,
       leagueMinutes: shared.league,
       tournamentMinutes: shared.tournament,
-      tournamentWaiting: shared.tournament > shared.tournamentThroughput // 勝ち上がり待ちで時間が延びているか
+      tournamentWaiting: shared.tournamentWaiting // 勝ち上がり待ちで時間が延びているか
     };
   })();
 
@@ -6849,8 +6917,9 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-sm mb-1 text-gray-700">1試合の平均所要時間 (分)</label>
-                  <input type="number" min="5" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgMatchDuration} onChange={e=>setConfig({...config, avgMatchDuration: parseInt(e.target.value) || 15})} onFocus={e=>e.target.select()} placeholder="例: 15" />
+                  <label className="block font-bold text-sm mb-1 text-gray-700">1ゲームの平均所要時間 (分)</label>
+                  <input type="number" min="1" className="w-full p-2 border rounded focus:ring-2 focus:ring-[#2c5f4e] outline-none" value={config.avgGameDuration} onChange={e=>setConfig({...config, avgGameDuration: parseInt(e.target.value) || 15})} onFocus={e=>e.target.select()} placeholder="例: 12" />
+                  <p className="text-xs text-gray-500 mt-1">シミュレーションでは、試合ルールのゲーム数をかけて、1試合の時間にします（1ゲームのみ＝1、2セット先取＝2.5（2〜3ゲームの平均）、3ゲーム＝3）。</p>
                 </div>
 
                 <div>
@@ -7863,7 +7932,7 @@ export default function App() {
                        <span className="block text-xs text-slate-400 mt-1">{simCourtMode === 'fixed' ? 'コート固定' : 'コート共用'}</span>
                     </div>
                     <div className="text-center border-b md:border-b-0 md:border-r border-slate-700 pb-3 md:pb-0">
-                       <span className="block text-xs text-slate-400 mb-1">残り総所要時間 (1試合{config.avgMatchDuration}分換算)</span>
+                       <span className="block text-xs text-slate-400 mb-1">残り総所要時間 (1ゲーム{config.avgGameDuration}分換算)</span>
                        {simCourtMode === 'shared' ? (
                          <>
                            <span className="text-2xl font-extrabold text-emerald-400">約 {simResult.hours}時間 {simResult.minutes}分</span>
@@ -8258,8 +8327,7 @@ export default function App() {
               if (typeDiff !== 0) return typeDiff;
               return (a.matchNo || 0) - (b.matchNo || 0);
             });
-            const durations = allTargetMatches.map(getMatchDurationMinutes).filter(d => d !== null);
-            const avg = durations.length > 0 ? (durations.reduce((s, d) => s + d, 0) / durations.length) : null;
+            const durationStats = getGameDurationStats(allTargetMatches);
             const statusLabelMap = { waiting: '未実施', calling: 'コール済', recepted: 'コール済', in_progress: '試合中', completed: '完了' };
             const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '-';
             // 選手名と所属を2段で表示する（所属は常に2行目に固定し、名前の途中で折り返さない）
@@ -8280,18 +8348,18 @@ export default function App() {
 
                 <div className="bg-white border rounded-lg p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="text-sm text-gray-700">
-                    <span className="font-bold">実績からの平均試合時間（試合受付〜スコア入力）: </span>
-                    {avg !== null ? (
-                      <span className="font-mono font-extrabold text-[#2c5f4e] text-base">{avg.toFixed(1)}分</span>
+                    <span className="font-bold">実績からの1ゲームの平均時間（試合受付〜スコア入力）: </span>
+                    {durationStats.average !== null ? (
+                      <span className="font-mono font-extrabold text-[#2c5f4e] text-base">{durationStats.average.toFixed(1)}分</span>
                     ) : (
                       <span className="text-gray-400">算出可能な試合結果がまだありません</span>
                     )}
-                    <span className="text-xs text-gray-500 ml-2">（有効データ {durations.length}件、棄権試合は除く）</span>
+                    <span className="text-xs text-gray-500 ml-2">（有効データ {durationStats.matchCount}試合・{durationStats.gameCount}ゲーム、棄権試合は除く）</span>
                   </div>
                   <button
                     onClick={handleApplyAverageMatchDuration}
-                    disabled={durations.length === 0}
-                    className={`px-4 py-2 rounded font-bold text-sm shadow-sm whitespace-nowrap ${durations.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
+                    disabled={durationStats.average === null}
+                    className={`px-4 py-2 rounded font-bold text-sm shadow-sm whitespace-nowrap ${durationStats.average === null ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#2c5f4e] hover:bg-[#1f4236] text-white'}`}
                   >
                     この平均値をマスタ設定に反映する
                   </button>
@@ -8798,9 +8866,9 @@ export default function App() {
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。「Excelエクスポート」で全件をExcel（.xlsx）にダウンロードでき、「Excelインポート」でExcelファイルから一括登録できます（ID・パスワードはシステムが自動採番するため対象外。既存エントリーの更新は「編集」から個別に行います）。インポート時は列見出しの表記ゆれ・並び順の違いを自動判定したうえで「列の対応確認」画面が開くので、対応がおかしければプルダウンで修正してから反映できます。'],
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。「未受付のみ」にチェックを入れると、まだ受付していない組だけに絞り込めます。ドローは未受付でも作れますが、コートへ配置できるのは受付済の組だけです（未受付の組が含まれる試合をコートへ配置しようとすると「未受付エラー」が表示され、配置できません）。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。予選リーグのグループ分けでは、「未割り当て」の列は左に固定され、グループを横スクロールしても常に表示されます（スマートフォンの幅では固定しません）。組をドラッグしたまま、グループの並びの左右の端へ寄せると、その方向へ横スクロールします。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（リーグ戦表の右下には、参加者が進行状況・対戦表を見られるポータルのQRコードが「進行状況・対戦表はコチラ」の見出しつきで印刷されます）（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。予選は最大8グループ、決勝トーナメントは最大16枠に対応しており、予選順位からの自動反映では、枠が余って不戦勝（1回戦の免除）が出る場合、予選の成績（勝率→1試合あたりの得失点差→1試合あたりの総得点の順）が上位の組から優先して免除されます（グループごとに組数が違うため、勝ち数ではなく率で比べます）。5〜8グループでは、同じグループの2組が準決勝より前に当たらない範囲で、1位・2位それぞれの成績順にできるだけ近い配置にします。進出条件を「3位まで」にした部（進出組数が16組以内＝5グループまで）は、1位・2位・3位それぞれの成績順をシード順にして、同様に、同じグループの組が準決勝より前に当たらない範囲で、成績順に近い配置にします（1グループだけの場合は、3組が必ず当たるため、できるだけ後の回戦にします）。自動で配置したあとでも、手動で自由に変更できます（下の「決勝トーナメントの枠を手動で変えたい」を参照）。'],
-                      ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。基準時間は「手動」と「自動」から選べます。手動は、最初は試合開始時刻で、入力して変更でき、時間が経っても変わりません。自動は、現在の時刻になり、時間の経過に合わせて更新されます（手動に戻すと、手動の値に戻ります）。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。決勝トーナメントの試合数は、終わった試合を差し引き、不戦勝の枠は数えません。3位決定戦は、対戦カードを生成すると数えます。「コートの使い方」で「コート固定」を選ぶと、各クラスがマスタ設定の「クラス別メインコート」だけを使う場合の、クラスごとの所要時間と終了予定、全体の終了予定（最も時間のかかるクラス）を確認できます。共用・固定のどちらも、試合を1試合ずつの区切りで数え、同じ組は2面で同時に試合できないことと、決勝トーナメントは前の試合の勝者が決まるまで次の試合を始められないことを考えます。メインコートの無いクラスは、どのクラスのメインコートでもないコートを一緒に使います（そのコートも無いと算出できません）。'],
+                      ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。1試合の時間は、マスタ設定の「1ゲームの平均所要時間」に、試合ルール（クラスごとの予選・決勝）のゲーム数をかけて計算します（1ゲームのみ＝1、2セット先取＝2.5（2〜3ゲームの平均）、3ゲーム＝3。点数の違いは考えません）。基準時間は「手動」と「自動」から選べます。手動は、最初は試合開始時刻で、入力して変更でき、時間が経っても変わりません。自動は、現在の時刻になり、時間の経過に合わせて更新されます（手動に戻すと、手動の値に戻ります）。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。決勝トーナメントの試合数は、終わった試合を差し引き、不戦勝の枠は数えません。3位決定戦は、対戦カードを生成すると数えます。「コートの使い方」で「コート固定」を選ぶと、各クラスがマスタ設定の「クラス別メインコート」だけを使う場合の、クラスごとの所要時間と終了予定、全体の終了予定（最も時間のかかるクラス）を確認できます。共用・固定のどちらも、コートが空くたびに次の試合を入れる形で数え、同じ組は2面で同時に試合できないことと、決勝トーナメントは前の試合の勝者が決まるまで次の試合を始められないことを考えます。メインコートの無いクラスは、どのクラスのメインコートでもないコートを一緒に使います（そのコートも無いと算出できません）。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。コールのあと「コール完了（試合受付へ）」を押すと「スコアシートを印刷しますか？」と確認が出て、「はい」を選んだときだけ印刷の画面が開きます（「いいえ」なら印刷せずに進みます）。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。パソコンなどの広い画面では、「コート配置状況」は画面の上部に固定され、下の優先対戦リストをスクロールしても、コートが見えたままになります（画面の高さに収まらないときは、コートの枠の中でスクロールします）。下の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
-                      ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
+                      ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間と、行ったゲーム数から、1ゲームの平均時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
                       ['表彰状', '決勝が終了した各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も。準決勝の片方が不戦勝で、負けた組が1組だけのときは、3位決定戦なしでその組が3位）の表彰状を、A4横向きで1枚ずつ自動生成します。発行団体名・代表者名はマスタ設定の「表彰状設定」で変更できます。バドミントン記念柄では、「ベース印刷（名前等なし）」でクラス名・入賞名・選手名・所属名を抜いた用紙だけを先に印刷しておき、その用紙に「本印刷（名前等のみ）」で、抜いた項目だけを重ねて印刷することもできます。背景のグラフィックは、印刷の設定にかかわらず印刷されます。印鑑は、マスタ設定で印影画像をアップロードしたときだけ印刷されます（未登録の場合は何も印刷されません）。'],
                       ['データ管理', 'テストデータ生成、データのバックアップ／復元、試合結果や全データの初期化を行います。「表彰状テスト」では、予選・決勝トーナメントを実際に進行させなくても、選択したクラスの決勝結果をランダムなダミーデータで作成し、表彰状のデザイン確認ができます。「データベースの切替（本番 / テスト）」では、この端末だけ本番DBとテストDBを切り替えられます（詳しくは下の「よくある操作・困ったときは」をご覧ください）。'],

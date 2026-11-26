@@ -5505,7 +5505,7 @@ export default function App() {
     return String(a.id).localeCompare(String(b.id));
   });
 
-  // シミュレーション用：クラスの決勝トーナメントの試合数（全体・完了・残り）と、残りの回戦数を求める。
+  // シミュレーション用：クラスの決勝トーナメントの試合数（全体・完了・残り）と、コマ数の計算に使う値を求める。
   // 勝ち抜き戦の実際の試合数は「出場組数 − 1」（不戦勝の枠は試合にならない）。3位決定戦は、対戦カードを生成したら数える
   const getTournamentProgress = (cls) => {
     const classMatches = matches.filter(m => m.cls === cls && m.matchType === 'tournament');
@@ -5534,16 +5534,6 @@ export default function App() {
     const completed = classMatches.filter(m => m.status === 'completed').length;
     const remaining = Math.max(total - completed, 0);
 
-    // 残りの回戦数：未完了の対戦カードがある一番手前の回戦（無ければ、完了した回戦の次）から決勝まで
-    let rounds = teamCount >= 2 ? Math.ceil(Math.log2(teamCount)) : 0;
-    if (bracketMatches.length > 0 && slotCount >= 2) {
-      const levelOf = (m) => { const found = getTournamentMatchSlots(m.id); return found ? Math.floor(found[0] / 100) : 0; };
-      const pendingLevels = bracketMatches.filter(m => m.status !== 'completed').map(levelOf);
-      const nextLevel = pendingLevels.length > 0 ? Math.min(...pendingLevels) : Math.max(...bracketMatches.map(levelOf)) + 1;
-      rounds = Math.max(Math.log2(slotCount) - nextLevel, 0);
-    }
-    const roundsRemaining = remaining > 0 ? Math.min(Math.max(rounds, 1), remaining) : 0;
-
     const thirdPlace = classMatches.find(m => m.id === thirdPlaceId);
     const bracket = {
       teamCount,
@@ -5551,7 +5541,7 @@ export default function App() {
       thirdPlacePending: !!thirdPlace && thirdPlace.status !== 'completed'
     };
 
-    return { total, completed, remaining, roundsRemaining, bracket };
+    return { total, completed, remaining, bracket };
   };
 
   // 予選リーグと決勝トーナメントの残り試合数から、コート数・1試合平均時間をもとに終了予定時刻を試算する
@@ -5563,13 +5553,10 @@ export default function App() {
       const leagueTotal = leagueMatches.length;
       const leagueRemaining = leagueMatches.filter(m => m.status !== 'completed').length;
 
-      // 決勝トーナメントは、終わった試合を差し引き、不戦勝の枠は数えない。
-      // また勝ち上がり式のため、コートがいくら空いていても、前の回戦の結果が出るまで次の回戦が始められない
-      // （残りの回戦数分の直列所要時間が、待ち時間の下限になる）
+      // 決勝トーナメントは、終わった試合を差し引き、不戦勝の枠は数えない
       const tournament = getTournamentProgress(cls);
       const tournamentTotal = tournament.total;
       const tournamentRemaining = tournament.remaining;
-      const tournamentRoundsRemaining = tournament.roundsRemaining;
       const completedMatches = (leagueTotal - leagueRemaining) + tournament.completed;
 
       // 予選で同時に進められる試合数の上限（同じ組は2面で同時に試合できないため、グループごとに「組数÷2」まで）
@@ -5578,7 +5565,7 @@ export default function App() {
 
       return {
         cls, count, leagueTotal, leagueRemaining, tournamentTotal, tournamentRemaining,
-        tournamentRoundsRemaining, leagueParallel, tournamentBracket: tournament.bracket,
+        leagueParallel, tournamentBracket: tournament.bracket,
         completedMatches,
         remainingMatches: leagueRemaining + tournamentRemaining,
         totalMatches: leagueTotal + tournamentTotal
@@ -5590,22 +5577,25 @@ export default function App() {
     const courts = Math.max(config.courts || 1, 1);
     const avgDuration = config.avgMatchDuration || 15;
 
-    // 予選リーグはクラス・グループを問わずどの組み合わせでも自由な順序で消化できるため、
-    // 単純に「残り試合数 ÷ コート数」で所要時間を見積もる
-    const leagueMinutes = Math.ceil((sum('leagueRemaining') * avgDuration) / courts);
+    // 指定したクラスを、指定した面数のコートで進める場合の所要時間（予選→決勝トーナメントの順）。
+    // ・予選は、どの組み合わせからでも消化できる。ただし同じ組は2面で同時に試合できないため、使える面数には上限がある。
+    //   試合は1試合ずつの区切りで進むため、「残り試合数÷面数」は切り上げる
+    // ・決勝トーナメントは勝ち上がり式のため、コートが空いていても、前の試合の勝者が決まるまで次の試合を始められない
+    // 予選が残っている間は決勝トーナメントの組み合わせが確定しないため、予選→決勝トーナメントの順に直列で進むものとして
+    // 見積もる（安全側＝長めの試算になる）
+    const estimateMinutes = (list, courtCount) => {
+      const total = (key) => list.reduce((acc, s) => acc + s[key], 0);
+      const leagueCourts = Math.min(courtCount, Math.max(total('leagueParallel'), 1));
+      const league = Math.ceil(total('leagueRemaining') / leagueCourts) * avgDuration;
+      const tournament = countTournamentSlots(list.map(s => s.tournamentBracket), courtCount) * avgDuration;
+      // 勝ち上がり待ちが無い（常に全部のコートが埋まる）場合の、決勝トーナメントの時間
+      const tournamentThroughput = Math.ceil(total('tournamentRemaining') / courtCount) * avgDuration;
+      return { league, tournament, tournamentThroughput, total: league + tournament };
+    };
 
-    // 決勝トーナメントは、コート数で割った単純計算（スループット）と、
-    // 一番ラウンド数が多いクラスの直列進行にかかる最短時間（待ち時間の下限）の
-    // どちらか大きい方を採用する。各クラスの決勝Tは並行して進むため、全体の
-    // 待ち時間はラウンド数が最も多いクラス（＝枠数が最大のクラス）に律速される
-    const tournamentThroughputMinutes = Math.ceil((sum('tournamentRemaining') * avgDuration) / courts);
-    const maxTournamentRounds = Math.max(0, ...classStats.map(s => s.tournamentRoundsRemaining));
-    const tournamentRoundsMinutes = maxTournamentRounds * avgDuration;
-    const tournamentMinutes = Math.max(tournamentThroughputMinutes, tournamentRoundsMinutes);
-
-    // 予選が残っているクラスがある間は決勝トーナメントの組み合わせが確定しないため、
-    // 予選消化→決勝トーナメントの順に直列で進むものとして見積もる（安全側＝長めの試算になる）
-    const totalMinutes = leagueMinutes + tournamentMinutes;
+    // コート共用：全クラスが、全部のコートを自由に使う
+    const shared = estimateMinutes(classStats, courts);
+    const totalMinutes = shared.total;
 
     const baseTime = (simTimeMode === 'auto' ? simAutoTime : simCurrentTime) || '08:50';
     const [baseH, baseM] = baseTime.split(':').map(n => parseInt(n, 10) || 0);
@@ -5647,13 +5637,6 @@ export default function App() {
       const ownedCourts = new Set(classStats.flatMap(s => courtsOf(s.cls)));
       const freeCourts = Array.from({ length: courts }, (_, i) => i + 1).filter(n => !ownedCourts.has(n));
       const pooledClasses = classStats.filter(s => courtsOf(s.cls).length === 0 && s.remainingMatches > 0);
-      const timeFor = (list, courtCount) => {
-        const total = (key) => list.reduce((acc, s) => acc + s[key], 0);
-        const leagueCourts = Math.min(courtCount, Math.max(total('leagueParallel'), 1));
-        const league = Math.ceil(total('leagueRemaining') / leagueCourts) * avgDuration;
-        const tournament = countTournamentSlots(list.map(s => s.tournamentBracket), courtCount) * avgDuration;
-        return league + tournament;
-      };
       const label = (list) => list.map(n => `第${n}`).join('・');
       const rows = classStats.map(s => {
         const own = courtsOf(s.cls);
@@ -5661,9 +5644,9 @@ export default function App() {
         let minutes = 0;
         if (s.remainingMatches > 0) {
           if (own.length > 0) {
-            minutes = timeFor([s], own.length);
+            minutes = estimateMinutes([s], own.length).total;
           } else if (freeCourts.length > 0) {
-            minutes = timeFor(pooledClasses, freeCourts.length);
+            minutes = estimateMinutes(pooledClasses, freeCourts.length).total;
             courtsLabel = `${label(freeCourts)}（共用）`;
           } else {
             minutes = null;
@@ -5699,11 +5682,9 @@ export default function App() {
       endTimeStr,
       lunchApplied,
       fixed,
-      leagueMinutes,
-      tournamentMinutes,
-      tournamentRoundsMinutes,
-      tournamentThroughputMinutes,
-      maxTournamentRounds
+      leagueMinutes: shared.league,
+      tournamentMinutes: shared.tournament,
+      tournamentWaiting: shared.tournament > shared.tournamentThroughput // 勝ち上がり待ちで時間が延びているか
     };
   })();
 
@@ -7888,8 +7869,8 @@ export default function App() {
                            <span className="text-2xl font-extrabold text-emerald-400">約 {simResult.hours}時間 {simResult.minutes}分</span>
                            <span className="block text-xs text-slate-400 mt-1">
                               内訳: 予選 {simResult.leagueMinutes}分 + 決勝T {simResult.tournamentMinutes}分
-                              {simResult.tournamentRoundsMinutes > simResult.tournamentThroughputMinutes && (
-                                 <span className="text-sky-400">（{simResult.maxTournamentRounds}回戦の勝ち上がり待ちが律速）</span>
+                              {simResult.tournamentWaiting && (
+                                 <span className="text-sky-400">（勝ち上がり待ちが律速）</span>
                               )}
                            </span>
                          </>
@@ -8817,7 +8798,7 @@ export default function App() {
                       ['エントリー管理', '登録されている全エントリーの一覧確認・編集・削除を行います。「Excelエクスポート」で全件をExcel（.xlsx）にダウンロードでき、「Excelインポート」でExcelファイルから一括登録できます（ID・パスワードはシステムが自動採番するため対象外。既存エントリーの更新は「編集」から個別に行います）。インポート時は列見出しの表記ゆれ・並び順の違いを自動判定したうえで「列の対応確認」画面が開くので、対応がおかしければプルダウンで修正してから反映できます。'],
                       ['受付処理', '大会当日、来場した組を「受付済」にします。ドロー編成（組み合わせ）は受付前の組も含む全エントリーが対象のため、受付の有無に関わらず事前に作成できます。「済」→「未」に戻す操作（受付取消）は誤タップ防止のため確認ダイアログが表示されます。「未受付のみ」にチェックを入れると、まだ受付していない組だけに絞り込めます。ドローは未受付でも作れますが、コートへ配置できるのは受付済の組だけです（未受付の組が含まれる試合をコートへ配置しようとすると「未受付エラー」が表示され、配置できません）。'],
                       ['ドロー編成', '予選リーグのグループ分けと、決勝トーナメントの枠配置・対戦カード生成を行います。予選リーグのグループ分けでは、「未割り当て」の列は左に固定され、グループを横スクロールしても常に表示されます（スマートフォンの幅では固定しません）。組をドラッグしたまま、グループの並びの左右の端へ寄せると、その方向へ横スクロールします。未受付の組も含めて組み合わせを作成でき（未受付の組には「未受付」と表示）、組のカードにはペア名・所属（2行）と、同じ所属から複数ペアが出る場合のクラブ内順位（◯番手）が表示されます。印刷は「リーグ戦表」「リーグ戦表(勝敗付)」「トーナメント表」の各ボタンからA4横で行えます（リーグ戦表の右下には、参加者が進行状況・対戦表を見られるポータルのQRコードが「進行状況・対戦表はコチラ」の見出しつきで印刷されます）（トーナメント表は用紙いっぱいに大きく印刷されます）。自動ランダム振り分けは1グループ4組を標準にグループ数を決めます（例：8組→2グループ、12組→3グループ）。予選は最大8グループ、決勝トーナメントは最大16枠に対応しており、予選順位からの自動反映では、枠が余って不戦勝（1回戦の免除）が出る場合、予選の成績（勝率→1試合あたりの得失点差→1試合あたりの総得点の順）が上位の組から優先して免除されます（グループごとに組数が違うため、勝ち数ではなく率で比べます）。5〜8グループでは、同じグループの2組が準決勝より前に当たらない範囲で、1位・2位それぞれの成績順にできるだけ近い配置にします。進出条件を「3位まで」にした部（進出組数が16組以内＝5グループまで）は、1位・2位・3位それぞれの成績順をシード順にして、同様に、同じグループの組が準決勝より前に当たらない範囲で、成績順に近い配置にします（1グループだけの場合は、3組が必ず当たるため、できるだけ後の回戦にします）。自動で配置したあとでも、手動で自由に変更できます（下の「決勝トーナメントの枠を手動で変えたい」を参照）。'],
-                      ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。基準時間は「手動」と「自動」から選べます。手動は、最初は試合開始時刻で、入力して変更でき、時間が経っても変わりません。自動は、現在の時刻になり、時間の経過に合わせて更新されます（手動に戻すと、手動の値に戻ります）。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。決勝トーナメントの試合数は、終わった試合を差し引き、不戦勝の枠は数えません。3位決定戦は、対戦カードを生成すると数えます。「コートの使い方」で「コート固定」を選ぶと、各クラスがマスタ設定の「クラス別メインコート」だけを使う場合の、クラスごとの所要時間と終了予定、全体の終了予定（最も時間のかかるクラス）を確認できます。固定の場合は、同じ組は2面で同時に試合できないことと、決勝トーナメントは前の試合の勝者が決まるまで次の試合を始められないことも考えます。メインコートの無いクラスは、どのクラスのメインコートでもないコートを一緒に使います（そのコートも無いと算出できません）。'],
+                      ['シミュレーション', '現在の進行状況から、残り試合数や大会終了予定時刻をリアルタイムに試算します。基準時間は「手動」と「自動」から選べます。手動は、最初は試合開始時刻で、入力して変更でき、時間が経っても変わりません。自動は、現在の時刻になり、時間の経過に合わせて更新されます（手動に戻すと、手動の値に戻ります）。マスタ設定の昼休み時間帯を考慮するほか、決勝トーナメントは前の回戦の結果が出ないと次に進めない「勝ち上がり待ち」も加味して算出します（コート数を増やしても、この待ち時間より早くは終わりません）。決勝トーナメントの試合数は、終わった試合を差し引き、不戦勝の枠は数えません。3位決定戦は、対戦カードを生成すると数えます。「コートの使い方」で「コート固定」を選ぶと、各クラスがマスタ設定の「クラス別メインコート」だけを使う場合の、クラスごとの所要時間と終了予定、全体の終了予定（最も時間のかかるクラス）を確認できます。共用・固定のどちらも、試合を1試合ずつの区切りで数え、同じ組は2面で同時に試合できないことと、決勝トーナメントは前の試合の勝者が決まるまで次の試合を始められないことを考えます。メインコートの無いクラスは、どのクラスのメインコートでもないコートを一緒に使います（そのコートも無いと算出できません）。'],
                       ['コート進行・スコア', '各コートへの対戦カード割り当て、試合状況（コール・受付・進行中・完了）の管理、ゲーム別スコア入力・棄権（不戦勝）処理、公式スコアシートの印刷を行います。コールのあと「コール完了（試合受付へ）」を押すと「スコアシートを印刷しますか？」と確認が出て、「はい」を選んだときだけ印刷の画面が開きます（「いいえ」なら印刷せずに進みます）。画面上部の「スコアシート(白紙)印刷」から、選手名等を空欄にした手書き用スコアシートを印刷することもできます。パソコンなどの広い画面では、「コート配置状況」は画面の上部に固定され、下の優先対戦リストをスクロールしても、コートが見えたままになります（画面の高さに収まらないときは、コートの枠の中でスクロールします）。下の「優先対戦リスト」は、両ペアとも受付済で空いている試合が上に並びます。試合結果を入力すると、そのコートで続けて試合できる組（同じクラスの試合を優先し、直前の勝者・敗者＝次の審判予定のペアを含まない試合）が先頭に「第〇コート向け」と表示されます。複数のコートで結果が入っているときは、結果が入力された順に上から並びます。未受付のペアを含む試合や、他のコートで使用中の試合は後ろに下がります。'],
                       ['試合結果明細', '全試合の結果・状態を一覧表示し、試合受付〜スコア入力の実績所要時間から平均試合時間を算出してマスタ設定へ反映できます。完了済みの試合は一覧から直接「スコア修正」ボタンでスコアを修正でき、順位表・決勝トーナメントへも自動的に反映されます。'],
                       ['結果PDF', '各クラスの優勝・準優勝（3位決定戦を実施した場合は3位も）を、新聞社等への掲載用にA4形式でまとめます。ブラウザの印刷機能からPDF保存できます。'],
